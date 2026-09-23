@@ -150,6 +150,7 @@ async function runSmoke(target) {
   })()`;
 
   let opened = null;
+  let renamed = null;
   let result;
   try {
     await new Promise((r) => setTimeout(r, 600));
@@ -170,6 +171,24 @@ async function runSmoke(target) {
 
     result = await target.webContents.executeJavaScript(probe);
     await capture(target, 'board');
+
+    // 이름 변경 — Electron에 prompt()가 없어 직접 만든 다이얼로그를 거친다.
+    renamed = await target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      await r.launcher.show({ closable: true });
+      const btn = document.querySelector('.pcard-actions [title="이름 변경"]');
+      if (!btn) return { error: '이름 변경 버튼 없음' };
+      btn.click();
+      await new Promise((res) => setTimeout(res, 120));
+      const input = document.querySelector('.dlg input');
+      if (!input) return { error: '다이얼로그가 안 떴다 (prompt 대체 실패)' };
+      input.value = '이름 변경 테스트';
+      document.querySelector('.dlg-actions .cta').click();
+      await new Promise((res) => setTimeout(res, 250));
+      const list = await r.adapter.listProjects();
+      return { name: list[0]?.name, dialogClosed: document.querySelector('.dlg') === null };
+    })()`);
+    console.log('[smoke] rename ' + JSON.stringify(renamed));
 
     // 프로젝트가 담긴 목록 화면
     if (shotDir()) {
@@ -200,7 +219,9 @@ async function runSmoke(target) {
     }
   }
 
-  const ok = !result.error && !opened?.error && opened?.launcherClosed === true
+  const ok = !result.error && !opened?.error && !renamed?.error
+    && renamed?.name === '이름 변경 테스트' && renamed?.dialogClosed === true
+    && opened?.launcherClosed === true
     && opened?.projectsAfter === opened?.projectsBefore + 1
     && result.tracks > 0 && result.cards > 0 && result.items > 0 && wrote === true;
   console.log('[smoke] ' + (ok ? 'PASS' : 'FAIL'));

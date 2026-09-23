@@ -52,3 +52,17 @@
   line-height:16px;padding:var(--u2);border:1px solid var(--border-strong);border-radius:var(--u1-5);
   background:var(--bg-input);resize:vertical}
 .note{font-size:11px;line-height:16px;color:var(--text-tertiary);margin-top:var(--u2)}
+
+/* ── 입력 다이얼로그 (Electron에 prompt()가 없어서 직접 만든다) ── */
+.dlg-scrim{position:fixed;inset:0;z-index:120;background:rgba(12,10,9,.32);
+  display:flex;align-items:center;justify-content:center;padding:var(--u4)}
+.dlg-scrim[hidden]{display:none!important}
+.dlg{width:100%;max-width:380px;background:var(--bg-panel);border:1px solid var(--border-strong);
+  border-radius:var(--u2);box-shadow:0 var(--u4) var(--u10) rgba(0,0,0,.24);padding:var(--u5)}
+.dlg h2{margin:0 0 var(--u3);font-size:15px;line-height:22px;font-weight:600}
+.dlg label{display:block;font-size:11px;line-height:16px;font-weight:500;
+  color:var(--text-tertiary);margin-bottom:var(--u1)}
+.dlg input{width:100%;height:var(--u8);padding:0 var(--u2-5);background:var(--bg-input);
+  border:1px solid var(--border-strong);border-radius:var(--u1-5);font-size:13px}
+.dlg-actions{display:flex;gap:var(--u2);justify-content:flex-end;margin-top:var(--u4)}
+.dlg-actions .btn{min-width:72px;justify-content:center}

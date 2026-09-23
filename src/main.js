@@ -64,7 +64,15 @@ async function boot() {
     onReplaced: () => { rebuild(); configPanel.render(); },
   });
 
-  const launcher = new Launcher({ adapter, onOpen: openProject });
+  const launcher = new Launcher({
+    adapter,
+    onOpen: openProject,
+    // 열려 있는 프로젝트의 이름이 바뀌면 화면의 문서도 맞춰 저장한다.
+    // 그러지 않으면 다음 저장 때 store의 옛 meta.name이 DB를 덮어쓴다.
+    onRenamed: (id, name) => {
+      if (adapter.projectId === id) store.commit('이름 변경', (doc) => { doc.meta.name = name; });
+    },
+  });
 
   const toolbar = initToolbar({
     store, view,

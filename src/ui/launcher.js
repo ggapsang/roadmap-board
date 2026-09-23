@@ -1,14 +1,17 @@
 /**
  * 프로젝트 목록 — 앱의 첫 화면.
  *
- * 이 도구는 Project Machina 전용이 아니다. 과제·연차마다 보드를 따로 두고
- * 여기서 골라 연다. 보드 하나가 프로젝트 하나이고, 서로 완전히 격리된다.
+ * 무엇을 프로젝트 단위로 삼을지는 쓰는 사람이 정한다. 과제별로 나누든
+ * 연차별로 나누든 상관없다. 목록의 항목끼리는 서로 완전히 격리된다.
+ *
+ * 이름을 묻는 자리는 window.prompt가 아니라 askText를 쓴다 —
+ * Electron은 prompt()를 지원하지 않는다.
  */
-import { SEED } from '../config/seed.js';
 import { DEFAULT_ORGS } from '../config/index.js';
 import { SCHEMA_VERSION } from '../core/schema.js';
 import { $, el, clear, button, icon, ICONS } from './dom.js';
 import { toast } from './toast.js';
+import { askText } from './dialog.js';
 
 /** 빈 보드 — 오늘이 속한 달부터 6개월, 트랙 3개 */
 function blankDoc(name) {
@@ -36,13 +39,13 @@ export class Launcher {
    * @param {import('../core/storage.js').StorageAdapter} opts.adapter
    * @param {(id:number) => Promise<void>} opts.onOpen
    */
-  constructor({ adapter, onOpen }) {
+  constructor({ adapter, onOpen, onRenamed }) {
     this.adapter = adapter;
     this.onOpen = onOpen;
+    this.onRenamed = onRenamed;
     this.root = $('launcher');
 
-    $('l-new-blank').addEventListener('click', () => this.#create('blank'));
-    $('l-new-seed').addEventListener('click', () => this.#create('seed'));
+    $('l-new-blank').addEventListener('click', () => this.#create());
     $('l-close').addEventListener('click', () => this.hide());
   }
 
@@ -113,17 +116,17 @@ export class Launcher {
     }
   }
 
-  async #create(kind) {
-    const fallback = kind === 'seed' ? SEED.meta.name : '새 프로젝트';
-    const name = (prompt('프로젝트 이름', fallback) ?? '').trim();
+  async #create() {
+    const name = await askText({
+      title: '새 프로젝트',
+      label: '이름',
+      value: '새 프로젝트',
+      confirmLabel: '만들기',
+    });
     if (!name) return;
 
-    const doc = kind === 'seed'
-      ? { ...structuredClone(SEED), meta: { ...SEED.meta, name } }
-      : blankDoc(name);
-
     try {
-      const id = await this.adapter.createProject(doc, name);
+      const id = await this.adapter.createProject(blankDoc(name), name);
       await this.#open(id);
     } catch (err) {
       toast('만들지 못했습니다: ' + err.message, 'warn');
@@ -131,14 +134,26 @@ export class Launcher {
   }
 
   async #rename(p) {
-    const name = (prompt('프로젝트 이름', p.name) ?? '').trim();
+    const name = await askText({
+      title: '이름 변경', label: '프로젝트 이름', value: p.name, confirmLabel: '변경',
+    });
     if (!name || name === p.name) return;
-    await this.adapter.renameProject(p.id, name);
-    await this.render();
+    try {
+      await this.adapter.renameProject(p.id, name);
+      // 열려 있는 프로젝트라면 화면의 문서도 맞춰 준다.
+      // 안 그러면 다음 저장 때 옛 이름이 다시 덮어쓴다.
+      this.onRenamed?.(p.id, name);
+      await this.render();
+      toast('이름을 바꿨습니다');
+    } catch (err) {
+      toast('바꾸지 못했습니다: ' + err.message, 'warn');
+    }
   }
 
   async #duplicate(p) {
-    const name = (prompt('사본 이름', `${p.name} 사본`) ?? '').trim();
+    const name = await askText({
+      title: '프로젝트 복제', label: '사본 이름', value: `${p.name} 사본`, confirmLabel: '복제',
+    });
     if (!name) return;
     try {
       await this.adapter.duplicateProject(p.id, name);
