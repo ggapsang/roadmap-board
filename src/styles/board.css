@@ -122,17 +122,24 @@
 
 /* 일정 안에 일정 — 상위 카드는 제목만 위에 두고 아래를 자식에게 내준다.
    메타(기간·담당)는 숨긴다. 자식이 날짜 위치대로 들어오면서 겹치기 때문이다. */
-/* 배경을 비운다. 칠해 두면 안에 든 자식으로 들어가는 화살표가 가려진다.
-   컬럼 배경과 같은 색이라 비워도 보이는 모습은 같다. */
-.ev.container{overflow:visible;padding-bottom:var(--u2);background:transparent}
+/* 상위 일정 = 그룹 면. 캔버스보다 한 단계 들어가 보이고 안의 카드는 한 단계 떠 보인다.
+   (가이드: 계층은 선이 아니라 Surface로 만든다)
+
+   z-index를 주지 않는 것이 중요하다. 주면 쌓임 맥락이 생겨 안에 든 카드가
+   이 층에 갇히고, 화살표(z:5)가 자식 카드 위로 올라와 글씨를 덮는다.
+   z-index:auto로 두면 컨테이너 배경은 화살표 아래, 자식 카드는 화살표 위에 놓인다. */
+.ev.container{overflow:visible;padding-bottom:var(--u2);
+  background:var(--surface-group);z-index:auto}
 /* 자식은 날짜 위치대로 들어오므로 상위 제목과 겹칠 수 있다.
    제목을 위에 붙여 두고 자식보다 위 레이어에 둬서 항상 읽히게 한다. */
 .ev.container>.t{flex:none;width:100%;text-align:center;position:sticky;top:0;z-index:8;
   padding:var(--u1) var(--u2);margin:calc(var(--u1) * -1) calc(var(--u2) * -1) 0;
-  background:var(--bg-canvas);border-radius:var(--r-card) var(--r-card) 0 0}
+  background:var(--surface-group);border-radius:var(--r-card) var(--r-card) 0 0}
 .ev.container>.meta{display:none}
 .ev.container>.card-note{flex:none}
-.ev.child{z-index:7}
+/* 그룹 안의 카드는 한 단계 떠 보이게. 그룹 면과 같은 색이면 구분이 사라진다. */
+.ev.child{z-index:7;background:var(--bg-elevated)}
+.ev.child:hover{background:var(--surface-card-hover)}
 
 /* 상태 — 색은 좌측 표시자에만 쓴다. 진행중이라고 카드를 주황으로 칠하지 않는다.
    배경 tint는 놓치면 안 되는 '지연'에만 아주 옅게 준다 (가이드 §4 / §11). */

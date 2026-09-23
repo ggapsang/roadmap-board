@@ -40,6 +40,9 @@
   --bg-hover:var(--neutral-100);
   --surface-card:#FFFFFF;
   --surface-card-hover:var(--neutral-50);
+  /* 상위 일정(그룹)의 면. 캔버스보다 한 단계 들어가 보이고, 그 안의 카드는
+     한 단계 떠 보인다. Light는 50 -> 100 -> white 로 내려갔다 올라온다. */
+  --surface-group:var(--neutral-100);
 
   --border-subtle:var(--neutral-200);
   --border-default:var(--neutral-300);
@@ -99,6 +102,8 @@
   --bg-hover:var(--neutral-800);
   --surface-card:var(--neutral-900);
   --surface-card-hover:var(--neutral-800);
+  /* Dark는 950 -> 900 -> 800 으로 한 단계씩 올라온다 */
+  --surface-group:var(--neutral-900);
 
   --border-subtle:var(--neutral-800);
   --border-default:var(--neutral-700);
@@ -134,6 +139,8 @@
   --bg-hover:var(--neutral-800);
   --surface-card:var(--neutral-900);
   --surface-card-hover:var(--neutral-800);
+  /* Dark는 950 -> 900 -> 800 으로 한 단계씩 올라온다 */
+  --surface-group:var(--neutral-900);
 
   --border-subtle:var(--neutral-800);
   --border-default:var(--neutral-700);
