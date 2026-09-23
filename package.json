@@ -1,0 +1,46 @@
+{
+  "name": "roadmap-board",
+  "version": "0.1.0",
+  "description": "Project Machina 실행계획 로드맵 보드",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "dist": "electron-builder",
+    "test": "electron . --smoke"
+  },
+  "author": "다임리서치",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "electron": "^44.4.4"
+  },
+  "build": {
+    "appId": "kr.daim.roadmap-board",
+    "productName": "Roadmap Board",
+    "files": [
+      "index.html",
+      "src/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "devDependencies": {
+    "electron-builder": "^26.15.3"
+  }
+}

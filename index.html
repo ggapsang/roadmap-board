@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; script-src 'self'">
+<title>Roadmap Board · Project Machina</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./src/styles/index.css">
+</head>
+<body>
+
+<!-- ── 툴바 ──────────────────────────────────────────────── -->
+<div class="bar">
+  <div class="brand">
+    <span class="mk"></span>
+    <h1>Roadmap Board</h1>
+    <span class="sub" id="rangeLabel"></span>
+  </div>
+  <div class="grow"></div>
+
+  <label class="search">
+    <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    <input id="q" type="search" placeholder="일정 검색" aria-label="일정 검색">
+  </label>
+
+  <div class="seg" id="zoom" role="group" aria-label="행 높이"></div>
+
+  <button class="btn" id="btnTracks" type="button">
+    <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h10"/></svg>트랙</button>
+  <button class="btn icon" id="btnUndo" type="button" title="되돌리기 (Ctrl+Z)" aria-label="되돌리기">
+    <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10h11a5 5 0 0 1 0 10H9"/><path d="m7 6-4 4 4 4"/></svg></button>
+  <button class="btn icon" id="btnRedo" type="button" title="다시 실행 (Ctrl+Shift+Z)" aria-label="다시 실행">
+    <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 10H10a5 5 0 0 0 0 10h5"/><path d="m17 6 4 4-4 4"/></svg></button>
+  <button class="btn icon" id="btnTheme" type="button" title="테마 전환" aria-label="테마 전환">
+    <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9Z"/></svg></button>
+  <button class="btn icon" id="btnPrint" type="button" title="인쇄" aria-label="인쇄">
+    <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/></svg></button>
+  <button class="btn" id="btnData" type="button">
+    <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m8 11 4 4 4-4"/><path d="M4 21h16"/></svg>데이터</button>
+  <button class="btn cta" id="btnAdd" type="button">
+    <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>일정</button>
+</div>
+
+<!-- ── 상태 요약 ─────────────────────────────────────────── -->
+<div class="status" id="statusBar"></div>
+
+<!-- ── 캘린더 ────────────────────────────────────────────── -->
+<div class="scroll" id="scroll">
+  <div class="cal">
+    <div class="head" id="head"></div>
+    <div class="body" id="grid">
+      <div class="lines" id="lines"></div>
+      <div class="gut-m" id="gutM"></div>
+      <div class="gut-w" id="gutW"></div>
+    </div>
+  </div>
+</div>
+
+<div class="scrim" id="scrim"></div>
+
+<!-- ── 일정 편집 ─────────────────────────────────────────── -->
+<aside class="panel" id="pItem" aria-label="일정 편집">
+  <header>
+    <h2>일정 편집</h2><div class="grow"></div>
+    <button class="btn icon" data-close type="button" aria-label="닫기">
+      <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+  </header>
+  <div class="body2">
+    <div class="fld"><label for="i-title">제목</label><input id="i-title" type="text"></div>
+    <div class="fld"><label>상태</label><div class="pick" id="i-status"></div></div>
+    <div class="two">
+      <div class="fld"><label for="i-track">트랙</label><select id="i-track"></select></div>
+      <div class="fld"><label for="i-type">유형</label><select id="i-type"></select></div>
+    </div>
+    <div class="two">
+      <div class="fld"><label for="i-start">시작</label><input id="i-start" type="date"></div>
+      <div class="fld"><label for="i-end">종료</label><input id="i-end" type="date"></div>
+    </div>
+    <div class="two">
+      <div class="fld"><label for="i-span">트랙 병합 폭</label><input id="i-span" type="number" min="1" max="8" step="1"></div>
+      <div class="fld"><label for="i-prog">진척률 (%)</label><input id="i-prog" type="number" min="0" max="100" step="5"></div>
+    </div>
+    <div class="fld"><label for="i-org">담당</label><select id="i-org"></select></div>
+    <div class="fld"><label>선행 일정</label><div class="deps" id="i-deps"></div></div>
+    <div class="fld"><label for="i-note">비고</label><textarea id="i-note"></textarea></div>
+  </div>
+  <footer>
+    <button class="btn danger" id="i-del" type="button">삭제</button>
+    <button class="btn" id="i-dup" type="button">복제</button>
+  </footer>
+</aside>
+
+<!-- ── 트랙 관리 ─────────────────────────────────────────── -->
+<aside class="panel" id="pTrack" aria-label="트랙 관리">
+  <header>
+    <h2>트랙 관리</h2><div class="grow"></div>
+    <button class="btn icon" data-close type="button" aria-label="닫기">
+      <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+  </header>
+  <div class="body2">
+    <div class="sect">트랙 목록</div>
+    <div class="tlist" id="tlist"></div>
+    <button class="btn cta wide" id="t-add" type="button">
+      <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>트랙 추가</button>
+    <p class="note">위 칸은 분류 라벨, 아래 칸은 트랙 이름입니다. 삭제하면 해당 트랙의 일정도 함께 제거됩니다.</p>
+  </div>
+</aside>
+
+<!-- ── 데이터 · 기간 ─────────────────────────────────────── -->
+<aside class="panel" id="pData" aria-label="데이터 관리">
+  <header>
+    <h2>데이터 · 기간</h2><div class="grow"></div>
+    <button class="btn icon" data-close type="button" aria-label="닫기">
+      <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+  </header>
+  <div class="body2">
+    <div class="sect">표시 기간</div>
+    <div class="two">
+      <div class="fld"><label for="d-start">시작</label><input id="d-start" type="date"></div>
+      <div class="fld"><label for="d-end">종료</label><input id="d-end" type="date"></div>
+    </div>
+
+    <div class="sect">파일</div>
+    <div class="row">
+      <button class="btn" id="d-export" type="button">JSON 반출</button>
+      <button class="btn" id="d-import" type="button">JSON 반입</button>
+    </div>
+
+    <div class="sect">JSON 직접 편집</div>
+    <textarea class="json" id="d-json" spellcheck="false" aria-label="문서 JSON"></textarea>
+    <div class="row">
+      <button class="btn" id="d-copy" type="button">복사</button>
+      <button class="btn" id="d-load" type="button">적용</button>
+    </div>
+    <p class="note" id="d-storage"></p>
+
+    <div id="d-history" hidden>
+      <div class="sect">변경 이력</div>
+      <div class="tlist" id="d-revisions"></div>
+      <p class="note">저장 시점마다가 아니라 5분 간격으로 스냅샷을 남깁니다.</p>
+    </div>
+
+    <div class="sect">초기화</div>
+    <button class="btn danger wide" id="d-reset" type="button">기본 로드맵으로 되돌리기</button>
+  </div>
+</aside>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

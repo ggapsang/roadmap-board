@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Roadmap Board · Project Machina</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════════════
+   다임리서치 디자인 파운데이션 토큰 (v1.0 / 2026.03)
+   색상은 의미 기반 토큰으로만 참조. HEX 직접 사용 금지.
+   ═══════════════════════════════════════════════════════════ */
+:root{
+  /* Primary (Brand) */
+  --primary-50:#FFF6ED; --primary-100:#FFEAD5; --primary-200:#FED2AA; --primary-300:#FDB274;
+  --primary-400:#FA863D; --primary-500:#F86517; --primary-600:#F14D0D; --primary-700:#C2360C;
+  --primary-800:#9A2C12; --primary-900:#7C2612; --primary-950:#431007;
+  /* Neutral (Stone) */
+  --neutral-50:#FAFAF9; --neutral-100:#F5F5F4; --neutral-200:#E7E5E4; --neutral-300:#D6D3D1;
+  --neutral-400:#A3A3A3; --neutral-500:#78716C; --neutral-600:#57534E; --neutral-700:#44403C;
+  --neutral-800:#292524; --neutral-900:#1C1917; --neutral-950:#0C0A09;
+  /* Success / Warning / Error */
+  --success-50:#EFF6FF; --success-200:#BFDBFE; --success-500:#3B82F6; --success-700:#1D4ED8;
+  --warning-50:#FEFCE8; --warning-200:#FDE68A; --warning-500:#F59E0B; --warning-700:#B45309;
+  --error-50:#FEF2F2;   --error-200:#FECACA;   --error-500:#EF4444;   --error-700:#B91C1C;
+
+  /* 단위 스케일 (4px base grid) */
+  --u1:4px; --u1-5:6px; --u2:8px; --u2-5:10px; --u3:12px; --u4:16px; --u5:20px; --u6:24px; --u8:32px; --u10:40px;
+
+  /* 시맨틱 매핑 — Light */
+  --bg-canvas:var(--neutral-50);
+  --bg-panel:#FFFFFF;
+  --bg-sunken:var(--neutral-100);
+  --bg-input:#FFFFFF;
+  --text-primary:var(--neutral-900);
+  --text-secondary:var(--neutral-600);
+  --text-tertiary:var(--neutral-400);
+  --border:var(--neutral-200);
+  --border-strong:var(--neutral-300);
+  --border-bold:var(--neutral-400);
+  --accent:var(--primary-500);
+  --accent-weak:var(--primary-50);
+  --focus:var(--primary-500);
+  --shadow:0 var(--u1) var(--u3) rgba(12,10,9,.08);
+
+  --wk:56px;  /* 1주 행 높이 */
+  --gut-m:56px; --gut-w:52px; --colmin:196px;
+
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --bg-canvas:var(--neutral-950); --bg-panel:var(--neutral-900); --bg-sunken:#141110;
+  --bg-input:var(--neutral-800);
+  --text-primary:var(--neutral-50); --text-secondary:var(--neutral-400); --text-tertiary:var(--neutral-500);
+  --border:#2B2724; --border-strong:#3D3835; --border-bold:var(--neutral-600);
+  --accent-weak:rgba(248,101,23,.18);
+  --primary-50:rgba(248,101,23,.13); --primary-200:rgba(248,101,23,.45);
+  --success-50:rgba(59,130,246,.14); --success-200:rgba(59,130,246,.42);
+  --warning-50:rgba(245,158,11,.14); --warning-200:rgba(245,158,11,.42);
+  --error-50:rgba(239,68,68,.14);    --error-200:rgba(239,68,68,.42);
+  --shadow:0 var(--u1) var(--u4) rgba(0,0,0,.45);
+}}
+:root[data-theme="dark"]{
+  --bg-canvas:var(--neutral-950); --bg-panel:var(--neutral-900); --bg-sunken:#141110;
+  --bg-input:var(--neutral-800);
+  --text-primary:var(--neutral-50); --text-secondary:var(--neutral-400); --text-tertiary:var(--neutral-500);
+  --border:#2B2724; --border-strong:#3D3835; --border-bold:var(--neutral-600);
+  --accent-weak:rgba(248,101,23,.18);
+  --primary-50:rgba(248,101,23,.13); --primary-200:rgba(248,101,23,.45);
+  --success-50:rgba(59,130,246,.14); --success-200:rgba(59,130,246,.42);
+  --warning-50:rgba(245,158,11,.14); --warning-200:rgba(245,158,11,.42);
+  --error-50:rgba(239,68,68,.14);    --error-200:rgba(239,68,68,.42);
+  --shadow:0 var(--u1) var(--u4) rgba(0,0,0,.45);
+}
+*,*::before,*::after{box-sizing:inherit}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg-canvas);color:var(--text-primary);
+  font-family:Pretendard,"Pretendard Variable","Noto Sans KR",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+  font-size:14px;line-height:20px;font-weight:400;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  display:flex;flex-direction:column;overflow:hidden;
+}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:var(--u1)}
+svg.ic{width:var(--u4);height:var(--u4);stroke:currentColor;stroke-width:1.5;fill:none;
+  stroke-linecap:round;stroke-linejoin:round;flex:none}
+
+/* ── 툴바 ─────────────────────────────────────────── */
+.bar{display:flex;align-items:center;gap:var(--u2);padding:var(--u2-5) var(--u4);
+  background:var(--bg-panel);border-bottom:1px solid var(--border);flex:none}
+.brand{display:flex;align-items:baseline;gap:var(--u2-5);margin-right:var(--u2)}
+.brand .mk{width:var(--u2);height:var(--u5);background:var(--accent);border-radius:2px;align-self:center}
+.brand h1{margin:0;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em;white-space:nowrap}
+.brand .sub{font-size:12px;line-height:16px;color:var(--text-tertiary);white-space:nowrap}
+.grow{flex:1}
+.btn{display:inline-flex;align-items:center;gap:var(--u1-5);height:var(--u8);padding:0 var(--u3);
+  background:var(--bg-panel);border:1px solid var(--border-strong);border-radius:var(--u1-5);
+  color:var(--text-secondary);font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap}
+.btn:hover{background:var(--bg-sunken);color:var(--text-primary);border-color:var(--border-bold)}
+.btn.icon{padding:0;width:var(--u8);justify-content:center}
+.btn.cta{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.cta:hover{background:var(--primary-600);border-color:var(--primary-600);color:#fff}
+.btn.danger{color:var(--error-700);border-color:var(--error-200)}
+.btn[aria-pressed="true"]{background:var(--bg-sunken);color:var(--text-primary);border-color:var(--border-bold)}
+.seg{display:inline-flex;border:1px solid var(--border-strong);border-radius:var(--u1-5);overflow:hidden}
+.seg button{height:var(--u8);padding:0 var(--u2-5);background:var(--bg-panel);border:0;
+  border-left:1px solid var(--border);color:var(--text-secondary);font-size:13px;cursor:pointer}
+.seg button:first-child{border-left:0}
+.seg button[aria-pressed="true"]{background:var(--text-primary);color:var(--bg-panel);font-weight:600}
+.search{display:flex;align-items:center;gap:var(--u2);height:var(--u8);padding:0 var(--u3);
+  background:var(--bg-input);border:1px solid var(--border-strong);border-radius:var(--u1-5);
+  color:var(--text-tertiary);width:200px}
+.search input{border:0;background:none;outline:0;width:100%;font-size:13px;color:var(--text-primary)}
+
+/* ── 상태 요약 (상태 우선) ─────────────────────────── */
+.status{display:flex;align-items:center;gap:var(--u2);padding:var(--u2) var(--u4);
+  background:var(--bg-panel);border-bottom:1px solid var(--border);flex:none;overflow-x:auto}
+.stat{display:inline-flex;align-items:center;gap:var(--u1-5);height:var(--u6);padding:0 var(--u2-5);
+  border:1px solid var(--border);border-radius:var(--u1);background:var(--bg-panel);
+  font-size:12px;line-height:16px;color:var(--text-secondary);cursor:pointer;white-space:nowrap}
+.stat .dot{width:var(--u2);height:var(--u2);border-radius:2px;border:1px solid var(--border-bold);flex:none}
+.stat b{font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums}
+.stat[aria-pressed="false"]{opacity:.42}
+.stat.s-plan .dot{background:var(--neutral-200);border-color:var(--neutral-400)}
+.stat.s-run  .dot{background:var(--primary-500);border-color:var(--primary-600)}
+.stat.s-done .dot{background:var(--success-500);border-color:var(--success-700)}
+.stat.s-late .dot{background:var(--error-500);border-color:var(--error-700)}
+.stat.s-hold .dot{background:repeating-linear-gradient(45deg,var(--neutral-300) 0 2px,transparent 2px 4px);border-color:var(--neutral-400)}
+.status .divider{width:1px;height:var(--u5);background:var(--border);margin:0 var(--u1)}
+.orgs{display:flex;gap:var(--u1-5)}
+.org{height:var(--u6);padding:0 var(--u2-5);border:1px solid var(--border);border-radius:999px;
+  background:var(--bg-panel);font-size:12px;color:var(--text-secondary);cursor:pointer;white-space:nowrap}
+.org[aria-pressed="true"]{background:var(--text-primary);color:var(--bg-panel);border-color:var(--text-primary);font-weight:500}
+
+/* ── 캘린더 ───────────────────────────────────────── */
+.scroll{flex:1;overflow:auto;background:var(--bg-canvas)}
+.cal{min-width:max-content}
+.head{display:grid;position:sticky;top:0;z-index:30;background:var(--bg-panel);
+  border-bottom:2px solid var(--border-bold)}
+.head .cnr{border-right:1px solid var(--border)}
+.th{padding:var(--u2-5) var(--u3);border-left:1px solid var(--border);display:flex;flex-direction:column;
+  gap:var(--u1);cursor:pointer;position:relative}
+.th:hover{background:var(--bg-sunken)}
+.th .lab{font-size:11px;line-height:16px;color:var(--text-tertiary);font-weight:500;letter-spacing:.02em}
+.th .nm{font-size:13px;line-height:20px;font-weight:600;letter-spacing:-.01em;color:var(--text-primary)}
+.th .cnt{position:absolute;right:var(--u3);top:var(--u2-5);font-size:11px;color:var(--text-tertiary);
+  font-variant-numeric:tabular-nums}
+.th.active{box-shadow:inset 0 -3px 0 var(--accent)}
+.addcol{border-left:1px solid var(--border);display:flex;align-items:flex-start;justify-content:center;padding-top:var(--u2-5)}
+
+.body{display:grid;position:relative;background:var(--bg-panel)}
+.lines{position:absolute;inset:0;z-index:0;pointer-events:none}
+.lines i{position:absolute;left:var(--gut-m);right:0;border-top:1px solid var(--border);display:block}
+.lines i.m{border-top:1px solid var(--border-bold)}
+.lines i.q{background:var(--bg-sunken);border:0;opacity:.6}
+.gut-m{position:relative;z-index:2;border-right:1px solid var(--border);background:var(--bg-panel)}
+.gut-m b{position:absolute;left:0;right:0;border-top:1px solid var(--border-bold);
+  text-align:center;font-size:12px;line-height:16px;font-weight:600;color:var(--text-secondary);
+  overflow:hidden;display:flex;flex-direction:column;align-items:center}
+.gut-m b u{position:sticky;top:var(--u2);text-decoration:none;padding:var(--u2) 0 var(--u3);display:block}
+.gut-m b em{display:block;font-style:normal;font-size:11px;font-weight:400;color:var(--text-tertiary)}
+.gut-w{position:relative;z-index:1}
+.gut-w s{position:absolute;left:0;right:var(--u2);text-align:right;text-decoration:none;
+  font-size:11px;line-height:16px;color:var(--text-tertiary);font-variant-numeric:tabular-nums;padding-top:var(--u1)}
+.col{position:relative;z-index:1;border-left:1px solid var(--border)}
+.col:nth-child(even){background:var(--bg-canvas)}
+.pad{border-left:1px solid var(--border)}
+.now{position:absolute;height:0;border-top:2px solid var(--accent);z-index:22;pointer-events:none}
+.now::before{content:"";position:absolute;left:0;top:-5px;width:var(--u2);height:var(--u2);
+  border-radius:50%;background:var(--accent)}
+.now span{position:absolute;left:var(--u3);top:-9px;background:var(--accent);color:#fff;
+  font-size:11px;line-height:16px;font-weight:600;padding:0 var(--u1-5);border-radius:var(--u1)}
+#arrows{position:absolute;inset:0;z-index:8;pointer-events:none;overflow:visible}
+
+/* ── 일정 카드 ────────────────────────────────────── */
+.ev{position:absolute;border-radius:var(--u1-5);border:1px solid var(--border-strong);
+  background:var(--bg-panel);cursor:grab;overflow:hidden;z-index:6;
+  display:flex;flex-direction:column;padding:var(--u1-5) var(--u2) var(--u1-5) var(--u2-5)}
+.ev::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--border-bold)}
+.ev:active{cursor:grabbing}
+.ev .t{font-size:12px;line-height:16px;font-weight:600;letter-spacing:-.01em;word-break:keep-all;
+  color:var(--text-primary);overflow:hidden}
+.ev .meta{margin-top:var(--u1);display:flex;align-items:center;gap:var(--u1-5);font-size:11px;line-height:16px;
+  color:var(--text-tertiary);font-variant-numeric:tabular-nums;flex-wrap:wrap}
+.ev .meta .tag{border:1px solid var(--border);border-radius:var(--u1);padding:0 var(--u1);
+  color:var(--text-secondary);font-size:10px}
+.ev .pg{position:absolute;left:3px;right:0;bottom:0;height:2px;background:var(--border)}
+.ev .pg i{display:block;height:100%;background:var(--text-secondary)}
+.ev .grip{position:absolute;left:0;right:0;bottom:0;height:var(--u2);cursor:ns-resize}
+.ev.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-weak),var(--shadow);z-index:16}
+.ev.dim{opacity:.22}
+.ev.hit{box-shadow:0 0 0 2px var(--warning-500)}
+
+.ev.st-plan{background:var(--bg-panel)}
+.ev.st-plan::before{background:var(--neutral-400)}
+.ev.st-run{background:var(--primary-50);border-color:var(--primary-200)}
+.ev.st-run::before{background:var(--primary-500)}
+.ev.st-run .pg i{background:var(--primary-500)}
+.ev.st-done{background:var(--success-50);border-color:var(--success-200)}
+.ev.st-done::before{background:var(--success-500)}
+.ev.st-done .t{color:var(--text-secondary)}
+.ev.st-late{background:var(--error-50);border-color:var(--error-200)}
+.ev.st-late::before{background:var(--error-500)}
+.ev.st-late .pg i{background:var(--error-500)}
+.ev.st-hold{border-style:dashed;border-color:var(--border-bold);
+  background:repeating-linear-gradient(45deg,transparent 0 var(--u1-5),var(--bg-sunken) var(--u1-5) var(--u3))}
+.ev.st-hold::before{background:repeating-linear-gradient(180deg,var(--neutral-400) 0 3px,transparent 3px 6px)}
+.ev.st-hold{justify-content:flex-start;padding-top:var(--u3)}
+.ev.st-hold .t{color:var(--text-secondary);font-weight:500;position:sticky;top:var(--u2);text-align:center;width:100%}
+.ev.big{align-items:center;text-align:center}
+.ev.big .meta{justify-content:center}
+.ev.big .t{font-size:14px;line-height:20px}
+
+.ev.ms{height:var(--u6);flex-direction:row;align-items:center;gap:var(--u1-5);padding:0 var(--u2);
+  background:var(--bg-panel);border-color:var(--border-bold);z-index:18;box-shadow:var(--shadow)}
+.ev.ms::before{display:none}
+.ev.ms .dia{width:var(--u2);height:var(--u2);background:var(--accent);transform:rotate(45deg);flex:none}
+.ev.ms.st-done .dia{background:var(--success-500)}
+.ev.ms.st-late .dia{background:var(--error-500)}
+.ev.ms.st-plan .dia{background:var(--neutral-400)}
+.ev.ms .t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+.ev.ms .meta{margin:0 0 0 auto;padding:0}
+
+/* ── 사이드 패널 ──────────────────────────────────── */
+.panel{position:fixed;top:0;right:0;bottom:0;width:340px;background:var(--bg-panel);
+  border-left:1px solid var(--border-strong);box-shadow:var(--shadow);z-index:60;
+  display:flex;flex-direction:column;transform:translateX(100%);transition:transform .16s ease;
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.panel.open{transform:none}
+@media (prefers-reduced-motion:reduce){.panel{transition:none}}
+.panel header{display:flex;align-items:center;gap:var(--u2);padding:var(--u4);border-bottom:1px solid var(--border)}
+.panel header h2{margin:0;font-size:14px;line-height:20px;font-weight:600}
+.panel .body2{padding:var(--u4);overflow:auto;flex:1}
+.panel footer{padding:var(--u3) var(--u4);border-top:1px solid var(--border);display:flex;gap:var(--u2)}
+.panel footer .btn{flex:1;justify-content:center}
+.fld{margin-bottom:var(--u3)}
+.fld>label{display:block;font-size:11px;line-height:16px;font-weight:500;color:var(--text-tertiary);margin-bottom:var(--u1)}
+.fld input[type=text],.fld input[type=date],.fld input[type=number],.fld select,.fld textarea{
+  width:100%;height:var(--u8);padding:0 var(--u2-5);background:var(--bg-input);
+  border:1px solid var(--border-strong);border-radius:var(--u1-5);font-size:13px}
+.fld textarea{height:auto;min-height:var(--u10);padding:var(--u2) var(--u2-5);resize:vertical;line-height:20px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:var(--u2)}
+.pick{display:flex;flex-wrap:wrap;gap:var(--u1-5)}
+.pick button{height:var(--u7,28px);padding:0 var(--u2-5);border:1px solid var(--border-strong);
+  border-radius:var(--u1-5);background:var(--bg-panel);font-size:12px;color:var(--text-secondary);cursor:pointer}
+.pick button[aria-pressed="true"]{border-color:var(--text-primary);background:var(--text-primary);color:var(--bg-panel);font-weight:600}
+.deps{border:1px solid var(--border-strong);border-radius:var(--u1-5);max-height:136px;overflow:auto;padding:var(--u1-5)}
+.deps label{display:flex;gap:var(--u2);align-items:flex-start;padding:var(--u1);font-size:12px;line-height:16px;cursor:pointer}
+.sect{font-size:11px;font-weight:600;color:var(--text-tertiary);margin:var(--u5) 0 var(--u2);
+  padding-bottom:var(--u1);border-bottom:1px solid var(--border)}
+.sect:first-child{margin-top:0}
+.tlist{display:flex;flex-direction:column;gap:var(--u1-5);margin-bottom:var(--u3)}
+.trow{display:flex;align-items:center;gap:var(--u2);padding:var(--u2);border:1px solid var(--border);
+  border-radius:var(--u1-5);font-size:13px}
+.trow input{flex:1;border:0;background:none;outline:0;font-size:13px;font-weight:500;min-width:0}
+.trow .mini{width:var(--u6);height:var(--u6);border:1px solid var(--border-strong);border-radius:var(--u1);
+  background:var(--bg-panel);color:var(--text-secondary);cursor:pointer;display:flex;align-items:center;justify-content:center}
+.json{width:100%;height:180px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;
+  line-height:16px;padding:var(--u2);border:1px solid var(--border-strong);border-radius:var(--u1-5);
+  background:var(--bg-input);resize:vertical}
+.note{font-size:11px;line-height:16px;color:var(--text-tertiary);margin-top:var(--u2)}
+.scrim{position:fixed;inset:0;background:transparent;z-index:55;display:none}
+.scrim.on{display:block}
+.toast{position:fixed;left:50%;bottom:var(--u6);transform:translateX(-50%);background:var(--neutral-900);
+  color:var(--neutral-50);padding:var(--u2) var(--u4);border-radius:var(--u1-5);font-size:13px;z-index:80;
+  opacity:0;pointer-events:none;transition:opacity .16s}
+.toast.on{opacity:1}
+
+@media print{
+  .bar,.panel,.scrim,.toast,.status .orgs,.status .divider{display:none!important}
+  body{overflow:visible;height:auto}
+  .scroll{overflow:visible}
+  .now{border-color:var(--neutral-900)}
+}
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <div class="brand">
+    <span class="mk"></span>
+    <h1>Roadmap Board</h1>
+    <span class="sub" id="rangeLabel"></span>
+  </div>
+  <div class="grow"></div>
+  <label class="search">
+    <svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    <input id="q" type="search" placeholder="일정 검색" aria-label="일정 검색">
+  </label>
+  <div class="seg" role="group" aria-label="행 높이">
+    <button data-zoom="40">축소</button>
+    <button data-zoom="56" aria-pressed="true">기본</button>
+    <button data-zoom="80">확대</button>
+  </div>
+  <button class="btn" id="btnTracks"><svg class="ic" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h10"/></svg>트랙</button>
+  <button class="btn icon" id="btnUndo" title="되돌리기 (Ctrl+Z)"><svg class="ic" viewBox="0 0 24 24"><path d="M3 10h11a5 5 0 0 1 0 10H9"/><path d="m7 6-4 4 4 4"/></svg></button>
+  <button class="btn icon" id="btnTheme" title="테마 전환"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9Z"/></svg></button>
+  <button class="btn icon" id="btnPrint" title="인쇄"><svg class="ic" viewBox="0 0 24 24"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/></svg></button>
+  <button class="btn" id="btnData"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m8 11 4 4 4-4"/><path d="M4 21h16"/></svg>데이터</button>
+  <button class="btn cta" id="btnAdd"><svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>일정</button>
+</div>
+
+<div class="status" id="statusBar"></div>
+
+<div class="scroll" id="scroll">
+  <div class="cal" id="cal">
+    <div class="head" id="head"></div>
+    <div class="body" id="grid">
+      <div class="lines" id="lines"></div>
+      <div class="gut-m" id="gutM"></div>
+      <div class="gut-w" id="gutW"></div>
+    </div>
+  </div>
+</div>
+
+<div class="scrim" id="scrim"></div>
+
+<!-- 일정 인스펙터 -->
+<aside class="panel" id="pItem" aria-label="일정 편집">
+  <header>
+    <h2>일정 편집</h2><div class="grow"></div>
+    <button class="btn icon" data-close><svg class="ic" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+  </header>
+  <div class="body2">
+    <div class="fld"><label for="i-title">제목</label><input id="i-title" type="text"></div>
+    <div class="fld"><label>상태</label><div class="pick" id="i-status"></div></div>
+    <div class="two">
+      <div class="fld"><label for="i-track">트랙</label><select id="i-track"></select></div>
+      <div class="fld"><label for="i-type">유형</label>
+        <select id="i-type"><option value="bar">기간</option><option value="ms">마일스톤</option></select></div>
+    </div>
+    <div class="two">
+      <div class="fld"><label for="i-start">시작</label><input id="i-start" type="date"></div>
+      <div class="fld"><label for="i-end">종료</label><input id="i-end" type="date"></div>
+    </div>
+    <div class="two">
+      <div class="fld"><label for="i-span">트랙 병합 폭</label><input id="i-span" type="number" min="1" max="8" step="1"></div>
+      <div class="fld"><label for="i-prog">진척률 (%)</label><input id="i-prog" type="number" min="0" max="100" step="5"></div>
+    </div>
+    <div class="fld"><label for="i-org">담당</label><select id="i-org"></select></div>
+    <div class="fld"><label>선행 일정</label><div class="deps" id="i-deps"></div></div>
+    <div class="fld"><label for="i-note">비고</label><textarea id="i-note"></textarea></div>
+  </div>
+  <footer>
+    <button class="btn danger" id="i-del">삭제</button>
+    <button class="btn" id="i-dup">복제</button>
+  </footer>
+</aside>
+
+<!-- 트랙 관리 -->
+<aside class="panel" id="pTrack" aria-label="트랙 관리">
+  <header>
+    <h2>트랙 관리</h2><div class="grow"></div>
+    <button class="btn icon" data-close><svg class="ic" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+  </header>
+  <div class="body2">
+    <div class="sect">트랙 목록</div>
+    <div class="tlist" id="tlist"></div>
+    <button class="btn cta" id="t-add" style="width:100%;justify-content:center">
+      <svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>트랙 추가</button>
+    <p class="note">트랙 이름은 직접 입력해 수정합니다. 삭제하면 해당 트랙의 일정도 함께 제거됩니다.</p>
+  </div>
+</aside>
+
+<!-- 데이터 / 기간 -->
+<aside class="panel" id="pData" aria-label="데이터 관리">
+  <header>
+    <h2>데이터 · 기간</h2><div class="grow"></div>
+    <button class="btn icon" data-close><svg class="ic" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+  </header>
+  <div class="body2">
+    <div class="sect">표시 기간</div>
+    <div class="two">
+      <div class="fld"><label for="d-start">시작</label><input id="d-start" type="date"></div>
+      <div class="fld"><label for="d-end">종료</label><input id="d-end" type="date"></div>
+    </div>
+    <div class="sect">JSON</div>
+    <textarea class="json" id="d-json" spellcheck="false"></textarea>
+    <div style="display:flex;gap:var(--u2);margin-top:var(--u2)">
+      <button class="btn" id="d-copy" style="flex:1;justify-content:center">복사</button>
+      <button class="btn" id="d-load" style="flex:1;justify-content:center">적용</button>
+    </div>
+    <p class="note">변경 사항은 브라우저에 자동 저장됩니다. 다른 PC로 옮길 때는 JSON을 복사해 붙여넣으세요.</p>
+    <div class="sect">초기화</div>
+    <button class="btn danger" id="d-reset" style="width:100%;justify-content:center">기본 로드맵으로 되돌리기</button>
+  </div>
+</aside>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ═══ 상수 ═══════════════════════════════════════════ */
+const DAY=86400000, KEY='dr-roadmap-v2';
+const STATUS=[
+  {k:'plan',n:'계획'},{k:'run',n:'진행중'},{k:'done',n:'완료'},{k:'late',n:'지연'},{k:'hold',n:'보류'}
+];
+const ORGS=['다임리서치','다임랩스','에이텍모빌리티','에이텍오토','LG에너지솔루션','공동'];
+
+/* ═══ 기본 데이터 ════════════════════════════════════ */
+const SEED={
+  meta:{start:'2026-09-21',end:'2027-04-04'},
+  tracks:[
+    {id:'t0',lab:'테스트베드',   name:'테스트베드 구축'},
+    {id:'t1',lab:'요구사항 5',   name:'자율 유지보수 차량'},
+    {id:'t2',lab:'요구사항 4',   name:'통합 모니터링 시스템'},
+    {id:'t3',lab:'요구사항 1',   name:'사각지대 이상 감지'},
+    {id:'t4',lab:'요구사항 2',   name:'전극 롤 풀림 감지'},
+    {id:'t5',lab:'요구사항 3',   name:'동적 오케스트레이션'}
+  ],
+  items:[
+    {id:'e1', t:'t0',sp:2,s:'2026-10-01',e:'2026-10-20',ti:'컨셉 레이아웃 작성',st:'run', og:'다임리서치',pg:40},
+    {id:'e2', t:'t0',sp:2,s:'2026-10-20',e:'2026-10-20',ti:'판교 레이아웃 검토',ty:'ms',st:'plan',og:'공동',dp:['e1']},
+    {id:'e3', t:'t0',sp:2,s:'2026-10-26',e:'2026-11-06',ti:'3D 모델용 카탈로그 전달',st:'plan',og:'에이텍모빌리티'},
+    {id:'e4', t:'t0',sp:1,s:'2026-11-09',e:'2026-12-31',ti:'기본설계',st:'plan',og:'에이텍모빌리티',dp:['e2']},
+    {id:'e5', t:'t1',sp:1,s:'2026-11-09',e:'2026-12-31',ti:'기본설계',st:'plan',og:'에이텍모빌리티'},
+    {id:'e6', t:'t0',sp:1,s:'2027-01-04',e:'2027-03-31',ti:'상세설계',st:'plan',og:'에이텍모빌리티'},
+    {id:'e7', t:'t1',sp:1,s:'2027-01-04',e:'2027-03-31',ti:'상세설계',st:'plan',og:'에이텍모빌리티'},
+
+    {id:'e10',t:'t2',sp:1,s:'2026-10-01',e:'2026-10-31',ti:'1년차 과제 제출용 화면 구성',st:'run',og:'다임리서치',pg:20},
+    {id:'e11',t:'t2',sp:1,s:'2026-10-05',e:'2026-11-30',ti:'DT 개발',st:'plan',og:'다임리서치'},
+    {id:'e12',t:'t2',sp:1,s:'2026-10-09',e:'2026-10-09',ti:'기준정보 데이터(가상) 전달 · 1차',ty:'ms',st:'plan',og:'다임리서치'},
+    {id:'e13',t:'t2',sp:1,s:'2026-10-12',e:'2026-10-12',ti:'기본 운영 시나리오(가상) 작성 · 1차',ty:'ms',st:'plan',og:'다임리서치'},
+    {id:'e14',t:'t2',sp:1,s:'2026-10-25',e:'2026-10-25',ti:'기준정보 데이터 전달 · 확정',ty:'ms',st:'plan',og:'다임리서치',dp:['e12','e2']},
+    {id:'e15',t:'t2',sp:1,s:'2026-10-30',e:'2026-10-30',ti:'변경사항 반영',ty:'ms',st:'plan',og:'다임리서치',dp:['e13','e14']},
+    {id:'e16',t:'t2',sp:1,s:'2026-11-02',e:'2026-11-27',ti:'3D 모델링',st:'plan',og:'다임리서치',dp:['e3']},
+    {id:'e17',t:'t2',sp:1,s:'2026-11-30',e:'2026-11-30',ti:'1년차 산출물 완료',ty:'ms',st:'plan',og:'다임리서치',dp:['e16']},
+    {id:'e18',t:'t2',sp:1,s:'2026-12-01',e:'2027-03-31',ti:'HOLD — 2027 실물 테스트베드 구축 전까지',st:'hold',og:'다임리서치'},
+
+    {id:'e20',t:'t3',sp:1,s:'2026-10-01',e:'2026-10-12',ti:'가상 이상 시나리오 3종 확정',st:'plan',og:'다임랩스'},
+    {id:'e21',t:'t3',sp:1,s:'2026-10-13',e:'2026-10-25',ti:'센서 데이터 생성 에뮬레이터 구성',st:'plan',og:'다임랩스',dp:['e20']},
+    {id:'e22',t:'t3',sp:1,s:'2026-10-26',e:'2026-11-13',ti:'기본 운영 시나리오와 정합',st:'plan',og:'다임랩스',dp:['e21']},
+
+    {id:'e30',t:'t4',sp:2,s:'2026-10-01',e:'2026-10-09',ti:'비밀유지계약서 체결',st:'run',og:'LG에너지솔루션',pg:60},
+    {id:'e31',t:'t4',sp:1,s:'2026-10-12',e:'2026-10-30',ti:'데이터 전달 · 롤 풀림 / 테이프 불량 사례',st:'plan',og:'LG에너지솔루션',dp:['e30']},
+    {id:'e32',t:'t4',sp:1,s:'2026-11-02',e:'2026-11-20',ti:'데이터 분석 및 기본 탐지 시나리오 · 일정 구성',st:'plan',og:'다임랩스',dp:['e31']},
+    {id:'e33',t:'t4',sp:1,s:'2026-11-23',e:'2026-11-27',ti:'진행 계획 공유 (to LG엔솔)',st:'plan',og:'다임랩스',dp:['e32']},
+    {id:'e34',t:'t4',sp:1,s:'2026-12-01',e:'2026-12-31',ti:'롤 풀림 · 테이프 부착 상태 판독 테스트베드 구축',st:'plan',og:'다임리서치'},
+    {id:'e35',t:'t4',sp:1,s:'2027-01-04',e:'2027-03-31',ti:'Sensing Device + Vision Model 개발',st:'plan',og:'다임랩스',dp:['e34']},
+
+    {id:'e40',t:'t5',sp:1,s:'2026-10-12',e:'2026-10-30',ti:'데이터 전달 · 데드락 및 병목 상황',st:'plan',og:'LG에너지솔루션'},
+    {id:'e41',t:'t5',sp:1,s:'2026-11-02',e:'2026-11-27',ti:'순차 인계 · Sim / 컨설팅 / AO',st:'plan',og:'다임리서치',dp:['e40']},
+    {id:'e42',t:'t5',sp:1,s:'2026-12-01',e:'2027-03-31',ti:'국가과제와 별도 진행 · 산출물 기준 페이퍼워크',st:'hold',og:'다임리서치'}
+  ]
+};
+
+/* ═══ 상태 ═══════════════════════════════════════════ */
+let S=null, START, END, TOTAL, PPD=8, selId=null, selTrack=null;
+const filt={st:new Set(STATUS.map(s=>s.k)), og:new Set()};
+let query='', undo=[];
+
+const $=id=>document.getElementById(id);
+const d2s=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const s2d=s=>{const[a,b,c]=s.split('-').map(Number);return new Date(a,b-1,c)};
+const ix=s=>Math.round((s2d(s)-START)/DAY);
+const fx=i=>d2s(new Date(START.getTime()+i*DAY));
+const md=s=>{const d=s2d(s);return `${d.getMonth()+1}.${String(d.getDate()).padStart(2,'0')}`};
+const nid=p=>p+Date.now().toString(36)+Math.floor(Math.random()*1e3).toString(36);
+
+function toast(m){const t=$('toast');t.textContent=m;t.classList.add('on');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('on'),1600)}
+function snap(){undo.push(JSON.stringify(S));if(undo.length>60)undo.shift()}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+
+function load(){
+  let raw=null; try{raw=localStorage.getItem(KEY)}catch(e){}
+  let d=null; if(raw){try{d=JSON.parse(raw)}catch(e){}}
+  if(!d||!Array.isArray(d.tracks)||!Array.isArray(d.items)) d=JSON.parse(JSON.stringify(SEED));
+  S=d;
+  S.items.forEach(it=>{it.ty=it.ty||'bar';it.st=it.st||'plan';it.sp=it.sp||1;it.dp=it.dp||[];it.pg=it.pg||0;it.og=it.og||ORGS[0]});
+  setRange();
+}
+function setRange(){
+  START=s2d(S.meta.start); END=s2d(S.meta.end); TOTAL=Math.round((END-START)/DAY);
+  $('rangeLabel').textContent=`${S.meta.start.replace(/-/g,'.')} — ${S.meta.end.replace(/-/g,'.')}`;
+  $('d-start').value=S.meta.start; $('d-end').value=S.meta.end;
+}
+
+/* ═══ 그리드 골격 ═════════════════════════════════════ */
+const head=$('head'), grid=$('grid'), lines=$('lines');
+function cols(){
+  const c=S.tracks.map(t=>{
+    const f=Math.min(2.4,1+0.55*((t._mx||1)-1));
+    return `minmax(calc(var(--colmin) * ${f.toFixed(2)}),${f.toFixed(2)}fr)`;
+  }).join(' ');
+  return `var(--gut-m) var(--gut-w) ${c} var(--u10)`;
+}
+
+function buildHead(){
+  head.style.gridTemplateColumns=cols();
+  grid.style.gridTemplateColumns=cols();
+  head.innerHTML='<div class="cnr"></div><div class="cnr"></div>';
+  S.tracks.forEach(t=>{
+    const n=S.items.filter(i=>i.t===t.id).length;
+    const d=document.createElement('div');
+    d.className='th'+(t.id===selTrack?' active':''); d.dataset.t=t.id; d.tabIndex=0;
+    d.innerHTML=`<span class="lab"></span><span class="nm"></span><span class="cnt">${n}</span>`;
+    d.querySelector('.lab').textContent=t.lab||'\u00a0';
+    d.querySelector('.nm').textContent=t.name;
+    head.appendChild(d);
+  });
+  const a=document.createElement('div'); a.className='addcol';
+  a.innerHTML='<button class="btn icon" id="quickAddTrack" title="트랙 추가"><svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>';
+  head.appendChild(a);
+  $('quickAddTrack').onclick=addTrack;
+  head.querySelectorAll('.th').forEach(el=>el.onclick=()=>{selTrack=el.dataset.t;openPanel('pTrack');buildTrackList();buildHead()});
+}
+
+function buildAxis(){
+  const H=TOTAL*PPD;
+  grid.style.height=H+'px';
+  lines.innerHTML=''; const gm=$('gutM'), gw=$('gutW'); gm.innerHTML=''; gw.innerHTML='';
+  for(let i=0;i<TOTAL;i+=7){
+    const d=new Date(START.getTime()+i*DAY);
+    const l=document.createElement('i'); l.style.top=(i*PPD)+'px'; if(d.getDate()<=7)l.className='m'; lines.appendChild(l);
+    const s=document.createElement('s'); s.style.top=(i*PPD)+'px'; s.textContent=md(d2s(d)); gw.appendChild(s);
+  }
+  let m=new Date(START.getFullYear(),START.getMonth(),1);
+  while(m<END){
+    const nx=new Date(m.getFullYear(),m.getMonth()+1,1);
+    const a=Math.max(0,(m-START)/DAY), b=Math.min(TOTAL,(nx-START)/DAY);
+    if(b>a){
+      const el=document.createElement('b');
+      el.style.top=(a*PPD)+'px'; el.style.height=((b-a)*PPD)+'px';
+      el.innerHTML=`<u>${m.getMonth()+1}월<em>${m.getFullYear()}</em></u>`;
+      gm.appendChild(el);
+    }
+    m=nx;
+  }
+  grid.querySelectorAll('.col,.pad,.now,#arrows').forEach(n=>n.remove());
+  S.tracks.forEach(t=>{const c=document.createElement('div');c.className='col';c.dataset.t=t.id;grid.appendChild(c)});
+  const pad=document.createElement('div'); pad.className='pad'; grid.appendChild(pad);
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg'); svg.id='arrows';
+  svg.innerHTML='<defs><marker id="ah" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 1l6 3-6 3z" fill="var(--text-tertiary)"/></marker></defs><g id="ag"></g>';
+  grid.appendChild(svg);
+  const today=new Date(); today.setHours(0,0,0,0);
+  const ti=(today-START)/DAY;
+  if(ti>=0&&ti<=TOTAL){
+    const n=document.createElement('div'); n.className='now'; n.style.top=(ti*PPD)+'px';
+    n.style.left='var(--gut-m)'; n.style.right='0';
+    n.innerHTML=`<span>오늘 ${md(d2s(today))}</span>`; grid.appendChild(n);
+  }
+}
+
+/* ═══ 렌더 ═══════════════════════════════════════════ */
+function visible(it){
+  if(!filt.st.has(it.st)) return false;
+  if(filt.og.size && !filt.og.has(it.og)) return false;
+  return true;
+}
+function lanesFor(list){
+  const bars=list.filter(i=>i.ty!=='ms').sort((a,b)=>ix(a.s)-ix(b.s));
+  let cl=[], cmax=-1, mx=1;
+  const close=()=>{
+    if(!cl.length)return;
+    const ends=[];
+    cl.forEach(i=>{
+      const st=ix(i.s), en=ix(i.e);
+      let l=ends.findIndex(x=>x<st); if(l<0)l=ends.length;
+      ends[l]=en; i._l=l;
+    });
+    const n=Math.max(1,ends.length); cl.forEach(i=>i._n=n); mx=Math.max(mx,n); cl=[];
+  };
+  bars.forEach(i=>{
+    const st=ix(i.s);
+    if(cl.length && st>cmax){ close(); cmax=-1; }
+    cl.push(i); cmax=Math.max(cmax,ix(i.e));
+  });
+  close();
+  return mx;
+}
+function computeLanes(){
+  S.tracks.forEach(t=>{ t._mx=lanesFor(S.items.filter(i=>i.t===t.id&&visible(i))); });
+}
+function render(){
+  grid.querySelectorAll('.ev').forEach(n=>n.remove());
+  computeLanes();
+  const colEls={}; grid.querySelectorAll('.col').forEach(c=>colEls[c.dataset.t]=c);
+  S.items.forEach(it=>{
+    const col=colEls[it.t]; if(!col) return;
+    if(!visible(it)) return;
+    const top=ix(it.s)*PPD, dur=Math.max(1,ix(it.e)-ix(it.s)+1);
+    const el=document.createElement('div');
+    el.className='ev st-'+it.st+(it.ty==='ms'?' ms':'')+(it.id===selId?' sel':'');
+    el.dataset.id=it.id; el.style.top=top+'px'; el.tabIndex=0;
+    if(query){
+      const hit=(it.ti+it.og+(it.note||'')).toLowerCase().includes(query);
+      el.classList.add(hit?'hit':'dim');
+    }
+    if(it.ty==='ms'){
+      el.style.left='var(--u3)'; el.style.width=`calc(${it.sp*100}% - var(--u6))`;
+      el.innerHTML='<span class="dia"></span><span class="t"></span><span class="meta"></span>';
+      el.querySelector('.t').textContent=it.ti;
+      el.querySelector('.meta').textContent=md(it.s);
+    }else{
+      const h=Math.max(28,dur*PPD-4);
+      el.style.height=h+'px';
+      const n=it._n||1, l=it._l||0;
+      el.style.left=`calc(${(l*100)/n}% + var(--u1))`;
+      el.style.width=`calc(${(it.sp*100)/n}% - var(--u2))`;
+      if(h>=84) el.classList.add('big');
+      el.innerHTML='<div class="t"></div><div class="meta"><span class="dt"></span><span class="tag"></span></div>'
+        +(it.pg?'<div class="pg"><i style="width:'+it.pg+'%"></i></div>':'')
+        +'<div class="grip"></div>';
+      el.querySelector('.t').textContent=it.ti;
+      el.querySelector('.dt').textContent=md(it.s)+' – '+md(it.e);
+      el.querySelector('.tag').textContent=it.og;
+      if(h<52){ el.querySelector('.meta').style.display='none'; }
+      if(it.st==='hold'){ el.querySelector('.meta').style.display='none'; el.classList.add('big'); }
+    }
+    col.appendChild(el);
+  });
+  drawArrows(); renderStatus(); buildHead();
+}
+
+function drawArrows(){
+  const g=grid.querySelector('#ag'); if(!g)return; g.innerHTML='';
+  const pos={};
+  grid.querySelectorAll('.ev').forEach(el=>{
+    const c=el.parentElement;
+    pos[el.dataset.id]={x:c.offsetLeft+el.offsetLeft,w:el.offsetWidth,y:el.offsetTop,h:el.offsetHeight};
+  });
+  S.items.forEach(it=>{
+    (it.dp||[]).forEach(d=>{
+      const a=pos[d], b=pos[it.id]; if(!a||!b)return;
+      const x1=a.x+a.w/2, y1=a.y+a.h, x2=b.x+b.w/2, y2=b.y;
+      const mid=y1+Math.max(8,(y2-y1)/2);
+      const p=document.createElementNS('http://www.w3.org/2000/svg','path');
+      p.setAttribute('d',y2>=y1
+        ? `M${x1},${y1} V${mid} H${x2} V${y2-6}`
+        : `M${x1},${y1} V${y1+10} H${(x1+x2)/2} V${y2-14} H${x2} V${y2-6}`);
+      p.setAttribute('fill','none'); p.setAttribute('stroke','var(--text-tertiary)');
+      p.setAttribute('stroke-width','1.5'); p.setAttribute('stroke-dasharray','3 3');
+      p.setAttribute('marker-end','url(#ah)'); p.setAttribute('opacity','.75');
+      g.appendChild(p);
+    });
+  });
+}
+
+function renderStatus(){
+  const bar=$('statusBar');
+  const counts={}; STATUS.forEach(s=>counts[s.k]=0);
+  S.items.forEach(i=>counts[i.st]=(counts[i.st]||0)+1);
+  const t=new Date(); t.setHours(0,0,0,0);
+  const in14=S.items.filter(i=>i.ty==='ms'&&s2d(i.s)>=t&&s2d(i.s)<=new Date(t.getTime()+14*DAY)).length;
+  bar.innerHTML='';
+  STATUS.forEach(s=>{
+    const b=document.createElement('button');
+    b.className='stat s-'+s.k; b.setAttribute('aria-pressed',filt.st.has(s.k));
+    b.innerHTML=`<span class="dot"></span>${s.n} <b>${counts[s.k]||0}</b>`;
+    b.onclick=()=>{filt.st.has(s.k)?filt.st.delete(s.k):filt.st.add(s.k);render()};
+    bar.appendChild(b);
+  });
+  const d1=document.createElement('span'); d1.className='divider'; bar.appendChild(d1);
+  const ms=document.createElement('span'); ms.className='stat';
+  ms.innerHTML=`향후 2주 마일스톤 <b>${in14}</b>`; ms.style.cursor='default'; bar.appendChild(ms);
+  const d2=document.createElement('span'); d2.className='divider'; bar.appendChild(d2);
+  const wrap=document.createElement('span'); wrap.className='orgs';
+  ORGS.forEach(o=>{
+    if(!S.items.some(i=>i.og===o))return;
+    const b=document.createElement('button'); b.className='org';
+    b.setAttribute('aria-pressed',filt.og.has(o)); b.textContent=o;
+    b.onclick=()=>{filt.og.has(o)?filt.og.delete(o):filt.og.add(o);render()};
+    wrap.appendChild(b);
+  });
+  bar.appendChild(wrap);
+}
+
+/* ═══ 패널 ═══════════════════════════════════════════ */
+function openPanel(id){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('open',p.id===id));
+  $('scrim').classList.add('on');
+}
+function closePanels(){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('open'));
+  $('scrim').classList.remove('on'); selId=null; selTrack=null; render();
+}
+$('scrim').onclick=closePanels;
+document.querySelectorAll('[data-close]').forEach(b=>b.onclick=closePanels);
+
+/* 일정 인스펙터 */
+const IF={ti:'i-title',t:'i-track',ty:'i-type',s:'i-start',e:'i-end',sp:'i-span',pg:'i-prog',og:'i-org',note:'i-note'};
+ORGS.forEach(o=>{const op=document.createElement('option');op.value=o;op.textContent=o;$('i-org').appendChild(op)});
+STATUS.forEach(s=>{
+  const b=document.createElement('button'); b.type='button'; b.dataset.st=s.k; b.textContent=s.n;
+  b.onclick=()=>{const it=cur();if(!it)return;snap();it.st=s.k;syncStatusPick(it);render();save()};
+  $('i-status').appendChild(b);
+});
+function syncStatusPick(it){$('i-status').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.st===it.st))}
+const cur=()=>S.items.find(i=>i.id===selId);
+
+function openItem(id){
+  selId=id; const it=cur(); if(!it)return;
+  const sel=$('i-track'); sel.innerHTML='';
+  S.tracks.forEach(t=>{const o=document.createElement('option');o.value=t.id;o.textContent=t.name;sel.appendChild(o)});
+  $(IF.ti).value=it.ti; sel.value=it.t; $(IF.ty).value=it.ty;
+  $(IF.s).value=it.s; $(IF.e).value=it.e; $(IF.sp).value=it.sp; $(IF.pg).value=it.pg;
+  $(IF.og).value=it.og; $(IF.note).value=it.note||'';
+  syncStatusPick(it);
+  const dw=$('i-deps'); dw.innerHTML='';
+  const ord=t=>S.tracks.findIndex(v=>v.id===t);
+  S.items.filter(x=>x.id!==it.id)
+    .sort((a,b)=>ord(a.t)-ord(b.t)||ix(a.s)-ix(b.s))
+    .forEach(x=>{
+    const tn=(S.tracks.find(v=>v.id===x.t)||{}).name||'';
+    const l=document.createElement('label');
+    l.innerHTML=`<input type="checkbox" ${it.dp.includes(x.id)?'checked':''}><span></span>`;
+    l.querySelector('span').innerHTML='';
+    const sp=l.querySelector('span');
+    sp.textContent=x.ti;
+    const em=document.createElement('em');
+    em.style.cssText='font-style:normal;color:var(--text-tertiary);display:block;font-size:11px';
+    em.textContent=tn+' · '+md(x.s); sp.appendChild(em);
+    l.querySelector('input').onchange=ev=>{
+      snap();
+      it.dp=ev.target.checked?[...it.dp,x.id]:it.dp.filter(v=>v!==x.id);
+      render(); save();
+    };
+    dw.appendChild(l);
+  });
+  openPanel('pItem'); render();
+}
+function applyItem(){
+  const it=cur(); if(!it)return; snap();
+  it.ti=$(IF.ti).value; it.t=$(IF.t).value; it.ty=$(IF.ty).value;
+  it.s=$(IF.s).value; it.e=$(IF.e).value;
+  if(ix(it.e)<ix(it.s)) it.e=it.s;
+  if(it.ty==='ms') it.e=it.s;
+  it.sp=Math.max(1,Math.min(S.tracks.length,+$(IF.sp).value||1));
+  const ti=S.tracks.findIndex(t=>t.id===it.t);
+  if(ti+it.sp>S.tracks.length) it.sp=S.tracks.length-ti;
+  it.pg=Math.max(0,Math.min(100,+$(IF.pg).value||0));
+  it.og=$(IF.og).value; it.note=$(IF.note).value;
+  render(); save();
+}
+Object.values(IF).forEach(id=>$(id).addEventListener('change',applyItem));
+$(IF.ti).addEventListener('input',()=>{const it=cur();if(it){it.ti=$(IF.ti).value;render();save()}});
+$('i-del').onclick=()=>{
+  const it=cur(); if(!it)return; snap();
+  S.items=S.items.filter(x=>x.id!==it.id);
+  S.items.forEach(x=>x.dp=x.dp.filter(d=>d!==it.id));
+  closePanels(); save(); toast('일정을 삭제했습니다');
+};
+$('i-dup').onclick=()=>{
+  const it=cur(); if(!it)return; snap();
+  const c={...it,id:nid('e'),dp:[...it.dp],ti:it.ti+' (복사)'};
+  S.items.push(c); openItem(c.id); save();
+};
+
+/* 트랙 관리 */
+function buildTrackList(){
+  const w=$('tlist'); w.innerHTML='';
+  S.tracks.forEach((t,i)=>{
+    const r=document.createElement('div'); r.className='trow';
+    r.innerHTML=`<input value="" aria-label="트랙 이름">
+      <button class="mini" data-up title="위로"><svg class="ic" viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></svg></button>
+      <button class="mini" data-dn title="아래로"><svg class="ic" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+      <button class="mini" data-rm title="삭제"><svg class="ic" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13"/></svg></button>`;
+    const inp=r.querySelector('input'); inp.value=t.name;
+    inp.oninput=()=>{t.name=inp.value;buildHead();save()};
+    r.querySelector('[data-up]').onclick=()=>{if(i>0){snap();S.tracks.splice(i-1,0,S.tracks.splice(i,1)[0]);rebuild();buildTrackList();save()}};
+    r.querySelector('[data-dn]').onclick=()=>{if(i<S.tracks.length-1){snap();S.tracks.splice(i+1,0,S.tracks.splice(i,1)[0]);rebuild();buildTrackList();save()}};
+    r.querySelector('[data-rm]').onclick=()=>{
+      const n=S.items.filter(x=>x.t===t.id).length;
+      if(!confirm(`'${t.name}' 트랙과 일정 ${n}건을 삭제합니다. 계속할까요?`))return;
+      snap(); S.items=S.items.filter(x=>x.t!==t.id); S.tracks.splice(i,1);
+      rebuild(); buildTrackList(); save();
+    };
+    if(t.id===selTrack) r.style.borderColor='var(--accent)';
+    w.appendChild(r);
+  });
+}
+function addTrack(){
+  snap();
+  S.tracks.push({id:nid('t'),lab:'',name:'새 트랙 '+(S.tracks.length+1)});
+  rebuild(); buildTrackList(); openPanel('pTrack'); save();
+}
+$('t-add').onclick=addTrack;
+$('btnTracks').onclick=()=>{buildTrackList();openPanel('pTrack')};
+
+/* 데이터 패널 */
+$('btnData').onclick=()=>{$('d-json').value=JSON.stringify(S,null,1);openPanel('pData')};
+$('d-copy').onclick=async()=>{try{await navigator.clipboard.writeText($('d-json').value);toast('클립보드에 복사했습니다')}catch(e){$('d-json').select()}};
+$('d-load').onclick=()=>{
+  try{
+    const d=JSON.parse($('d-json').value);
+    if(!d.tracks||!d.items)throw 0;
+    snap(); S=d; S.items.forEach(i=>{i.dp=i.dp||[];i.sp=i.sp||1;i.ty=i.ty||'bar';i.st=i.st||'plan';i.pg=i.pg||0;i.og=i.og||ORGS[0]});
+    setRange(); rebuild(); save(); closePanels(); toast('데이터를 적용했습니다');
+  }catch(e){toast('JSON 형식을 확인해 주세요')}
+};
+$('d-start').onchange=()=>{snap();S.meta.start=$('d-start').value;setRange();rebuild();save()};
+$('d-end').onchange=()=>{snap();S.meta.end=$('d-end').value;setRange();rebuild();save()};
+$('d-reset').onclick=()=>{
+  if(!confirm('기본 로드맵으로 되돌립니다. 현재 편집 내용은 사라집니다.'))return;
+  snap(); S=JSON.parse(JSON.stringify(SEED)); load2(); toast('기본 로드맵으로 복원했습니다');
+};
+function load2(){S.items.forEach(i=>{i.dp=i.dp||[];i.ty=i.ty||'bar';i.st=i.st||'plan';i.sp=i.sp||1;i.pg=i.pg||0;i.og=i.og||ORGS[0]});setRange();rebuild();save();closePanels()}
+
+/* ═══ 인터랙션 ═══════════════════════════════════════ */
+let drag=null;
+grid.addEventListener('pointerdown',ev=>{
+  const el=ev.target.closest('.ev'); if(!el)return;
+  const it=S.items.find(i=>i.id===el.dataset.id); if(!it)return;
+  const cw=grid.querySelector('.col').getBoundingClientRect().width;
+  drag={it,mode:ev.target.classList.contains('grip')?'size':'move',
+        x:ev.clientX,y:ev.clientY,cw,s0:ix(it.s),e0:ix(it.e),
+        k0:S.tracks.findIndex(t=>t.id===it.t),moved:false};
+  el.setPointerCapture(ev.pointerId); ev.preventDefault();
+});
+grid.addEventListener('pointermove',ev=>{
+  if(!drag)return;
+  const dd=Math.round((ev.clientY-drag.y)/PPD), dk=Math.round((ev.clientX-drag.x)/drag.cw);
+  if(!dd&&!dk&&!drag.moved)return;
+  if(!drag.moved){snap();drag.moved=true}
+  const it=drag.it, len=drag.e0-drag.s0;
+  if(drag.mode==='move'){
+    const s=Math.max(0,Math.min(TOTAL-1-len,drag.s0+dd));
+    it.s=fx(s); it.e=fx(s+len);
+    const k=Math.max(0,Math.min(S.tracks.length-it.sp,drag.k0+dk));
+    it.t=S.tracks[k].id;
+  }else{
+    it.e=fx(Math.max(drag.s0,Math.min(TOTAL-1,drag.e0+dd)));
+    if(it.ty==='ms')it.e=it.s;
+  }
+  render();
+});
+grid.addEventListener('pointerup',()=>{ if(drag&&drag.moved){save();openItem(drag.it.id)} drag=null });
+grid.addEventListener('click',ev=>{
+  const el=ev.target.closest('.ev'); if(el&&!drag) openItem(el.dataset.id);
+});
+grid.addEventListener('dblclick',ev=>{
+  const c=ev.target.closest('.col'); if(!c||ev.target.closest('.ev'))return;
+  const r=c.getBoundingClientRect();
+  newItem(c.dataset.t,Math.max(0,Math.round((ev.clientY-r.top)/PPD)));
+});
+function newItem(tid,at){
+  snap();
+  const it={id:nid('e'),t:tid,sp:1,s:fx(at),e:fx(Math.min(TOTAL-1,at+13)),ti:'새 일정',
+            ty:'bar',st:'plan',og:ORGS[0],pg:0,dp:[],note:''};
+  S.items.push(it); render(); save(); openItem(it.id);
+}
+$('btnAdd').onclick=()=>{
+  const at=Math.max(0,Math.min(TOTAL-14,Math.round((new Date()-START)/DAY)));
+  newItem(S.tracks[0].id,at);
+};
+
+/* 툴바 */
+document.querySelectorAll('[data-zoom]').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('[data-zoom]').forEach(x=>x.setAttribute('aria-pressed',x===b));
+  document.documentElement.style.setProperty('--wk',b.dataset.zoom+'px');
+  PPD=(+b.dataset.zoom)/7; buildAxis(); render();
+});
+$('btnTheme').onclick=()=>{
+  const c=document.documentElement.getAttribute('data-theme');
+  const dark=c?c==='dark':matchMedia('(prefers-color-scheme: dark)').matches;
+  document.documentElement.setAttribute('data-theme',dark?'light':'dark');
+};
+$('btnPrint').onclick=()=>window.print();
+$('btnUndo').onclick=doUndo;
+function doUndo(){
+  if(!undo.length){toast('되돌릴 작업이 없습니다');return}
+  S=JSON.parse(undo.pop()); setRange(); rebuild(); save(); toast('되돌렸습니다');
+}
+$('q').addEventListener('input',e=>{query=e.target.value.trim().toLowerCase();render()});
+document.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault();doUndo();return}
+  if(e.key==='Escape')closePanels();
+  const tag=document.activeElement.tagName;
+  if((e.key==='Delete')&&selId&&tag!=='INPUT'&&tag!=='TEXTAREA'&&tag!=='SELECT'){$('i-del').click()}
+});
+addEventListener('resize',()=>drawArrows());
+
+/* ═══ 부트 ═══════════════════════════════════════════ */
+function rebuild(){computeLanes();buildHead();buildAxis();render()}
+load(); rebuild();
+$('scroll').scrollTop=Math.max(0,(new Date()-START)/DAY*PPD-80);
+</script>
+</body>
+</html>

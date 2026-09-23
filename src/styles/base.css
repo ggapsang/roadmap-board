@@ -1,0 +1,41 @@
+*,*::before,*::after{box-sizing:inherit}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg-canvas);color:var(--text-primary);
+  font-family:Pretendard,"Pretendard Variable","Noto Sans KR",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+  font-size:14px;line-height:20px;font-weight:400;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  display:flex;flex-direction:column;overflow:hidden;
+}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:var(--u1)}
+svg.ic{width:var(--u4);height:var(--u4);stroke:currentColor;stroke-width:1.5;fill:none;
+  stroke-linecap:round;stroke-linejoin:round;flex:none}
+.grow{flex:1}
+
+/* ── 공통 컨트롤 ──────────────────────────────────── */
+.btn{display:inline-flex;align-items:center;gap:var(--u1-5);height:var(--u8);padding:0 var(--u3);
+  background:var(--bg-panel);border:1px solid var(--border-strong);border-radius:var(--u1-5);
+  color:var(--text-secondary);font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap}
+.btn:hover{background:var(--bg-sunken);color:var(--text-primary);border-color:var(--border-bold)}
+.btn:disabled{opacity:.4;cursor:default}
+.btn:disabled:hover{background:var(--bg-panel);color:var(--text-secondary);border-color:var(--border-strong)}
+.btn.icon{padding:0;width:var(--u8);justify-content:center}
+.btn.cta{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.cta:hover{background:var(--primary-600);border-color:var(--primary-600);color:#fff}
+.btn.danger{color:var(--error-700);border-color:var(--error-200)}
+.btn.wide{width:100%;justify-content:center}
+.btn[aria-pressed="true"]{background:var(--bg-sunken);color:var(--text-primary);border-color:var(--border-bold)}
+
+.seg{display:inline-flex;border:1px solid var(--border-strong);border-radius:var(--u1-5);overflow:hidden}
+.seg button{height:var(--u8);padding:0 var(--u2-5);background:var(--bg-panel);border:0;
+  border-left:1px solid var(--border);color:var(--text-secondary);font-size:13px;cursor:pointer}
+.seg button:first-child{border-left:0}
+.seg button[aria-pressed="true"]{background:var(--text-primary);color:var(--bg-panel);font-weight:600}
+
+.toast{position:fixed;left:50%;bottom:var(--u6);transform:translateX(-50%);background:var(--neutral-900);
+  color:var(--neutral-50);padding:var(--u2) var(--u4);border-radius:var(--u1-5);font-size:13px;z-index:80;
+  opacity:0;pointer-events:none;transition:opacity .16s;max-width:70vw;text-align:center}
+.toast.on{opacity:1}
+.toast.warn{background:var(--error-700)}
+@media (prefers-reduced-motion:reduce){.toast{transition:none}}
