@@ -31,6 +31,9 @@ contextBridge.exposeInMainWorld('roadmapDB', {
 
   info: () => call('db:info'),
 
+  exportPng: (clip, suggested) => call('export:png', clip, suggested),
+  exportPdf: (size, suggested) => call('export:pdf', size, suggested),
+
   exportJson: (json, suggested) => call('file:export', json, suggested),
   importJson: () => call('file:import'),
 });

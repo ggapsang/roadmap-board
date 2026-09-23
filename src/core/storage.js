@@ -70,6 +70,8 @@ export class ElectronAdapter extends StorageAdapter {
   getRevision(id) { return this.api.revision(id); }
   info() { return this.api.info(); }
   exportJson(json, suggested) { return this.api.exportJson(json, suggested); }
+  exportPng(clip, suggested) { return this.api.exportPng(clip, suggested); }
+  exportPdf(size, suggested) { return this.api.exportPdf(size, suggested); }
   importJson() { return this.api.importJson(); }
 }
 

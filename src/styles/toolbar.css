@@ -33,3 +33,14 @@
 .org{height:var(--u6);padding:0 var(--u2-5);border:1px solid var(--border);border-radius:999px;
   background:var(--bg-panel);font-size:12px;color:var(--text-secondary);cursor:pointer;white-space:nowrap}
 .org[aria-pressed="true"]{background:var(--text-primary);color:var(--bg-panel);border-color:var(--text-primary);font-weight:500}
+
+/* ── 드롭다운 메뉴 ─────────────────────────────────── */
+.menu{position:relative;flex:none}
+.menu-pop{position:absolute;top:calc(100% + var(--u1-5));right:0;z-index:70;
+  min-width:160px;padding:var(--u1);background:var(--bg-panel);
+  border:1px solid var(--border-strong);border-radius:var(--u1-5);box-shadow:var(--shadow)}
+.menu-pop[hidden]{display:none!important}
+.menu-pop button{display:block;width:100%;text-align:left;height:var(--u8);padding:0 var(--u2-5);
+  background:none;border:0;border-radius:var(--u1);color:var(--text-secondary);
+  font-size:13px;cursor:pointer;white-space:nowrap}
+.menu-pop button:hover{background:var(--bg-sunken);color:var(--text-primary)}

@@ -18,6 +18,7 @@ import { ViewState } from './core/view.js';
 import { $ } from './ui/dom.js';
 import { initTheme } from './ui/theme.js';
 import { toast } from './ui/toast.js';
+import { exportPng, exportPdf } from './ui/export.js';
 import { Launcher } from './ui/launcher.js';
 import { Board } from './ui/board/index.js';
 import { initToolbar } from './ui/toolbar.js';
@@ -86,6 +87,8 @@ async function boot() {
       redrawArrows: () => board.redrawArrows(),
       openTracks: () => configPanel.open(view.selectedTrack),
       openData: () => dataPanel.open(),
+      exportPng: () => { panels.close(); return exportPng(adapter, store); },
+      exportPdf: () => { panels.close(); return exportPdf(adapter, store); },
       openProjects: () => { panels.close(); launcher.show({ closable: true }); },
       toggleTextSelect: () => {
         view.textSelect = !view.textSelect;

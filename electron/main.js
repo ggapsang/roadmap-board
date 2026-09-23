@@ -152,6 +152,7 @@ async function runSmoke(target) {
   let opened = null;
   let renamed = null;
   let layout = null;
+  let exported = null;
   let result;
   try {
     await new Promise((r) => setTimeout(r, 600));
@@ -193,6 +194,19 @@ async function runSmoke(target) {
     await target.webContents.executeJavaScript(
       `document.querySelector('#pItem [data-close]').click()`,
     );
+
+    // 내보내기 — 보드 전체가 한 장으로 나오는지
+    exported = await target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const cal = document.querySelector('.cal');
+      const before = { w: cal.scrollWidth, h: cal.scrollHeight };
+      const mod = await import('./src/ui/export.js');
+      await mod.exportPng(r.adapter, r.store);
+      await mod.exportPdf(r.adapter, r.store);
+      return { boardW: before.w, boardH: before.h,
+               restored: !document.body.classList.contains('exporting') };
+    })()`);
+    console.log('[smoke] export ' + JSON.stringify(exported));
 
     // 이름 변경 — Electron에 prompt()가 없어 직접 만든 다이얼로그를 거친다.
     renamed = await target.webContents.executeJavaScript(`(async () => {
@@ -313,6 +327,20 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+/**
+ * 저장 위치를 묻는다. 스모크에서는 대화상자를 띄울 수 없으므로
+ * --shot 디렉터리(또는 임시 폴더)에 바로 떨군다.
+ */
+async function askSavePath({ title, defaultPath, filters }) {
+  if (SMOKE) {
+    const dir = shotDir() ?? app.getPath('temp');
+    fs.mkdirSync(dir, { recursive: true });
+    return path.join(dir, defaultPath);
+  }
+  const { canceled, filePath } = await dialog.showSaveDialog(win, { title, defaultPath, filters });
+  return canceled ? null : filePath;
+}
+
 function registerIpc() {
   const guard = (fn) => (...args) => {
     try {
@@ -344,6 +372,69 @@ function registerIpc() {
     schema: db.pragma('user_version', { simple: true }),
     projects: repo.listProjects().length,
   })));
+
+  /**
+   * 보드 전체를 PNG 한 장으로. 화면에 보이는 부분만이 아니라 스크롤 밖까지 담는다.
+   * capturePage()는 뷰포트까지만 찍으므로 CDP의 Page.captureScreenshot에
+   * captureBeyondViewport를 켜서 쓴다.
+   */
+  ipcMain.handle('export:png', async (_e, clip, suggested) => {
+    const filePath = await askSavePath({
+      title: '보드를 PNG로 내보내기',
+      defaultPath: suggested ?? 'roadmap.png',
+      filters: [{ name: 'PNG 이미지', extensions: ['png'] }],
+    });
+    if (!filePath) return { ok: false, error: null };
+
+    const wc = win.webContents;
+    let attached = false;
+    try {
+      if (!wc.debugger.isAttached()) { wc.debugger.attach('1.3'); attached = true; }
+      const { data } = await wc.debugger.sendCommand('Page.captureScreenshot', {
+        format: 'png',
+        captureBeyondViewport: true,
+        clip: {
+          x: clip.x, y: clip.y, width: clip.width, height: clip.height, scale: clip.scale ?? 2,
+        },
+      });
+      fs.writeFileSync(filePath, Buffer.from(data, 'base64'));
+      return { ok: true, data: filePath };
+    } catch (err) {
+      return { ok: false, error: String(err?.message ?? err) };
+    } finally {
+      if (attached) { try { wc.debugger.detach(); } catch { /* noop */ } }
+    }
+  });
+
+  /**
+   * 보드 전체를 PDF 한 장으로. 페이지를 보드 크기에 맞춰 잘리지 않게 한다.
+   * 로드맵을 A4로 쪼개면 읽을 수 없어서 단일 페이지로 뽑는다.
+   */
+  ipcMain.handle('export:pdf', async (_e, size, suggested) => {
+    const filePath = await askSavePath({
+      title: '보드를 PDF로 내보내기',
+      defaultPath: suggested ?? 'roadmap.pdf',
+      filters: [{ name: 'PDF', extensions: ['pdf'] }],
+    });
+    if (!filePath) return { ok: false, error: null };
+
+    try {
+      const PX_PER_INCH = 96;
+      const margin = 0.2;
+      const data = await win.webContents.printToPDF({
+        printBackground: true,
+        pageSize: {
+          width: size.width / PX_PER_INCH + margin * 2,
+          height: size.height / PX_PER_INCH + margin * 2,
+        },
+        margins: { top: margin, bottom: margin, left: margin, right: margin },
+      });
+      fs.writeFileSync(filePath, data);
+      return { ok: true, data: filePath };
+    } catch (err) {
+      return { ok: false, error: String(err?.message ?? err) };
+    }
+  });
 
   // JSON 파일로 반출 / 반입
   ipcMain.handle('file:export', async (_e, json, suggested) => {

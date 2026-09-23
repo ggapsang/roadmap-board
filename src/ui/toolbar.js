@@ -35,7 +35,19 @@ export function initToolbar({ store, view, actions }) {
   $('btnTracks').addEventListener('click', () => actions.openTracks());
   $('btnData').addEventListener('click', () => actions.openData());
   $('btnAdd').addEventListener('click', () => actions.addItem());
-  $('btnPrint').addEventListener('click', () => window.print());
+  // 내보내기 메뉴
+  const menu = $('exportMenu');
+  const closeMenu = () => { menu.hidden = true; $('btnExport').setAttribute('aria-expanded', 'false'); };
+  $('btnExport').addEventListener('click', (e) => {
+    e.stopPropagation();
+    menu.hidden = !menu.hidden;
+    $('btnExport').setAttribute('aria-expanded', String(!menu.hidden));
+  });
+  document.addEventListener('click', closeMenu);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
+  $('ex-png').addEventListener('click', () => { closeMenu(); actions.exportPng(); });
+  $('ex-pdf').addEventListener('click', () => { closeMenu(); actions.exportPdf(); });
+  $('ex-print').addEventListener('click', () => { closeMenu(); window.print(); });
   $('btnTheme').addEventListener('click', () => { toggleTheme(); actions.redrawArrows(); });
 
   $('btnUndo').addEventListener('click', () => {

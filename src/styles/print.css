@@ -4,3 +4,16 @@
   .scroll{overflow:visible}
   .now{border-color:var(--neutral-900)}
 }
+
+/* 내보내기 중 — 보드 전체가 잘리지 않고 펼쳐지도록 제약을 푼다.
+   PDF는 인쇄 경로를 타므로 @media print와 같은 것들을 숨긴다. */
+body.exporting{overflow:visible;height:auto}
+body.exporting .bar,
+body.exporting .panel,
+body.exporting .scrim,
+body.exporting .toast,
+body.exporting .launcher{display:none!important}
+body.exporting .scroll{overflow:visible;flex:none;margin-right:0}
+body.exporting .status{margin-right:0}
+body.exporting .head{position:static}      /* sticky면 캡처에서 어긋난다 */
+body.exporting .gut-m b u{position:static}
