@@ -54,7 +54,7 @@ export function askText({ title, label = '', value = '', placeholder = '', confi
       label ? el('label', { text: label }) : null,
       input,
       el('div.dlg-actions', {}, [
-        el('button.btn', { type: 'button', text: '취소', on: { click: () => finish(null) } }),
+        el('button.btn.outline', { type: 'button', text: '취소', on: { click: () => finish(null) } }),
         el('button.btn.cta', {
           type: 'button', text: confirmLabel,
           on: { click: () => finish(input.value.trim() || null) },

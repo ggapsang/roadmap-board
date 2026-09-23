@@ -78,6 +78,8 @@ export const DEFAULT_DISPLAY = {
   arrowWidth: 7,
   /** 화살표 머리 크기 = 몸통 × 이 배율 */
   arrowHead: 2.0,
+  /** 화살표가 카드 안으로 파고드는 깊이(px). 0이면 카드 사이 틈에만 그린다. */
+  arrowBite: 22,
   /** 카드 글자 배율 */
   fontScale: 1.0,
 };
@@ -85,6 +87,7 @@ export const DEFAULT_DISPLAY = {
 export const DISPLAY_LIMITS = {
   arrowWidth: { min: 1, max: 24, step: 1 },
   arrowHead: { min: 1.2, max: 4, step: 0.1 },
+  arrowBite: { min: 0, max: 60, step: 2 },
   fontScale: { min: 0.7, max: 2.0, step: 0.05 },
 };
 

@@ -98,7 +98,7 @@ export class Launcher {
         p.updatedAt ? el('div.pcard-meta', { text: `마지막 저장 ${p.updatedAt}` }) : null,
       ]),
       el('div.pcard-actions', {}, [
-        button({ className: 'btn', label: '열기', onClick: open }),
+        button({ className: 'btn outline', label: '열기', onClick: open }),
         button({ className: 'mini', iconPath: ICONS.copy, title: '복제', onClick: () => this.#duplicate(p) }),
         button({ className: 'mini', iconPath: ICONS.pencil, title: '이름 변경', onClick: () => this.#rename(p) }),
         button({ className: 'mini', iconPath: ICONS.trash, title: '삭제', onClick: () => this.#delete(p) }),

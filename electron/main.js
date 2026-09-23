@@ -5,7 +5,7 @@
  * 그래서 커스텀 app:// 프로토콜을 등록해 정적 파일을 돌려준다.
  * nodeIntegration은 끄고, DB 접근은 preload가 노출한 IPC로만 한다.
  */
-import { app, BrowserWindow, protocol, net, ipcMain, shell, dialog, Menu } from 'electron';
+import { app, BrowserWindow, protocol, net, ipcMain, shell, dialog, Menu, nativeTheme } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -30,8 +30,28 @@ function resolveDbPath() {
   const i = process.argv.indexOf('--db');
   if (i >= 0 && process.argv[i + 1]) return path.resolve(process.argv[i + 1]);
   // 스모크는 문서를 고쳐 쓰므로 실제 DB를 건드리면 안 된다
-  if (SMOKE) return path.join(app.getPath('temp'), `roadmap-smoke-${process.pid}.db`);
-  return path.join(app.getPath('userData'), 'roadmap.db');
+  if (SMOKE) return path.join(app.getPath('temp'), `wolfpack-smoke-${process.pid}.db`);
+  return path.join(app.getPath('userData'), 'wolfpack.db');
+}
+
+/**
+ * Roadmap Board 시절의 DB를 이어받는다.
+ * 앱 이름이 바뀌면 userData 경로가 통째로 달라져서, 그냥 두면 사용자가 만든
+ * 보드가 사라진 것처럼 보인다. 새 경로가 비어 있을 때만 한 번 복사한다.
+ */
+function adoptLegacyDatabase(target) {
+  if (fs.existsSync(target)) return;
+  const legacy = path.join(path.dirname(app.getPath('userData')), 'roadmap-board', 'roadmap.db');
+  if (!fs.existsSync(legacy)) return;
+  try {
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    for (const suffix of ['', '-wal', '-shm']) {
+      if (fs.existsSync(legacy + suffix)) fs.copyFileSync(legacy + suffix, target + suffix);
+    }
+    console.log('[db] 이전 버전(Roadmap Board)의 데이터를 이어받았습니다:', legacy);
+  } catch (err) {
+    console.error('[db] 이전 데이터를 옮기지 못했습니다:', err);
+  }
 }
 
 protocol.registerSchemesAsPrivileged([{
@@ -66,8 +86,9 @@ function createWindow() {
     height: 900,
     minWidth: 900,
     minHeight: 600,
-    backgroundColor: '#FAFAF9',
-    title: 'Roadmap Board',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0C0A09' : '#FAFAF9',
+    title: 'WOLFPACK',
+    icon: path.join(ROOT, 'assets', 'icon.png'),
     show: false,
     webPreferences: {
       preload: path.join(HERE, 'preload.cjs'),
@@ -217,6 +238,17 @@ async function runSmoke(target) {
     })()`);
     console.log('[smoke] nesting ' + JSON.stringify(nested));
     await capture(target, 'board-nested');
+
+    // 다크 테마도 찍는다 — 가이드 적용 결과를 눈으로 봐야 한다
+    if (shotDir()) {
+      await target.webContents.executeJavaScript(
+        `document.documentElement.setAttribute('data-theme','dark')`,
+      );
+      await capture(target, 'board-dark');
+      await target.webContents.executeJavaScript(
+        `document.documentElement.setAttribute('data-theme','light')`,
+      );
+    }
 
     // 시간축 구간 묶기 — 2027년 1~3월을 하나로
     banded = await target.webContents.executeJavaScript(`(async () => {
@@ -511,6 +543,7 @@ function registerIpc() {
 
 app.whenReady().then(() => {
   const file = resolveDbPath();
+  if (!SMOKE) adoptLegacyDatabase(file);
   console.log('[db] 파일:', file);
   db = openDatabase(file);
   repo = new BoardRepository(db);   // 프로젝트는 런처에서 연다

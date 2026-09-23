@@ -124,26 +124,33 @@ const round = (n) => Math.round(n * 10) / 10;
 /**
  * 두 카드 사이의 직교 경로를 만든다.
  *
- * 같은 트랙   : 아래 → 위 (세로 연결)
- * 다른 트랙   : 옆면 → 옆면 (가로 연결)
- *   PPT 시안처럼 트랙을 넘는 선후행은 카드 위가 아니라 측면에 붙는다.
+ * 카드 사이 틈에만 그리면 간격이 4px밖에 안 되는 구간에서 화살표가 점처럼
+ * 보인다. 그래서 양쪽 카드 **안쪽까지 물고 들어가** 길이를 확보한다.
+ * 화살표는 카드 위에 그려지므로 걸친 부분이 그대로 보인다.
+ *
+ * 같은 트랙 : 아래 → 위 (세로)
+ * 다른 트랙 : 옆면 → 옆면 (가로)
  *
  * @param {{x,y,w,h}} from 선행 카드
  * @param {{x,y,w,h}} to   후행 카드
  * @param {boolean} sameTrack
+ * @param {number} bite 카드 안으로 파고드는 깊이(px)
  */
-export function routeBetween(from, to, sameTrack) {
+export function routeBetween(from, to, sameTrack, bite = 22) {
   const fromCx = from.x + from.w / 2;
   const toCx = to.x + to.w / 2;
   const fromCy = from.y + from.h / 2;
   const toCy = to.y + to.h / 2;
 
-  // 같은 트랙이고 후행이 아래에 있으면 세로로 잇는다
+  // 카드 높이/폭의 절반을 넘게 파고들면 반대쪽으로 튀어나온다
+  const biteV = (box) => Math.min(bite, box.h * 0.45);
+  const biteH = (box) => Math.min(bite, box.w * 0.45);
+
   if (sameTrack && to.y >= from.y + from.h - 1) {
-    const y1 = from.y + from.h;
-    const y2 = to.y;
+    const y1 = from.y + from.h - biteV(from);   // 선행 카드 안쪽에서 출발
+    const y2 = to.y + biteV(to);                // 후행 카드 안쪽에 도착
     if (Math.abs(fromCx - toCx) < 1) return [{ x: fromCx, y: y1 }, { x: toCx, y: y2 }];
-    const mid = y1 + (y2 - y1) / 2;
+    const mid = (from.y + from.h + to.y) / 2;   // 방향 전환은 두 카드 사이에서
     return [
       { x: fromCx, y: y1 },
       { x: fromCx, y: mid },
@@ -152,22 +159,20 @@ export function routeBetween(from, to, sameTrack) {
     ];
   }
 
-  // 그 외는 측면 연결
   const goRight = toCx >= fromCx;
-  const sx = goRight ? from.x + from.w : from.x;
-  const tx = goRight ? to.x : to.x + to.w;
+  const sx = goRight ? from.x + from.w - biteH(from) : from.x + biteH(from);
+  const tx = goRight ? to.x + biteH(to) : to.x + to.w - biteH(to);
 
   if (Math.abs(fromCy - toCy) < 1) {
     return [{ x: sx, y: fromCy }, { x: tx, y: toCy }];
   }
 
   // 두 카드 사이 빈 공간에서 방향을 튼다
-  const gapMid = (sx + tx) / 2;
-  const mx = goRight ? Math.max(sx + 8, gapMid) : Math.min(sx - 8, gapMid);
+  const gapMid = ((goRight ? from.x + from.w : from.x) + (goRight ? to.x : to.x + to.w)) / 2;
   return [
     { x: sx, y: fromCy },
-    { x: mx, y: fromCy },
-    { x: mx, y: toCy },
+    { x: gapMid, y: fromCy },
+    { x: gapMid, y: toCy },
     { x: tx, y: toCy },
   ];
 }

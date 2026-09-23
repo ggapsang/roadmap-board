@@ -143,7 +143,7 @@ export class DataPanel {
           el('span', { text: row.created_at, style: { fontSize: '12px', fontWeight: '500' } }),
           el('span', { text: `${row.items}건${row.label ? ' · ' + row.label : ''}`, style: { fontSize: '11px', color: 'var(--text-tertiary)' } }),
         ]),
-        button({ className: 'btn', label: '복원', onClick: () => this.#restore(row.id) }),
+        button({ className: 'btn outline', label: '복원', onClick: () => this.#restore(row.id) }),
       ]));
     }
   }

@@ -28,6 +28,7 @@ export class ConfigPanel {
     const fields = [
       ['v-arrow', 'arrowWidth', (v) => `${v}px`],
       ['v-head', 'arrowHead', (v) => `×${Number(v).toFixed(1)}`],
+      ['v-bite', 'arrowBite', (v) => `${v}px`],
       ['v-font', 'fontScale', (v) => `${Math.round(v * 100)}%`],
     ];
     for (const [id, key, format] of fields) {

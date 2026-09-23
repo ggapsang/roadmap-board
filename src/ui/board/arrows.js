@@ -31,6 +31,7 @@ export function drawArrows(layer, grid, items, display) {
 
   const width = display?.arrowWidth ?? 7;
   const head = display?.arrowHead ?? 2;
+  const bite = display?.arrowBite ?? 22;
 
   // 카드는 컬럼 안에, 중첩 카드는 상위 카드 안에 들어 있다.
   // offsetLeft/offsetTop은 부모 기준이므로 grid 기준 절대 좌표로 환산한다.
@@ -53,7 +54,7 @@ export function drawArrows(layer, grid, items, display) {
       if (!from || !to) continue;             // 필터로 숨겨진 경우
 
       const sameTrack = trackOf.get(depId) === item.t;
-      const d = blockArrowPath(routeBetween(from, to, sameTrack), width, head);
+      const d = blockArrowPath(routeBetween(from, to, sameTrack, bite), width, head);
       if (!d) continue;
 
       const path = document.createElementNS(NS, 'path');

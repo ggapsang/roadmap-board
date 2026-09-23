@@ -1,7 +1,7 @@
 {
-  "name": "roadmap-board",
+  "name": "wolfpack",
   "version": "0.1.0",
-  "description": "Project Machina 실행계획 로드맵 보드",
+  "description": "WOLFPACK — 시간축 위에서 일정을 편집·공유하는 프로젝트 보드",
   "private": true,
   "type": "module",
   "main": "electron/main.js",
@@ -18,13 +18,14 @@
     "electron": "^44.4.4"
   },
   "build": {
-    "appId": "kr.daim.roadmap-board",
-    "productName": "Roadmap Board",
+    "appId": "kr.daim.wolfpack",
+    "productName": "WOLFPACK",
     "files": [
       "index.html",
       "src/**/*",
       "electron/**/*",
-      "package.json"
+      "package.json",
+      "assets/**/*"
     ],
     "asarUnpack": [
       "**/*.node"
@@ -33,7 +34,8 @@
       "target": [
         "nsis",
         "portable"
-      ]
+      ],
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,

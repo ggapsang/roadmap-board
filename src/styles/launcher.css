@@ -6,30 +6,31 @@
 
 .lwrap{width:100%;max-width:760px;margin:0 auto;padding:var(--u10) var(--u4) var(--u10)}
 .lhead{display:flex;align-items:flex-start;gap:var(--u3);margin-bottom:var(--u6)}
-.lhead .mk{width:var(--u2);height:var(--u8);background:var(--accent);border-radius:2px;flex:none;margin-top:2px}
-.lhead h1{margin:0;font-size:24px;line-height:32px;font-weight:600;letter-spacing:-.02em}
+/* FENRIR 마크 — 브랜드 표현 영역이라 여기서는 크게 써도 된다 (가이드 14/15) */
+.lhead .mk{width:56px;height:56px;border-radius:var(--r-dialog);flex:none;display:block}
+.lhead h1{margin:0;font-size:24px;line-height:32px;font-weight:700;letter-spacing:.06em}
 .lhead p{margin:var(--u1) 0 0;font-size:13px;line-height:20px;color:var(--text-secondary)}
 
 .lactions{display:flex;gap:var(--u2);margin-bottom:var(--u6);flex-wrap:wrap}
 
 .plist{display:flex;flex-direction:column;gap:var(--u2)}
 .pcard{display:flex;align-items:center;gap:var(--u3);padding:var(--u3) var(--u4);
-  background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--u2);
+  background:var(--bg-panel);border:1px solid var(--border-subtle);border-radius:var(--r-card);
   cursor:pointer}
-.pcard:hover{border-color:var(--border-bold);box-shadow:var(--shadow)}
+.pcard:hover{border-color:var(--border-default);background:var(--bg-hover)}
 .pcard-main{flex:1;min-width:0}
 .pcard-name{font-size:15px;line-height:22px;font-weight:600;letter-spacing:-.01em;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pcard-meta{font-size:12px;line-height:18px;color:var(--text-tertiary);font-variant-numeric:tabular-nums}
 .pcard-actions{display:flex;align-items:center;gap:var(--u1-5);flex:none}
-.pcard-actions .mini{width:var(--u8);height:var(--u8);border:1px solid var(--border-strong);
-  border-radius:var(--u1-5);background:var(--bg-panel);color:var(--text-secondary);cursor:pointer;
+.pcard-actions .mini{width:var(--u8);height:var(--u8);border:1px solid transparent;
+  border-radius:var(--r-control);background:none;color:var(--text-tertiary);cursor:pointer;
   display:flex;align-items:center;justify-content:center}
-.pcard-actions .mini:hover{background:var(--bg-sunken);color:var(--text-primary)}
+.pcard-actions .mini:hover{background:var(--bg-hover);color:var(--text-primary)}
 
 .lempty{padding:var(--u10) var(--u4);text-align:center;color:var(--text-tertiary);
-  border:1px dashed var(--border-strong);border-radius:var(--u2);font-size:13px;line-height:20px}
+  border:1px dashed var(--border-subtle);border-radius:var(--r-card);font-size:13px;line-height:20px}
 .lempty[hidden]{display:none}
 
-.lfoot{margin-top:var(--u8);padding-top:var(--u4);border-top:1px solid var(--border);
+.lfoot{margin-top:var(--u8);padding-top:var(--u4);border-top:1px solid var(--border-subtle);
   font-size:11px;line-height:18px;color:var(--text-tertiary)}

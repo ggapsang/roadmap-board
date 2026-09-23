@@ -16,28 +16,38 @@ svg.ic{width:var(--u4);height:var(--u4);stroke:currentColor;stroke-width:1.5;fil
 .grow{flex:1}
 
 /* ── 공통 컨트롤 ──────────────────────────────────── */
-.btn{display:inline-flex;align-items:center;gap:var(--u1-5);height:var(--u8);padding:0 var(--u3);
-  background:var(--bg-panel);border:1px solid var(--border-strong);border-radius:var(--u1-5);
+/* 버튼 — Primary action만 명확한 버튼으로, 나머지는 Ghost로 둔다.
+   툴바의 모든 버튼을 동일한 박스로 만들지 않는다 (가이드 7 / 5). */
+.btn{display:inline-flex;align-items:center;gap:var(--u1-5);height:var(--u8);padding:0 var(--u2-5);
+  background:none;border:1px solid transparent;border-radius:var(--r-control);
   color:var(--text-secondary);font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap}
-.btn:hover{background:var(--bg-sunken);color:var(--text-primary);border-color:var(--border-bold)}
-.btn:disabled{opacity:.4;cursor:default}
-.btn:disabled:hover{background:var(--bg-panel);color:var(--text-secondary);border-color:var(--border-strong)}
+.btn:hover{background:var(--bg-hover);color:var(--text-primary)}
+.btn:disabled{opacity:.35;cursor:default}
+.btn:disabled:hover{background:none;color:var(--text-secondary)}
 .btn.icon{padding:0;width:var(--u8);justify-content:center}
-.btn.cta{background:var(--accent);border-color:var(--accent);color:#fff}
-.btn.cta:hover{background:var(--primary-600);border-color:var(--primary-600);color:#fff}
-.btn.danger{color:var(--error-700);border-color:var(--error-200)}
-.btn.wide{width:100%;justify-content:center}
-.btn[aria-pressed="true"]{background:var(--bg-sunken);color:var(--text-primary);border-color:var(--border-bold)}
 
-.seg{display:inline-flex;border:1px solid var(--border-strong);border-radius:var(--u1-5);overflow:hidden}
+/* 윤곽이 필요한 보조 액션 (패널 안의 확인/취소 등) */
+.btn.outline{border-color:var(--border-default);background:var(--bg-panel)}
+.btn.outline:hover{border-color:var(--border-strong);background:var(--bg-hover)}
+
+.btn.cta{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.cta:hover{background:var(--accent-hover);border-color:var(--accent-hover);color:#fff}
+.btn.danger{color:var(--error-500);border-color:transparent}
+.btn.danger:hover{background:var(--tint-late);color:var(--error-500)}
+.btn.wide{width:100%;justify-content:center}
+.btn[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent)}
+
+.seg{display:inline-flex;border:1px solid var(--border-default);border-radius:var(--u1-5);overflow:hidden}
 .seg button{height:var(--u8);padding:0 var(--u2-5);background:var(--bg-panel);border:0;
-  border-left:1px solid var(--border);color:var(--text-secondary);font-size:13px;cursor:pointer}
+  border-left:1px solid var(--border-subtle);color:var(--text-secondary);font-size:13px;cursor:pointer}
 .seg button:first-child{border-left:0}
 .seg button[aria-pressed="true"]{background:var(--text-primary);color:var(--bg-panel);font-weight:600}
 
-.toast{position:fixed;left:50%;bottom:var(--u6);transform:translateX(-50%);background:var(--neutral-900);
-  color:var(--neutral-50);padding:var(--u2) var(--u4);border-radius:var(--u1-5);font-size:13px;z-index:80;
+.toast{position:fixed;left:50%;bottom:var(--u6);transform:translateX(-50%);
+  background:var(--text-primary);color:var(--bg-panel);
+  padding:var(--u2) var(--u4);border-radius:var(--r-control);font-size:13px;z-index:80;
+  box-shadow:var(--shadow-pop);
   opacity:0;pointer-events:none;transition:opacity .16s;max-width:70vw;text-align:center}
 .toast.on{opacity:1}
-.toast.warn{background:var(--error-700)}
+.toast.warn{background:var(--error-500);color:#fff}
 @media (prefers-reduced-motion:reduce){.toast{transition:none}}

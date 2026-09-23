@@ -1,46 +1,54 @@
 /* ── 툴바 ─────────────────────────────────────────── */
 /* 패널이 열리면 폭이 340px 줄어든다. 그래도 버튼이 줄바꿈되거나 잘리지 않아야 한다. */
 .bar{display:flex;align-items:center;gap:var(--u2);padding:var(--u2-5) var(--u4);
-  background:var(--bg-panel);border-bottom:1px solid var(--border);flex:none;
+  background:var(--bg-header);border-bottom:1px solid var(--border-subtle);flex:none;
   flex-wrap:nowrap;min-width:0}
 .bar>.btn,.bar>.seg{flex:none}
 .brand{display:flex;align-items:baseline;gap:var(--u2-5);margin-right:var(--u2);min-width:0;flex:0 1 auto}
-.brand .mk{width:var(--u2);height:var(--u5);background:var(--accent);border-radius:2px;align-self:center}
-.brand h1{margin:0;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em;white-space:nowrap;flex:none}
+/* 브랜드 영역 — FENRIR 마크는 여기서만. UI 곳곳에 반복하지 않는다 (가이드 14) */
+.brand .mk{width:var(--u6);height:var(--u6);border-radius:var(--u1-5);align-self:center;flex:none;display:block}
+.brand h1{margin:0;font-size:15px;line-height:24px;font-weight:700;letter-spacing:.08em;
+  white-space:nowrap;flex:none;color:var(--text-primary)}
 .brand .sub{font-size:12px;line-height:16px;color:var(--text-tertiary);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis;min-width:0}
 .search{display:flex;align-items:center;gap:var(--u2);height:var(--u8);padding:0 var(--u3);
-  background:var(--bg-input);border:1px solid var(--border-strong);border-radius:var(--u1-5);
+  background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:var(--r-control);
   color:var(--text-tertiary);flex:0 1 200px;min-width:96px}
 .search input{border:0;background:none;outline:0;width:100%;font-size:13px;color:var(--text-primary)}
 
 /* ── 상태 요약 (상태 우선 원칙) ─────────────────────── */
-.status{display:flex;align-items:center;gap:var(--u2);padding:var(--u2) var(--u4);
-  background:var(--bg-panel);border-bottom:1px solid var(--border);flex:none;overflow-x:auto}
-.stat{display:inline-flex;align-items:center;gap:var(--u1-5);height:var(--u6);padding:0 var(--u2-5);
-  border:1px solid var(--border);border-radius:var(--u1);background:var(--bg-panel);
-  font-size:12px;line-height:16px;color:var(--text-secondary);cursor:pointer;white-space:nowrap}
-.stat .dot{width:var(--u2);height:var(--u2);border-radius:2px;border:1px solid var(--border-bold);flex:none}
-.stat b{font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums}
-.stat[aria-pressed="false"]{opacity:.42}
-.stat.s-plan .dot{background:var(--neutral-200);border-color:var(--neutral-400)}
-.stat.s-run  .dot{background:var(--primary-500);border-color:var(--primary-600)}
-.stat.s-done .dot{background:var(--success-500);border-color:var(--success-700)}
-.stat.s-late .dot{background:var(--error-500);border-color:var(--error-700)}
-.stat.s-hold .dot{background:repeating-linear-gradient(45deg,var(--neutral-300) 0 2px,transparent 2px 4px);border-color:var(--neutral-400)}
-.status .divider{width:1px;height:var(--u5);background:var(--border);margin:0 var(--u1)}
+.status{display:flex;align-items:center;gap:var(--u1);padding:var(--u1-5) var(--u4);
+  background:var(--bg-header);border-bottom:1px solid var(--border-subtle);flex:none;overflow-x:auto}
+/* 색을 강하게 채우지 않는다. 숫자를 강조하고 Label은 낮은 대비,
+   상태 색은 작은 Dot으로만 (가이드 8 / 6). */
+.stat{display:inline-flex;align-items:baseline;gap:var(--u1-5);height:var(--u6);padding:0 var(--u2);
+  border:0;border-radius:var(--r-control);background:none;
+  font-size:12px;line-height:24px;color:var(--text-tertiary);cursor:pointer;white-space:nowrap}
+.stat:hover{background:var(--bg-hover)}
+.stat .dot{width:6px;height:6px;border-radius:var(--r-pill);flex:none;align-self:center}
+.stat b{font-weight:600;font-size:14px;color:var(--text-primary);font-variant-numeric:tabular-nums}
+.stat[aria-pressed="false"]{opacity:.38}
+.stat[aria-pressed="false"] b{color:var(--text-tertiary)}
+.stat.s-plan .dot{background:var(--state-plan)}
+.stat.s-run  .dot{background:var(--state-run)}
+.stat.s-done .dot{background:var(--state-done)}
+.stat.s-late .dot{background:var(--state-late)}
+.stat.s-hold .dot{background:var(--state-hold);opacity:.55}
+.status .divider{width:1px;height:var(--u5);background:var(--border-subtle);margin:0 var(--u1)}
 .orgs{display:flex;gap:var(--u1-5)}
-.org{height:var(--u6);padding:0 var(--u2-5);border:1px solid var(--border);border-radius:999px;
-  background:var(--bg-panel);font-size:12px;color:var(--text-secondary);cursor:pointer;white-space:nowrap}
-.org[aria-pressed="true"]{background:var(--text-primary);color:var(--bg-panel);border-color:var(--text-primary);font-weight:500}
+.org{height:var(--u6);padding:0 var(--u2-5);border:1px solid var(--border-subtle);border-radius:var(--r-pill);
+  background:none;font-size:12px;color:var(--text-tertiary);cursor:pointer;white-space:nowrap}
+.org:hover{background:var(--bg-hover);color:var(--text-secondary)}
+.org[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);
+  border-color:transparent;font-weight:600}
 
 /* ── 드롭다운 메뉴 ─────────────────────────────────── */
 .menu{position:relative;flex:none}
 .menu-pop{position:absolute;top:calc(100% + var(--u1-5));right:0;z-index:70;
-  min-width:160px;padding:var(--u1);background:var(--bg-panel);
-  border:1px solid var(--border-strong);border-radius:var(--u1-5);box-shadow:var(--shadow)}
+  min-width:170px;padding:var(--u1);background:var(--bg-elevated);
+  border:1px solid var(--border-subtle);border-radius:var(--r-panel);box-shadow:var(--shadow-pop)}
 .menu-pop[hidden]{display:none!important}
 .menu-pop button{display:block;width:100%;text-align:left;height:var(--u8);padding:0 var(--u2-5);
   background:none;border:0;border-radius:var(--u1);color:var(--text-secondary);
   font-size:13px;cursor:pointer;white-space:nowrap}
-.menu-pop button:hover{background:var(--bg-sunken);color:var(--text-primary)}
+.menu-pop button:hover{background:var(--bg-hover);color:var(--text-primary)}
