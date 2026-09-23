@@ -42,6 +42,8 @@
 .org[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);
   border-color:transparent;font-weight:600}
 
+.seg button small{font-size:10px;margin-left:1px;vertical-align:1px}
+
 /* ── 드롭다운 메뉴 ─────────────────────────────────── */
 .menu{position:relative;flex:none}
 .menu-pop{position:absolute;top:calc(100% + var(--u1-5));right:0;z-index:70;

@@ -62,6 +62,11 @@ export const LAYOUT = {
   laneWidthMax: 2.4,
   /** 카드 최소 높이(px) */
   minCardHeight: 28,
+  /**
+   * 카드 사이 세로 간격(px). 화살표가 지나갈 자리다.
+   * 4px이던 시절에는 붙어 있는 일정 사이 화살표가 점처럼 보였다.
+   */
+  cardGap: 14,
   /** 이 높이 이상이면 카드를 중앙정렬 'big' 모드로 */
   bigCardHeight: 84,
   /** 이 높이 미만이면 메타 줄을 숨김 */
@@ -75,11 +80,15 @@ export const LAYOUT = {
  */
 export const DEFAULT_DISPLAY = {
   /** 화살표 몸통 굵기(px) */
-  arrowWidth: 7,
+  arrowWidth: 6,
   /** 화살표 머리 크기 = 몸통 × 이 배율 */
-  arrowHead: 2.0,
-  /** 화살표가 카드 안으로 파고드는 깊이(px). 0이면 카드 사이 틈에만 그린다. */
-  arrowBite: 22,
+  arrowHead: 2.2,
+  /**
+   * 화살표가 카드 안으로 파고드는 깊이(px).
+   * 기본 0 — 카드 밖으로만 지나가게 둔다. 파고들면 제목을 가린다.
+   * 더 길게 보고 싶은 사람을 위해 열어 두기만 한다.
+   */
+  arrowBite: 0,
   /** 카드 글자 배율 */
   fontScale: 1.0,
 };

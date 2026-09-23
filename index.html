@@ -30,11 +30,15 @@
   </label>
 
   <div class="seg" id="zoom" role="group" aria-label="행 높이"></div>
+  <div class="seg" role="group" aria-label="글자 크기">
+    <button id="fontDown" type="button" title="글자 작게 (Ctrl -)" aria-label="글자 작게">가<small>−</small></button>
+    <button id="fontUp" type="button" title="글자 크게 (Ctrl +)" aria-label="글자 크게">가<small>＋</small></button>
+  </div>
 
   <button class="btn" id="btnTracks" type="button">
     <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h10"/></svg>구성</button>
   <button class="btn icon" id="btnSelect" type="button" aria-pressed="false"
-          title="텍스트 선택 모드 (Ctrl+Shift+S) — 켜면 카드 글자를 긁어 복사할 수 있고 드래그 이동은 멈춥니다"
+          title="텍스트 선택 모드 (Ctrl+I) — 켜면 카드 글자를 긁어 복사할 수 있고 드래그 이동은 멈춥니다"
           aria-label="텍스트 선택 모드">
     <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6M9 20h6M12 4v16"/></svg></button>
   <button class="btn icon" id="btnUndo" type="button" title="되돌리기 (Ctrl+Z)" aria-label="되돌리기">
@@ -73,12 +77,13 @@
   </div>
 </div>
 
-<div class="scrim" id="scrim"></div>
-
 <!-- ── 일정 편집 ─────────────────────────────────────────── -->
 <aside class="panel" id="pItem" aria-label="일정 편집">
   <header>
     <h2>일정 편집</h2><div class="grow"></div>
+    <button class="btn icon" data-pin type="button" aria-pressed="false"
+            title="패널 고정 (닫히지 않게)" aria-label="패널 고정">
+      <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v5"/><path d="M9 3h6l-1 7 3 3H7l3-3z"/></svg></button>
     <button class="btn icon" data-close type="button" aria-label="닫기">
       <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
   </header>
@@ -210,8 +215,10 @@
       <img class="mk" src="./assets/icon.png" alt="" width="56" height="56">
       <div class="grow">
         <h1>WOLFPACK</h1>
-        <p>열 프로젝트를 고르거나 새로 만듭니다.</p>
+        <p>프로젝트를 고르거나 새로 만듭니다.</p>
       </div>
+      <button class="btn icon" id="l-theme" type="button" title="테마 전환" aria-label="테마 전환">
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9Z"/></svg></button>
       <button class="btn icon" id="l-close" type="button" title="닫기" aria-label="닫기" hidden>
         <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
     </div>
@@ -225,6 +232,8 @@
     <div class="lempty" id="l-empty" hidden>
       아직 프로젝트가 없습니다. <b>새 프로젝트</b>로 시작하세요.
     </div>
+
+    <img class="lhero" src="./assets/hero.jpg" alt="WOLFPACK" width="930" height="563">
 
     <p class="lfoot" id="l-foot"></p>
   </div>

@@ -208,11 +208,13 @@ export class ItemPanel {
           },
         },
       });
-      const label = el('label', {}, [
+      box.append(el('label', {}, [
         cb,
-        el('span', { text: other.ti }, [el('em', { text: `${trackName} · ${shortMD(other.s)}` })]),
-      ]);
-      box.append(label);
+        el('span', {}, [
+          document.createTextNode(other.ti || '(제목 없음)'),
+          el('em', { text: `${trackName} · ${shortMD(other.s)}` }),
+        ]),
+      ]));
     }
   }
 

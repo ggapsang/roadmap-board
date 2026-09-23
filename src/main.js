@@ -87,6 +87,7 @@ async function boot() {
       redrawArrows: () => board.redrawArrows(),
       openTracks: () => configPanel.open(view.selectedTrack),
       openData: () => dataPanel.open(),
+      nudgeFont: (d) => nudgeFont(d),
       exportPng: () => { panels.close(); return exportPng(adapter, store); },
       exportPdf: () => { panels.close(); return exportPdf(adapter, store); },
       openProjects: () => { panels.close(); launcher.show({ closable: true }); },
@@ -172,7 +173,7 @@ async function boot() {
       if (!store.redo()) toast('다시 실행할 작업이 없습니다');
       return;
     }
-    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 's') {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i') {
       e.preventDefault();
       view.textSelect = !view.textSelect;
       toast(view.textSelect ? '텍스트 선택 모드 — 드래그 이동이 멈춥니다' : '텍스트 선택 모드 해제');
@@ -191,7 +192,7 @@ async function boot() {
     if ((e.ctrlKey || e.metaKey) && e.key === '0') {
       e.preventDefault(); setFont(1); return;
     }
-    if (e.key === 'Escape') { panels.close(); return; }
+    if (e.key === 'Escape') { panels.close(); return; }   // 고정 중이면 닫히지 않는다
     if (e.key === 'Delete' && view.selectedItem && !typing) itemPanel.remove();
   });
 

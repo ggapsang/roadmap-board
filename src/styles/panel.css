@@ -1,12 +1,12 @@
 /* ── 사이드 패널 ──────────────────────────────────── */
 /* 패널이 열리면 본문을 그만큼 좁힌다. 덮어 버리면 오른쪽 트랙이 가려지는데
    가로 스크롤로 되찾기 번거롭다. --panel-w는 패널이 열릴 때만 채워진다. */
-body{--panel-w:0px}
-body.panel-open{--panel-w:340px}
+body{--panel-w:0px;--panel-size:360px}
+body.panel-open{--panel-w:var(--panel-size)}
 .bar,.status,.scroll{margin-right:var(--panel-w);transition:margin-right .16s ease}
 @media (prefers-reduced-motion:reduce){.bar,.status,.scroll{transition:none}}
 
-.panel{position:fixed;top:0;right:0;bottom:0;width:340px;background:var(--bg-panel);
+.panel{position:fixed;top:0;right:0;bottom:0;width:var(--panel-size);background:var(--bg-panel);
   border-left:1px solid var(--border-subtle);z-index:60;
   display:flex;flex-direction:column;transform:translateX(100%);transition:transform .16s ease;
   padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -17,8 +17,6 @@ body.panel-open{--panel-w:340px}
 .panel .body2{padding:var(--u4);overflow:auto;flex:1}
 .panel footer{padding:var(--u3) var(--u4);border-top:1px solid var(--border-subtle);display:flex;gap:var(--u2)}
 .panel footer .btn{flex:1;justify-content:center}
-.scrim{position:fixed;inset:0;background:transparent;z-index:55;display:none}
-.scrim.on{display:block}
 
 .fld{margin-bottom:var(--u3)}
 .fld>label{display:block;font-size:11px;line-height:16px;font-weight:500;color:var(--text-tertiary);margin-bottom:var(--u1)}
@@ -37,10 +35,6 @@ body.panel-open{--panel-w:340px}
   border-radius:var(--u1-5);background:var(--bg-panel);font-size:12px;color:var(--text-secondary);cursor:pointer}
 .pick button[aria-pressed="true"]{border-color:var(--text-primary);background:var(--text-primary);color:var(--bg-panel);font-weight:600}
 
-.deps{border:1px solid var(--border-default);border-radius:var(--u1-5);max-height:136px;overflow:auto;padding:var(--u1-5)}
-.deps label{display:flex;gap:var(--u2);align-items:flex-start;padding:var(--u1);font-size:12px;line-height:16px;cursor:pointer}
-.deps em{font-style:normal;color:var(--text-tertiary);display:block;font-size:11px}
-.deps .empty{color:var(--text-tertiary);font-size:12px;padding:var(--u2)}
 
 .sect{font-size:11px;font-weight:600;color:var(--text-tertiary);margin:var(--u5) 0 var(--u2);
   padding-bottom:var(--u1);border-bottom:1px solid var(--border-subtle)}
@@ -61,6 +55,21 @@ body.panel-open{--panel-w:340px}
   line-height:16px;padding:var(--u2);border:1px solid var(--border-default);border-radius:var(--u1-5);
   background:var(--bg-input);resize:vertical}
 .note{font-size:11px;line-height:16px;color:var(--text-tertiary);margin-top:var(--u2)}
+
+/* 폭 조절 손잡이 — 트랙 이름이 잘리면 넓혀 쓴다 */
+.panel-resize{position:absolute;left:0;top:0;bottom:0;width:var(--u1-5);
+  cursor:ew-resize;z-index:2}
+.panel-resize:hover,.panel-resize.dragging{background:var(--accent-soft)}
+
+/* 선행 일정 — 항목이 작으면 고르기 어렵다. 넉넉하게 준다 */
+.deps{border:1px solid var(--border-subtle);border-radius:var(--r-control);
+  max-height:340px;overflow:auto;padding:var(--u1)}
+.deps label{display:flex;gap:var(--u2-5);align-items:center;padding:var(--u2) var(--u2-5);
+  font-size:13px;line-height:18px;cursor:pointer;border-radius:var(--u1)}
+.deps label:hover{background:var(--bg-hover)}
+.deps input[type=checkbox]{width:18px;height:18px;flex:none;accent-color:var(--accent);margin:0}
+.deps em{font-style:normal;color:var(--text-tertiary);display:block;font-size:11px;margin-top:2px}
+.deps .empty{color:var(--text-tertiary);font-size:12px;padding:var(--u2)}
 
 /* ── 입력 다이얼로그 (Electron에 prompt()가 없어서 직접 만든다) ── */
 .dlg-scrim{position:fixed;inset:0;z-index:120;background:rgba(12,10,9,.32);

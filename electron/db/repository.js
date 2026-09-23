@@ -105,16 +105,17 @@ export class BoardRepository {
     if (!board) return null;
 
     const tracks = this.db.prepare(
-      'SELECT id, lab, name FROM track WHERE board_id = ? ORDER BY ord',
-    ).all(this.boardId);
+      'SELECT id, lab, name, width FROM track WHERE board_id = ? ORDER BY ord',
+    ).all(this.boardId).map((t) => ({ id: t.id, lab: t.lab, name: t.name, w: t.width }));
 
     const orgs = this.db.prepare(
       'SELECT name FROM org WHERE board_id = ? ORDER BY ord',
     ).all(this.boardId).map((r) => r.name);
 
     const bands = this.db.prepare(
-      'SELECT id, from_date, to_date, label FROM band WHERE board_id = ? ORDER BY ord',
-    ).all(this.boardId).map((r) => ({ id: r.id, from: r.from_date, to: r.to_date, label: r.label }));
+      'SELECT id, from_date, to_date, label, scale FROM band WHERE board_id = ? ORDER BY ord',
+    ).all(this.boardId)
+      .map((r) => ({ id: r.id, from: r.from_date, to: r.to_date, label: r.label, scale: r.scale }));
 
     const rows = this.db.prepare(
       'SELECT * FROM item WHERE board_id = ? ORDER BY ord',
@@ -178,9 +179,10 @@ export class BoardRepository {
       this.db.prepare('DELETE FROM band WHERE board_id = ?').run(this.boardId);
 
       const insBand = this.db.prepare(
-        'INSERT INTO band (board_id, id, ord, from_date, to_date, label) VALUES (?, ?, ?, ?, ?, ?)',
+        'INSERT INTO band (board_id, id, ord, from_date, to_date, label, scale) VALUES (?, ?, ?, ?, ?, ?, ?)',
       );
-      (doc.bands ?? []).forEach((b, i) => insBand.run(this.boardId, b.id, i, b.from, b.to, b.label ?? ''));
+      (doc.bands ?? []).forEach((b, i) =>
+        insBand.run(this.boardId, b.id, i, b.from, b.to, b.label ?? '', b.scale ?? 1));
 
       const insOrg = this.db.prepare(
         'INSERT INTO org (board_id, ord, name) VALUES (?, ?, ?)',
@@ -188,9 +190,9 @@ export class BoardRepository {
       (doc.orgs ?? []).forEach((o, i) => insOrg.run(this.boardId, i, o));
 
       const insTrack = this.db.prepare(
-        'INSERT INTO track (board_id, id, ord, lab, name) VALUES (?, ?, ?, ?, ?)',
+        'INSERT INTO track (board_id, id, ord, lab, name, width) VALUES (?, ?, ?, ?, ?, ?)',
       );
-      doc.tracks.forEach((t, i) => insTrack.run(this.boardId, t.id, i, t.lab ?? '', t.name));
+      doc.tracks.forEach((t, i) => insTrack.run(this.boardId, t.id, i, t.lab ?? '', t.name, t.w ?? null));
 
       const insItem = this.db.prepare(`
         INSERT INTO item (board_id, id, track_id, ord, span, start_date, end_date,

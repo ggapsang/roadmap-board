@@ -10,13 +10,35 @@ import { newId } from '../../core/schema.js';
 import { askText } from '../dialog.js';
 import { toast } from '../toast.js';
 
-export function attachBandEditing(gutM, { store, getOrigin, onChange }) {
+export function attachBandEditing(gutM, { store, getOrigin, getScale, onChange }) {
   let drag = null;
+  let resizing = null;
 
   const cellAt = (target) => target.closest('b');
 
   gutM.addEventListener('pointerdown', (ev) => {
     if (store.readonly || ev.button !== 0) return;
+
+    // 아래 가장자리를 잡으면 높이 조절 (묶은 구간만)
+    if (ev.target.classList.contains('band-resize')) {
+      const cell = cellAt(ev.target);
+      const id = cell?.dataset.band;
+      if (!id) return;
+      ev.preventDefault();
+      const band = store.doc.bands.find((b) => b.id === id);
+      if (!band) return;
+      const days = Number(cell.dataset.to) - Number(cell.dataset.from);
+      resizing = {
+        id, y: ev.clientY, days,
+        full: days * getScale().ppd,
+        scale0: band.scale ?? 1,
+        began: false,
+      };
+      ev.target.classList.add('dragging');
+      ev.target.setPointerCapture(ev.pointerId);
+      return;
+    }
+
     const cell = cellAt(ev.target);
     if (!cell) return;
     drag = { from: Number(cell.dataset.from), to: Number(cell.dataset.to), moved: false };
@@ -24,6 +46,17 @@ export function attachBandEditing(gutM, { store, getOrigin, onChange }) {
   });
 
   gutM.addEventListener('pointermove', (ev) => {
+    if (resizing) {
+      const next = Math.min(1, Math.max(0.15,
+        (resizing.full * resizing.scale0 + (ev.clientY - resizing.y)) / resizing.full));
+      if (!resizing.began) { store.begin('구간 높이'); resizing.began = true; }
+      store.commit('구간 높이', (doc) => {
+        const band = doc.bands.find((b) => b.id === resizing.id);
+        if (band) band.scale = Math.round(next * 100) / 100;
+      });
+      onChange();
+      return;
+    }
     if (!drag) return;
     const cell = cellAt(document.elementFromPoint(ev.clientX, ev.clientY) ?? document.body);
     if (!cell) return;
@@ -36,6 +69,12 @@ export function attachBandEditing(gutM, { store, getOrigin, onChange }) {
   });
 
   gutM.addEventListener('pointerup', async () => {
+    if (resizing) {
+      for (const el of gutM.querySelectorAll('.band-resize.dragging')) el.classList.remove('dragging');
+      if (resizing.began) store.end();
+      resizing = null;
+      return;
+    }
     const current = drag;
     drag = null;
     clearHighlight(gutM);
@@ -55,7 +94,7 @@ export function attachBandEditing(gutM, { store, getOrigin, onChange }) {
       const to = dateAt(origin, current.to - 1);
       // 겹치는 기존 구간은 치운다
       doc.bands = doc.bands.filter((b) => b.to < from || b.from > to);
-      doc.bands.push({ id: newId('b'), from, to, label });
+      doc.bands.push({ id: newId('b'), from, to, label, scale: 1 });
       doc.bands.sort((a, b) => a.from.localeCompare(b.from));
     });
     onChange();
@@ -63,11 +102,19 @@ export function attachBandEditing(gutM, { store, getOrigin, onChange }) {
 
   gutM.addEventListener('pointercancel', () => { drag = null; clearHighlight(gutM); });
 
-  // 이름 바꾸기
+  // 이름 바꾸기 / 높이 원래대로
   gutM.addEventListener('dblclick', async (ev) => {
     const cell = cellAt(ev.target);
     const id = cell?.dataset.band;
     if (!id) return;
+    if (ev.target.classList.contains('band-resize')) {
+      store.commit('구간 높이 원복', (doc) => {
+        const band = doc.bands.find((b) => b.id === id);
+        if (band) band.scale = 1;
+      });
+      onChange();
+      return;
+    }
     const band = store.doc.bands.find((b) => b.id === id);
     if (!band) return;
     const label = await askText({

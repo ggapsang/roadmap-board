@@ -96,11 +96,16 @@
 .ev .pg{position:absolute;left:4px;right:0;bottom:0;height:2px;background:var(--border-subtle)}
 .ev .pg i{display:block;height:100%;background:var(--text-tertiary)}
 .ev .grip{position:absolute;left:0;right:0;bottom:0;height:var(--u2);cursor:ns-resize}
-/* 가로 폭 손잡이 — 트랙 안에서 자유롭게 넓히고 좁힌다 */
-.ev .grip-w,.ev .grip-e{position:absolute;top:0;bottom:0;width:var(--u1-5);cursor:ew-resize}
-.ev .grip-w{left:0}
-.ev .grip-e{right:0}
-.ev:hover>.grip-w,.ev:hover>.grip-e{background:var(--accent-soft)}
+/* 가로 폭 손잡이 — 트랙 안에서 자유롭게 넓히고 좁힌다.
+   투명하게만 두면 있는 줄을 모른다. 카드에 올리면 잡는 자리를 보여 준다. */
+.ev>.grip-w,.ev>.grip-e{position:absolute;top:0;bottom:0;width:var(--u2);cursor:ew-resize;
+  display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .12s ease}
+.ev>.grip-w{left:0}
+.ev>.grip-e{right:0}
+.ev:hover>.grip-w,.ev:hover>.grip-e{opacity:1}
+.ev>.grip-w::after,.ev>.grip-e::after{content:"";width:3px;height:22px;border-radius:2px;
+  background:var(--accent);opacity:.75}
+@media (prefers-reduced-motion:reduce){.ev>.grip-w,.ev>.grip-e{transition:none}}
 
 /* 선택 — Border만 Primary로. 배경을 칠하지 않는다 */
 .ev.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);z-index:16}
@@ -114,7 +119,11 @@
 /* 일정 안에 일정 — 상위 카드는 제목만 위에 두고 아래를 자식에게 내준다.
    메타(기간·담당)는 숨긴다. 자식이 날짜 위치대로 들어오면서 겹치기 때문이다. */
 .ev.container{overflow:visible;padding-bottom:var(--u2);background:var(--bg-canvas)}
-.ev.container>.t{flex:none;width:100%;text-align:center}
+/* 자식은 날짜 위치대로 들어오므로 상위 제목과 겹칠 수 있다.
+   제목을 위에 붙여 두고 자식보다 위 레이어에 둬서 항상 읽히게 한다. */
+.ev.container>.t{flex:none;width:100%;text-align:center;position:sticky;top:0;z-index:8;
+  padding:var(--u1) var(--u2);margin:calc(var(--u1) * -1) calc(var(--u2) * -1) 0;
+  background:var(--bg-canvas);border-radius:var(--r-card) var(--r-card) 0 0}
 .ev.container>.meta{display:none}
 .ev.container>.card-note{flex:none}
 .ev.child{z-index:7}
@@ -153,3 +162,18 @@
 .ev.ms .t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
 .ev.ms .meta{margin:0 0 0 auto;padding:0}
 .ev.ms .meta .tag::before{content:none}
+
+/* 트랙 너비 조절 손잡이 — 헤더 오른쪽 가장자리 */
+.th-resize{position:absolute;top:0;bottom:0;right:-3px;width:var(--u1-5);cursor:ew-resize;z-index:2;
+  display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .12s ease}
+.th:hover .th-resize,.th-resize.dragging{opacity:1}
+.th-resize::after{content:"";width:2px;height:60%;border-radius:2px;background:var(--accent)}
+@media (prefers-reduced-motion:reduce){.th-resize{transition:none}}
+
+/* 묶은 구간 높이 조절 — 아래 가장자리를 끌어 접는다 */
+.gut-m b.merged{position:absolute}
+.band-resize{position:absolute;left:0;right:0;bottom:-3px;height:var(--u1-5);cursor:ns-resize;
+  display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .12s ease}
+.gut-m b.merged:hover .band-resize,.band-resize.dragging{opacity:1}
+.band-resize::after{content:"";height:2px;width:60%;border-radius:2px;background:var(--accent)}
+@media (prefers-reduced-motion:reduce){.band-resize{transition:none}}

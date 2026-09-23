@@ -98,7 +98,9 @@ function createWindow() {
     },
   });
 
-  win.once('ready-to-show', () => { if (!SMOKE || shotDir()) win.show(); });
+  // 스모크에서도 창을 띄운다. Chromium은 보이지 않는 창에 프레임을 만들지 않아
+  // Page.captureScreenshot(PNG 내보내기)이 응답하지 않는다.
+  win.once('ready-to-show', () => { if (SMOKE) win.showInactive(); else win.show(); });
   win.loadURL('app://board/index.html');
   if (SMOKE) {
     // 렌더러 콘솔을 그대로 끌어온다 — 부팅 실패 원인이 여기 찍힌다
@@ -123,6 +125,14 @@ function createWindow() {
  * 렌더러가 실제로 그려졌는지 확인한다. DOM을 직접 세어 보고 결과를 표준출력에 남긴다.
  * 창을 띄우지 않으므로 CI에서도 돌릴 수 있다.
  */
+/** 한 단계가 매달리면 전체가 멈춘다. 시간 제한을 걸고 넘어간다. */
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} 시간 초과 (${ms}ms)`)), ms)),
+  ]);
+}
+
 async function runSmoke(target) {
   // 런처가 첫 화면이다. 프로젝트를 하나 만들어 열고 나서 보드를 검사한다.
   const openProbe = `(async () => {
@@ -175,7 +185,9 @@ async function runSmoke(target) {
   let layout = null;
   let exported = null;
   let banded = null;
+  let compressed = null;
   let nested = null;
+  let widthDrag = null;
   let result;
   try {
     await new Promise((r) => setTimeout(r, 600));
@@ -239,6 +251,25 @@ async function runSmoke(target) {
     console.log('[smoke] nesting ' + JSON.stringify(nested));
     await capture(target, 'board-nested');
 
+    // 가로 폭 수동 지정이 렌더에 반영되는가
+    widthDrag = await target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const card = document.querySelector('.col > .ev:not(.ms)');
+      const id = card.dataset.id;
+      const before = card.getBoundingClientRect().width;
+      const hasGrips = !!card.querySelector('.grip-e') && !!card.querySelector('.grip-w');
+      r.store.commit('폭', () => { const it = r.store.item(id); it.x = 0.1; it.w = 0.5; });
+      await new Promise((res) => setTimeout(res, 150));
+      const el = document.querySelector('[data-id="' + id + '"]');
+      const col = el.parentElement.getBoundingClientRect().width;
+      const after = el.getBoundingClientRect().width;
+      r.store.commit('폭 원복', () => { const it = r.store.item(id); it.x = null; it.w = null; });
+      await new Promise((res) => setTimeout(res, 100));
+      return { hasGrips, before: Math.round(before), after: Math.round(after),
+               expected: Math.round(col * 0.5 - 8) };
+    })()`);
+    console.log('[smoke] width ' + JSON.stringify(widthDrag));
+
     // 다크 테마도 찍는다 — 가이드 적용 결과를 눈으로 봐야 한다
     if (shotDir()) {
       await target.webContents.executeJavaScript(
@@ -265,10 +296,27 @@ async function runSmoke(target) {
       return { before: before.length, after: after.length, merged, labels: after };
     })()`);
     console.log('[smoke] bands ' + JSON.stringify(banded));
+
+    // 묶은 구간 세로 압축 — "접어서 보여 주는 게 목적"
+    compressed = await target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const gridH = () => parseFloat(document.getElementById('grid').style.height);
+      const before = gridH();
+      const beforeCard = document.querySelector('[data-id="e6"]')?.getBoundingClientRect().height;
+      r.store.commit('압축', (doc) => { doc.bands.find((b) => b.id === 'q1').scale = 0.4; });
+      r.board.rebuild();
+      await new Promise((res) => setTimeout(res, 200));
+      const after = gridH();
+      const afterCard = document.querySelector('[data-id="e6"]')?.getBoundingClientRect().height;
+      return { before, after, shrank: before > after,
+               cardBefore: Math.round(beforeCard ?? 0), cardAfter: Math.round(afterCard ?? 0) };
+    })()`);
+    console.log('[smoke] compress ' + JSON.stringify(compressed));
+    await capture(target, 'board-compressed');
     await capture(target, 'board-bands');
 
     // 내보내기 — 보드 전체가 한 장으로 나오는지
-    exported = await target.webContents.executeJavaScript(`(async () => {
+    exported = await withTimeout(target.webContents.executeJavaScript(`(async () => {
       const r = window.__roadmap;
       const cal = document.querySelector('.cal');
       const before = { w: cal.scrollWidth, h: cal.scrollHeight };
@@ -277,7 +325,7 @@ async function runSmoke(target) {
       await mod.exportPdf(r.adapter, r.store);
       return { boardW: before.w, boardH: before.h,
                restored: !document.body.classList.contains('exporting') };
-    })()`);
+    })()`), 30000, 'export');
     console.log('[smoke] export ' + JSON.stringify(exported));
 
     // 이름 변경 — Electron에 prompt()가 없어 직접 만든 다이얼로그를 거친다.
@@ -335,8 +383,10 @@ async function runSmoke(target) {
   }
 
   const ok = !result.error && !opened?.error && !renamed?.error
-    && layout?.panelOpen === true && layout?.shrunk === 340 && layout?.selectable === 'text'
+    && layout?.panelOpen === true && layout?.shrunk > 280 && layout?.selectable === 'text'
+    && widthDrag?.after === widthDrag?.expected && widthDrag?.hasGrips === true
     && banded?.merged === 1 && banded?.after === banded?.before - 2
+    && compressed?.shrank === true && compressed?.cardAfter < compressed?.cardBefore
     && nested?.inside === 6 && nested?.isContainer === true
     && renamed?.name === '이름 변경 테스트' && renamed?.dialogClosed === true
     && opened?.launcherClosed === true

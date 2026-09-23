@@ -124,9 +124,9 @@ const round = (n) => Math.round(n * 10) / 10;
 /**
  * 두 카드 사이의 직교 경로를 만든다.
  *
- * 카드 사이 틈에만 그리면 간격이 4px밖에 안 되는 구간에서 화살표가 점처럼
- * 보인다. 그래서 양쪽 카드 **안쪽까지 물고 들어가** 길이를 확보한다.
- * 화살표는 카드 위에 그려지므로 걸친 부분이 그대로 보인다.
+ * 화살표는 **카드 밖으로만** 지나간다. 카드 안으로 파고들면 제목을 가려서
+ * 정작 읽어야 할 정보가 사라진다. 대신 길이는 카드 사이에 확보해 둔 간격
+ * (LAYOUT.cardGap)에서 얻는다.
  *
  * 같은 트랙 : 아래 → 위 (세로)
  * 다른 트랙 : 옆면 → 옆면 (가로)
@@ -134,23 +134,22 @@ const round = (n) => Math.round(n * 10) / 10;
  * @param {{x,y,w,h}} from 선행 카드
  * @param {{x,y,w,h}} to   후행 카드
  * @param {boolean} sameTrack
- * @param {number} bite 카드 안으로 파고드는 깊이(px)
+ * @param {number} bite 0보다 크면 그만큼 카드 안쪽에서 시작/끝난다 (기본 0)
  */
-export function routeBetween(from, to, sameTrack, bite = 22) {
+export function routeBetween(from, to, sameTrack, bite = 0) {
   const fromCx = from.x + from.w / 2;
   const toCx = to.x + to.w / 2;
   const fromCy = from.y + from.h / 2;
   const toCy = to.y + to.h / 2;
 
-  // 카드 높이/폭의 절반을 넘게 파고들면 반대쪽으로 튀어나온다
-  const biteV = (box) => Math.min(bite, box.h * 0.45);
-  const biteH = (box) => Math.min(bite, box.w * 0.45);
+  const biteV = (box) => Math.min(Math.max(bite, 0), box.h * 0.4);
+  const biteH = (box) => Math.min(Math.max(bite, 0), box.w * 0.4);
 
   if (sameTrack && to.y >= from.y + from.h - 1) {
-    const y1 = from.y + from.h - biteV(from);   // 선행 카드 안쪽에서 출발
-    const y2 = to.y + biteV(to);                // 후행 카드 안쪽에 도착
+    const y1 = from.y + from.h - biteV(from);
+    const y2 = to.y + biteV(to);
     if (Math.abs(fromCx - toCx) < 1) return [{ x: fromCx, y: y1 }, { x: toCx, y: y2 }];
-    const mid = (from.y + from.h + to.y) / 2;   // 방향 전환은 두 카드 사이에서
+    const mid = (from.y + from.h + to.y) / 2;
     return [
       { x: fromCx, y: y1 },
       { x: fromCx, y: mid },
@@ -167,7 +166,6 @@ export function routeBetween(from, to, sameTrack, bite = 22) {
     return [{ x: sx, y: fromCy }, { x: tx, y: toCy }];
   }
 
-  // 두 카드 사이 빈 공간에서 방향을 튼다
   const gapMid = ((goRight ? from.x + from.w : from.x) + (goRight ? to.x : to.x + to.w)) / 2;
   return [
     { x: sx, y: fromCy },

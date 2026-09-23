@@ -30,6 +30,10 @@ export function initToolbar({ store, view, actions }) {
     actions.render();
   });
 
+  // 글자 크기 — 구성 패널 안에만 두니 찾지 못한다는 이야기가 있어 툴바로 올렸다
+  $('fontDown').addEventListener('click', () => actions.nudgeFont(-0.1));
+  $('fontUp').addEventListener('click', () => actions.nudgeFont(+0.1));
+
   $('btnProjects').addEventListener('click', () => actions.openProjects());
   $('btnSelect').addEventListener('click', () => actions.toggleTextSelect());
   $('btnTracks').addEventListener('click', () => actions.openTracks());

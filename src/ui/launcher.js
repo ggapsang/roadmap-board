@@ -11,6 +11,7 @@ import { DEFAULT_ORGS } from '../config/index.js';
 import { SCHEMA_VERSION } from '../core/schema.js';
 import { $, el, clear, button, icon, ICONS } from './dom.js';
 import { toast } from './toast.js';
+import { toggleTheme } from './theme.js';
 import { askText } from './dialog.js';
 
 /** 빈 보드 — 오늘이 속한 달부터 6개월, 트랙 3개 */
@@ -47,6 +48,8 @@ export class Launcher {
 
     $('l-new-blank').addEventListener('click', () => this.#create());
     $('l-close').addEventListener('click', () => this.hide());
+    // 보드에 들어가지 않아도 테마를 바꿀 수 있어야 한다
+    $('l-theme').addEventListener('click', () => toggleTheme());
   }
 
   get visible() { return !this.root.hidden; }

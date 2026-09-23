@@ -14,7 +14,7 @@ import {
   DEFAULT_ORGS, DEFAULT_DISPLAY, DISPLAY_LIMITS,
 } from '../config/index.js';
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 /**
  * v0 = P0 시안 문서(version 필드 없음).
@@ -70,13 +70,26 @@ function v3_to_v4(doc) {
  */
 function v4_to_v5(doc) {
   for (const it of doc.items ?? []) {
-    it.parent = null;
-    it.x = null;
-    it.w = null;
-    it.align = 'middle';
-    it.showNote = false;
+    it.parent = it.parent ?? null;
+    it.x = it.x ?? null;
+    it.w = it.w ?? null;
+    it.align = it.align ?? 'middle';
+    it.showNote = it.showNote ?? false;
   }
   doc.version = 5;
+  return doc;
+}
+
+/**
+ * v6 = 트랙 너비(track.w)와 구간 높이 배율(band.scale).
+ *   track.w  트랙 컬럼의 너비(px). null이면 겹침 계산이 자동으로 정한다.
+ *   band.scale 묶은 구간의 세로 압축 배율. 1이면 그대로, 0.4면 40% 높이로 접는다.
+ */
+function v5_to_v6(doc) {
+  // 이미 값이 있으면 건드리지 않는다 (반입 문서가 앞선 필드를 가질 수 있다)
+  for (const t of doc.tracks ?? []) t.w = t.w ?? null;
+  for (const b of doc.bands ?? []) b.scale = b.scale ?? 1;
+  doc.version = 6;
   return doc;
 }
 
@@ -86,6 +99,7 @@ const MIGRATIONS = {
   2: v2_to_v3,
   3: v3_to_v4,
   4: v4_to_v5,
+  5: v5_to_v6,
 };
 
 export const ALIGNS = ['top', 'middle', 'bottom'];
@@ -123,6 +137,8 @@ export function normalize(doc) {
       from: b.from <= b.to ? b.from : b.to,
       to: b.from <= b.to ? b.to : b.from,
       label: typeof b.label === 'string' ? b.label : '',
+      // 세로 압축 배율 — 1이면 실제 기간대로, 작을수록 접힌다
+      scale: Number.isFinite(Number(b.scale)) ? Math.min(1, Math.max(0.15, Number(b.scale))) : 1,
     }))
     .sort((a, b) => a.from.localeCompare(b.from))
     .filter((b, i, arr) => {
@@ -156,7 +172,13 @@ export function normalize(doc) {
     let id = typeof t.id === 'string' && t.id ? t.id : `t${i}`;
     while (seenTrack.has(id)) id = `${id}_`;
     seenTrack.add(id);
-    return { ...t, id, lab: typeof t.lab === 'string' ? t.lab : '', name: typeof t.name === 'string' && t.name ? t.name : `트랙 ${i + 1}` };
+    const w = Number(t.w);
+    return {
+      ...t, id,
+      lab: typeof t.lab === 'string' ? t.lab : '',
+      name: typeof t.name === 'string' && t.name ? t.name : `트랙 ${i + 1}`,
+      w: Number.isFinite(w) && w > 0 ? Math.min(1200, Math.max(80, w)) : null,
+    };
   });
   if (!doc.tracks.length) {
     doc.tracks = [{ id: 't0', lab: '', name: '새 트랙 1' }];

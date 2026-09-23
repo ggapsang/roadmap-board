@@ -23,12 +23,13 @@ const ALIGN_CSS = { top: 'flex-start', middle: 'center', bottom: 'flex-end' };
  *   hasChildren 자식을 품는 카드인가
  */
 export function renderCard(item, ctx) {
-  const { origin, ppd, placement, selectedId, match, parent, hasChildren } = ctx;
+  const { origin, scale, placement, selectedId, match, parent, hasChildren } = ctx;
   const isMilestone = item.ty === 'ms';
 
-  // 자식은 상위 카드 기준으로, 최상위는 보드 기준으로 세로 위치를 잡는다
-  const baseDay = parent ? dayIndex(parent.s, origin) : 0;
-  const top = (dayIndex(item.s, origin) - baseDay) * ppd;
+  // 자식은 상위 카드 기준으로, 최상위는 보드 기준으로 세로 위치를 잡는다.
+  // 접힌 구간이 있으면 눈금이 균일하지 않으므로 TimeScale을 거친다.
+  const base = parent ? scale.yOf(parent.s) : 0;
+  const top = scale.yOf(item.s) - base;
 
   const node = el('div.ev', {
     dataset: { id: item.id },
@@ -68,8 +69,7 @@ export function renderCard(item, ctx) {
     return node;
   }
 
-  const days = Math.max(1, dayIndex(item.e, origin) - dayIndex(item.s, origin) + 1);
-  const height = Math.max(LAYOUT.minCardHeight, days * ppd - 4);
+  const height = Math.max(LAYOUT.minCardHeight, scale.span(item.s, item.e) - LAYOUT.cardGap);
 
   node.style.height = height + 'px';
   node.style.left = `calc(${left}% + var(--u1))`;

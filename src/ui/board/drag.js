@@ -12,7 +12,7 @@
 import { dayIndex, dateAt } from '../../core/dates.js';
 
 export function attachDrag(grid, {
-  store, view, getOrigin, getTotalDays, onDragEnd,
+  store, view, getOrigin, getTotalDays, getScale, onDragEnd,
 }) {
   let drag = null;
 
@@ -66,8 +66,9 @@ export function attachDrag(grid, {
 
   grid.addEventListener('pointermove', (ev) => {
     if (!drag) return;
-    const ppd = view.ppd;
-    const dDays = Math.round((ev.clientY - drag.y) / ppd);
+    // 접힌 구간에서는 1px이 하루보다 길다. 눈금을 거쳐 일수로 환산한다.
+    const scale = getScale();
+    const dDays = Math.round(scale.dayAt(scale.y(drag.startDay) + (ev.clientY - drag.y)) - drag.startDay);
     const dTrack = trackIndexAt(ev.clientX) - drag.startTrack;
     const dRatio = (ev.clientX - drag.x) / drag.hostWidth;
     const horizontal = drag.mode.startsWith('width');

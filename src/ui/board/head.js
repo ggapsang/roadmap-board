@@ -5,7 +5,7 @@ import { el, clear, button, ICONS } from '../dom.js';
  * @param {HTMLElement} head
  * @param {object} ctx {tracks, items, selectedTrack, template, onSelect, onAddTrack}
  */
-export function renderHead(head, { tracks, items, selectedTrack, template, onSelect, onAddTrack }) {
+export function renderHead(head, { tracks, items, selectedTrack, template, onSelect, onAddTrack, onResize }) {
   head.style.gridTemplateColumns = template;
   clear(head);
   head.append(el('div.cnr'), el('div.cnr'));
@@ -27,6 +27,22 @@ export function renderHead(head, { tracks, items, selectedTrack, template, onSel
       el('span.nm', { text: track.name }),
       el('span.cnt', { text: String(counts.get(track.id) ?? 0) }),
     ]);
+
+    // 너비 조절 손잡이 — 트랙 이름이 길거나 일정이 많을 때 넓혀 쓴다
+    if (onResize) {
+      cell.append(el('div.th-resize', {
+        title: '끌어서 트랙 너비 조절 · 더블클릭하면 자동',
+        on: {
+          pointerdown: (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            onResize.start(track.id, ev, cell.getBoundingClientRect().width);
+          },
+          dblclick: (ev) => { ev.stopPropagation(); onResize.reset(track.id); },
+          click: (ev) => ev.stopPropagation(),
+        },
+      }));
+    }
     head.append(cell);
   }
 

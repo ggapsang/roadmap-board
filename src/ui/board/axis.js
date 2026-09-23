@@ -49,42 +49,52 @@ export function buildBands(origin, endDate, totalDays, userBands = []) {
 /**
  * @param {object} ctx {lines, gutM, gutW, grid, origin, endDate, totalDays, ppd, bands}
  */
-export function renderAxis({ lines, gutM, gutW, grid, origin, endDate, totalDays, ppd, bands = [] }) {
-  grid.style.height = totalDays * ppd + 'px';
+export function renderAxis({ lines, gutM, gutW, grid, origin, endDate, totalDays, ppd, bands = [], scale }) {
+  grid.style.height = scale.height + 'px';
   clear(lines); clear(gutM); clear(gutW);
 
-  // 주 행선 + 주 시작일 라벨
+  // 주 행선 + 주 시작일 라벨. 접힌 구간에서는 줄이 촘촘해지므로 라벨을 솎아낸다.
+  let lastLabelY = -Infinity;
   for (let i = 0; i < totalDays; i += 7) {
     const date = new Date(origin.getTime() + i * DAY);
+    const y = scale.y(i);
     const isMonthHead = date.getDate() <= 7;
-    lines.append(el('i', { className: isMonthHead ? 'm' : '', style: { top: i * ppd + 'px' } }));
-    gutW.append(el('s', { text: shortMD(formatDate(date)), style: { top: i * ppd + 'px' } }));
+    lines.append(el('i', { className: isMonthHead ? 'm' : '', style: { top: y + 'px' } }));
+    if (y - lastLabelY >= 14) {
+      gutW.append(el('s', { text: shortMD(formatDate(date)), style: { top: y + 'px' } }));
+      lastLabelY = y;
+    }
   }
 
   // 왼쪽 구간 칸
   for (const band of buildBands(origin, endDate, totalDays, bands)) {
+    const top = scale.y(band.from);
     const cell = el('b', {
-      style: { top: band.from * ppd + 'px', height: (band.to - band.from) * ppd + 'px' },
+      style: { top: top + 'px', height: (scale.y(band.to) - top) + 'px' },
       dataset: { from: String(band.from), to: String(band.to), band: band.bandId ?? '' },
       className: band.bandId ? 'merged' : '',
-      title: band.bandId ? '더블클릭하면 이름을 바꾸고, 우클릭하면 해제합니다' : '끌어서 여러 달을 하나로 묶습니다',
+      title: band.bandId
+        ? '아래 가장자리를 끌면 높이를 줄입니다 · 더블클릭 이름 변경 · 우클릭 해제'
+        : '끌어서 여러 달을 하나로 묶습니다',
     }, [
       el('u', {}, [
         document.createTextNode(band.label),
         band.sub ? el('em', { text: band.sub }) : null,
       ]),
+      // 묶은 구간만 높이를 접을 수 있다
+      band.bandId ? el('div.band-resize', { title: '끌어서 높이 조절 · 더블클릭하면 원래대로' }) : null,
     ]);
     gutM.append(cell);
   }
 }
 
 /** 오늘 기준선. 범위 밖이면 null. */
-export function makeTodayLine(origin, totalDays, ppd) {
+export function makeTodayLine(origin, totalDays, scale) {
   const t = today();
   const i = Math.round((t - origin) / DAY);
   if (i < 0 || i > totalDays) return null;
   return el('div.now', {
-    style: { top: i * ppd + 'px' },
+    style: { top: scale.y(i) + 'px' },
     html: `<span>오늘 ${shortMD(formatDate(t))}</span>`,
   });
 }

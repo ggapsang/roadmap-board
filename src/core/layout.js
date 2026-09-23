@@ -113,10 +113,14 @@ export function laneWidthFactor(lanes) {
   return Math.min(LAYOUT.laneWidthMax, 1 + LAYOUT.laneGrowth * (Math.max(1, lanes) - 1));
 }
 
-/** CSS grid-template-columns 문자열 생성 */
+/**
+ * CSS grid-template-columns 문자열 생성.
+ * track.w가 지정돼 있으면 그 폭을 쓰고, 없으면 레인 수에 비례해 자동으로 잡는다.
+ */
 export function gridTemplate(tracks, trackLanes) {
   const cols = tracks
     .map((t) => {
+      if (t.w) return `${t.w}px`;
       const f = laneWidthFactor(trackLanes.get(t.id) ?? 1).toFixed(2);
       return `minmax(calc(var(--colmin) * ${f}),${f}fr)`;
     })

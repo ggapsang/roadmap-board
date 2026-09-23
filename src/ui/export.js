@@ -40,6 +40,10 @@ const stamp = () => new Date().toISOString().slice(0, 10);
 const fileBase = (store) =>
   (store.meta.name || 'roadmap').replace(/[\/:*?"<>|]/g, '_');
 
+/**
+ * 주의: PNG 캡처는 창이 화면에 보이는 상태여야 한다. Chromium이 숨겨진 창에는
+ * 프레임을 만들지 않아 캡처가 응답하지 않는다.
+ */
 export async function exportPng(adapter, store) {
   if (!adapter.exportPng) { toast('PNG 내보내기는 앱에서만 됩니다', 'warn'); return; }
   try {

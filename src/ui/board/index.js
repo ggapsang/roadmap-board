@@ -12,6 +12,7 @@
  * (P0 시안은 buildHead()를 drawArrows() 뒤에 호출해 한 프레임 어긋났다.)
  */
 import { parseDate, dayIndex, dateAt } from '../../core/dates.js';
+import { TimeScale } from '../../core/timescale.js';
 import { computeLayout, gridTemplate } from '../../core/layout.js';
 import { newId } from '../../core/schema.js';
 import { LAYOUT, DEFAULT_STATUS, DEFAULT_TYPE } from '../../config/index.js';
@@ -43,24 +44,72 @@ export class Board {
     attachBandEditing(gutM, {
       store,
       getOrigin: () => this.origin,
+      getScale: () => this.scale,
       onChange: () => this.rebuild(),
     });
     attachDrag(grid, {
       store, view,
       getOrigin: () => this.origin,
       getTotalDays: () => this.totalDays,
+      getScale: () => this.scale,
       onDragEnd: (id) => this.handlers.openItem(id),
     });
   }
+
+  /**
+   * 트랙 너비 드래그.
+   * 폭은 문서에 저장한다 — 보드를 어떻게 보고 싶은지는 프로젝트마다 다르고,
+   * 반출한 JSON을 다른 PC에서 열어도 같은 모양이어야 한다.
+   */
+  #trackResizer = {
+    start: (trackId, ev, startWidth) => {
+      if (this.store.readonly) return;
+      const startX = ev.clientX;
+      const handle = ev.currentTarget;
+      handle.classList.add('dragging');
+      handle.setPointerCapture(ev.pointerId);
+
+      let began = false;
+      const move = (e) => {
+        const next = Math.min(1200, Math.max(120, Math.round(startWidth + (e.clientX - startX))));
+        if (!began) { this.store.begin('트랙 너비'); began = true; }
+        this.store.commit('트랙 너비', (doc) => {
+          const track = doc.tracks.find((t) => t.id === trackId);
+          if (track) track.w = next;
+        });
+      };
+      const up = () => {
+        handle.classList.remove('dragging');
+        handle.removeEventListener('pointermove', move);
+        handle.removeEventListener('pointerup', up);
+        if (began) this.store.end();
+      };
+      handle.addEventListener('pointermove', move);
+      handle.addEventListener('pointerup', up);
+    },
+    reset: (trackId) => {
+      this.store.commit('트랙 너비 자동', (doc) => {
+        const track = doc.tracks.find((t) => t.id === trackId);
+        if (track) track.w = null;
+      });
+    },
+  };
 
   get origin() { return parseDate(this.store.meta.start); }
   get endDate() { return parseDate(this.store.meta.end); }
   get totalDays() { return dayIndex(this.store.meta.end, this.origin); }
 
+  /** 일 인덱스 ↔ 픽셀. 묶어서 접은 구간이 있으면 그만큼 눌린다. */
+  #buildScale() {
+    this.scale = new TimeScale(this.origin, this.totalDays, this.view.ppd, this.store.doc.bands ?? []);
+    return this.scale;
+  }
+
   // ── 렌더 ────────────────────────────────────────────────
 
   /** 트랙/기간/배율이 바뀐 경우: 골격부터 전부 다시. */
   rebuild() {
+    this.#buildScale();
     this.#computeLayout();
     this.#renderHead();
     this.#renderSkeleton();
@@ -69,6 +118,7 @@ export class Board {
 
   /** 일정만 바뀐 경우. 컬럼 폭이 달라질 수 있어 head도 갱신한다. */
   render() {
+    this.#buildScale();
     this.#computeLayout();
     this.#renderHead();
     this.renderCards();
@@ -90,6 +140,7 @@ export class Board {
       template,
       onSelect: (id) => this.handlers.openTrack(id),
       onAddTrack: () => this.handlers.addTrack(),
+      onResize: this.#trackResizer,
     });
   }
 
@@ -100,6 +151,7 @@ export class Board {
       origin: this.origin, endDate: this.endDate,
       totalDays: this.totalDays, ppd: this.view.ppd,
       bands: this.store.doc.bands ?? [],
+      scale: this.scale,
     });
 
     for (const node of this.grid.querySelectorAll('.col,.pad,.now,.arrows')) node.remove();
@@ -113,7 +165,7 @@ export class Board {
     this.grid.append(el('div.pad'));
     this.grid.append(this.arrowLayer);
 
-    const now = makeTodayLine(this.origin, this.totalDays, this.view.ppd);
+    const now = makeTodayLine(this.origin, this.totalDays, this.scale);
     if (now) this.grid.append(now);
   }
 
@@ -129,6 +181,7 @@ export class Board {
     const ctx = {
       origin: this.origin,
       ppd: this.view.ppd,
+      scale: this.scale,
       placement,
       selectedId: this.view.selectedItem,
     };
@@ -183,7 +236,7 @@ export class Board {
       const col = ev.target.closest('.col');
       if (!col) return;
       const rect = col.getBoundingClientRect();
-      const day = Math.max(0, Math.round((ev.clientY - rect.top) / this.view.ppd));
+      const day = Math.max(0, Math.round(this.scale.dayAt(ev.clientY - rect.top)));
       this.createItem(col.dataset.t, day);
     });
 
@@ -217,6 +270,6 @@ export class Board {
   /** 오늘 위치로 스크롤 */
   scrollToToday(scroller) {
     const i = Math.round((new Date().setHours(0, 0, 0, 0) - this.origin) / 86400000);
-    scroller.scrollTop = Math.max(0, i * this.view.ppd - 80);
+    scroller.scrollTop = Math.max(0, (this.scale?.y(i) ?? 0) - 80);
   }
 }
