@@ -41,7 +41,15 @@ export function attachDrag(grid, {
     const mode = cls.contains('grip') ? 'size'
       : cls.contains('grip-top') ? 'size-top'
       : cls.contains('grip-span') ? 'span'
+      : cls.contains('grip-hw') ? 'hw-left'
+      : cls.contains('grip-he') ? 'hw-right'
       : 'move';
+
+    // 자식 카드의 가로 폭은 상위 카드에 대한 비율로 다룬다
+    const host = card.parentElement;
+    const hostWidth = host?.getBoundingClientRect().width || 1;
+    const rect = card.getBoundingClientRect();
+    const hostLeft = host?.getBoundingClientRect().left ?? 0;
 
     drag = {
       id: item.id,
@@ -52,6 +60,9 @@ export function attachDrag(grid, {
       endDay: dayIndex(item.e, origin),
       startTrack: trackIndexAt(ev.clientX),
       homeTrack: store.trackIndex(item.t),
+      hostWidth,
+      x0: item.x ?? (rect.left - hostLeft) / hostWidth,
+      w0: item.w ?? rect.width / hostWidth,
       moved: false,
     };
     card.setPointerCapture(ev.pointerId);
@@ -65,6 +76,29 @@ export function attachDrag(grid, {
     const dDays = Math.round(scale.dayAt(scale.y(drag.startDay) + (ev.clientY - drag.y)) - drag.startDay);
     const pointerTrack = trackIndexAt(ev.clientX);
     const dTrack = pointerTrack - drag.startTrack;
+
+    // 상위 카드 안에서의 가로 위치·폭
+    if (drag.mode.startsWith('hw')) {
+      const dx = ev.clientX - drag.x;
+      if (Math.abs(dx) < 2 && !drag.moved) return;
+      if (!drag.moved) { store.begin('가로 폭'); drag.moved = true; }
+      const MIN = 0.08;
+      const ratio = dx / drag.hostWidth;
+      store.commit('가로 폭', () => {
+        const item = store.item(drag.id);
+        if (!item) return;
+        if (drag.mode === 'hw-right') {
+          item.x = drag.x0;
+          item.w = Math.min(1 - drag.x0, Math.max(MIN, drag.w0 + ratio));
+        } else {
+          const right = drag.x0 + drag.w0;
+          const nextX = Math.min(right - MIN, Math.max(0, drag.x0 + ratio));
+          item.x = nextX;
+          item.w = right - nextX;
+        }
+      });
+      return;
+    }
 
     // 걸침은 트랙 칸 단위로만 바뀐다. 커서가 올라간 트랙까지 덮는다.
     if (drag.mode === 'span') {
@@ -87,7 +121,8 @@ export function attachDrag(grid, {
     // 드래그 전체를 되돌리기 1단계로 묶는다 (기획안 §5)
     if (!drag.moved) {
       const label = drag.mode.startsWith('size') ? '기간 조절'
-        : drag.mode === 'span' ? '트랙 걸침' : '일정 이동';
+        : drag.mode === 'span' ? '트랙 걸침'
+        : drag.mode.startsWith('hw') ? '가로 폭' : '일정 이동';
       store.begin(label);
       drag.moved = true;
     }

@@ -12,6 +12,21 @@ import { el } from '../dom.js';
 const ALIGN_CSS = { top: 'flex-start', middle: 'center', bottom: 'flex-end' };
 
 /**
+ * 좌우 가장자리 손잡이.
+ *   최상위 카드 — 오른쪽만. 트랙 걸침을 칸 단위로 늘린다.
+ *   자식 카드   — 좌우 모두. 상위 카드 안에서의 가로 위치·폭을 잡는다.
+ *                 트랙 걸침이 의미가 없는 자리라 다른 수단이 필요하다.
+ */
+function addHorizontalGrips(node, parent) {
+  if (parent) {
+    node.append(el('div.grip-hw', { attrs: { 'aria-hidden': 'true' }, title: '끌어서 왼쪽 가장자리 조절 · 더블클릭하면 자동' }));
+    node.append(el('div.grip-he', { attrs: { 'aria-hidden': 'true' }, title: '끌어서 폭 조절 · 더블클릭하면 자동' }));
+  } else {
+    node.append(el('div.grip-span', { attrs: { 'aria-hidden': 'true' }, title: '끌어서 트랙 걸침 조절' }));
+  }
+}
+
+/**
  * @param {object} item
  * @param {object} ctx
  *   origin      보드 시작일
@@ -45,8 +60,15 @@ export function renderCard(item, ctx) {
   if (match === false) node.classList.add('dim');
 
   const { lane = 0, lanes = 1 } = placement.get(item.id) ?? {};
-  const left = (lane * 100) / lanes;
-  const width = 100 / lanes;
+
+  /**
+   * 상위 일정 안에 든 카드는 트랙 걸침(sp)이 의미가 없다. 대신 상위 카드 안에서의
+   * 가로 위치·폭을 비율(x, w)로 직접 잡을 수 있다. 값이 없으면 겹침 계산이 정한다.
+   * 최상위 카드는 트랙 걸침으로 폭을 정하므로 이 비율을 쓰지 않는다.
+   */
+  const manual = !!parent && (item.x != null || item.w != null);
+  const left = manual ? (item.x ?? 0) * 100 : (lane * 100) / lanes;
+  const width = manual ? (item.w ?? 1 / lanes) * 100 : 100 / lanes;
 
   /**
    * 여러 트랙에 걸치는 일정은 퍼센트로 잡을 수 없다.
@@ -83,7 +105,7 @@ export function renderCard(item, ctx) {
       el('span.meta', { text: shortMD(item.s) }),
     );
     node.title = `${item.ti} · ${item.s} · ${item.og}`;
-    if (!parent) node.append(el('div.grip-span', { attrs: { 'aria-hidden': 'true' } }));
+    addHorizontalGrips(node, parent);
     return node;
   }
 
@@ -115,8 +137,7 @@ export function renderCard(item, ctx) {
   // 위·아래 가장자리 = 기간. 위를 끌면 시작일이, 아래를 끌면 종료일이 움직인다.
   node.append(el('div.grip-top', { attrs: { 'aria-hidden': 'true' } }));
   node.append(el('div.grip', { attrs: { 'aria-hidden': 'true' } }));
-  // 오른쪽 가장자리 = 트랙 걸침. 자유로운 px가 아니라 트랙 칸 단위로 붙는다.
-  if (!parent) node.append(el('div.grip-span', { attrs: { 'aria-hidden': 'true' } }));
+  addHorizontalGrips(node, parent);
   node.title = `${item.ti}\n${item.s} – ${item.e} · ${item.og}${item.pg ? ' · ' + item.pg + '%' : ''}`;
   return node;
 }

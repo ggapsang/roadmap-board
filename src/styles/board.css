@@ -188,3 +188,17 @@ body.resizing-col .th-resize{opacity:1}
 .gut-m b.merged:hover .band-resize,.band-resize.dragging{opacity:1}
 .band-resize::after{content:"";height:2px;width:60%;border-radius:2px;background:var(--accent)}
 @media (prefers-reduced-motion:reduce){.band-resize{transition:none}}
+
+/* 자식 카드의 가로 위치·폭 손잡이 — 상위 카드 안에서만 쓴다.
+   최상위 카드는 트랙 걸침(.grip-span)으로 폭을 정한다. */
+.ev.child>.grip-hw,.ev.child>.grip-he{position:absolute;top:var(--u2);bottom:var(--u2);
+  width:var(--u2);cursor:ew-resize;display:flex;align-items:center;justify-content:center;
+  opacity:0;transition:opacity .12s ease;z-index:3}
+.ev.child>.grip-hw{left:0}
+.ev.child>.grip-he{right:0}
+.ev.child:hover>.grip-hw,.ev.child:hover>.grip-he{opacity:.55}
+.ev.child>.grip-hw:hover,.ev.child>.grip-he:hover{opacity:1}
+.ev.child>.grip-hw::after,.ev.child>.grip-he::after{content:"";width:3px;height:20px;
+  border-radius:2px;background:var(--accent)}
+.select-text .ev.child>.grip-hw,.select-text .ev.child>.grip-he{display:none}
+@media (prefers-reduced-motion:reduce){.ev.child>.grip-hw,.ev.child>.grip-he{transition:none}}

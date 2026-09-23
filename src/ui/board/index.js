@@ -289,6 +289,19 @@ export class Board {
       if (card) this.handlers.openItem(card.dataset.id);
     });
 
+    // 자식 카드의 가로 폭 손잡이를 더블클릭하면 자동 배치로 되돌린다
+    this.grid.addEventListener('dblclick', (ev) => {
+      const cls = ev.target.classList;
+      if (cls.contains('grip-hw') || cls.contains('grip-he')) {
+        const card = ev.target.closest('.ev');
+        ev.stopPropagation();
+        this.store.commit('가로 폭 자동', () => {
+          const item = this.store.item(card.dataset.id);
+          if (item) { item.x = null; item.w = null; }
+        });
+      }
+    });
+
     this.grid.addEventListener('dblclick', (ev) => {
       if (this.view.textSelect) return;
       if (ev.target.closest('.ev')) return;
