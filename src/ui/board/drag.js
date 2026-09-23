@@ -1,8 +1,10 @@
 /**
  * 카드 드래그.
  *
- *   카드 본체   상하 = 일 단위 스냅 이동, 좌우 = 트랙 이동
- *   아래 손잡이 기간 조절 (종료일)
+ *   카드 본체     상하 = 일 단위 스냅 이동, 좌우 = 트랙 이동
+ *   위 손잡이     시작일 조절
+ *   아래 손잡이   종료일 조절
+ *   오른쪽 손잡이 트랙 걸침 (칸 단위로 붙는다)
  *
  * 트랙 이동은 포인터가 실제로 올라가 있는 컬럼을 찾아 판정한다.
  * 레인 확장 때문에 컬럼 폭이 트랙마다 다르므로, 고정 폭으로 나눠 델타를 구하면
@@ -35,7 +37,11 @@ export function attachDrag(grid, {
     if (!item) return;
 
     const origin = getOrigin();
-    const mode = ev.target.classList.contains('grip') ? 'size' : 'move';
+    const cls = ev.target.classList;
+    const mode = cls.contains('grip') ? 'size'
+      : cls.contains('grip-top') ? 'size-top'
+      : cls.contains('grip-span') ? 'span'
+      : 'move';
 
     drag = {
       id: item.id,
@@ -45,6 +51,7 @@ export function attachDrag(grid, {
       startDay: dayIndex(item.s, origin),
       endDay: dayIndex(item.e, origin),
       startTrack: trackIndexAt(ev.clientX),
+      homeTrack: store.trackIndex(item.t),
       moved: false,
     };
     card.setPointerCapture(ev.pointerId);
@@ -56,12 +63,32 @@ export function attachDrag(grid, {
     // 접힌 구간에서는 1px이 하루보다 길다. 눈금을 거쳐 일수로 환산한다.
     const scale = getScale();
     const dDays = Math.round(scale.dayAt(scale.y(drag.startDay) + (ev.clientY - drag.y)) - drag.startDay);
-    const dTrack = trackIndexAt(ev.clientX) - drag.startTrack;
+    const pointerTrack = trackIndexAt(ev.clientX);
+    const dTrack = pointerTrack - drag.startTrack;
+
+    // 걸침은 트랙 칸 단위로만 바뀐다. 커서가 올라간 트랙까지 덮는다.
+    if (drag.mode === 'span') {
+      const nextSpan = Math.max(1, Math.min(
+        store.tracks.length - drag.homeTrack,
+        pointerTrack - drag.homeTrack + 1,
+      ));
+      const item0 = store.item(drag.id);
+      if (!drag.moved && item0 && nextSpan === item0.sp) return;
+      if (!drag.moved) { store.begin('트랙 걸침'); drag.moved = true; }
+      store.commit('트랙 걸침', () => {
+        const item = store.item(drag.id);
+        if (item) item.sp = nextSpan;
+      });
+      return;
+    }
+
     if (!dDays && !dTrack && !drag.moved) return;
 
     // 드래그 전체를 되돌리기 1단계로 묶는다 (기획안 §5)
     if (!drag.moved) {
-      store.begin(drag.mode === 'size' ? '기간 조절' : '일정 이동');
+      const label = drag.mode.startsWith('size') ? '기간 조절'
+        : drag.mode === 'span' ? '트랙 걸침' : '일정 이동';
+      store.begin(label);
       drag.moved = true;
     }
 
@@ -79,6 +106,11 @@ export function attachDrag(grid, {
         const maxTrack = store.tracks.length - item.sp;
         const k = Math.max(0, Math.min(maxTrack, drag.startTrack + dTrack));
         item.t = store.tracks[k].id;
+      } else if (drag.mode === 'size-top') {
+        // 위쪽을 끌면 시작일이 움직인다. 종료일은 그대로.
+        if (item.ty === 'ms') return;
+        const s = Math.max(0, Math.min(drag.endDay, drag.startDay + dDays));
+        item.s = dateAt(origin, s);
       } else {
         item.e = dateAt(origin, Math.max(drag.startDay, Math.min(total - 1, drag.endDay + dDays)));
         if (item.ty === 'ms') item.e = item.s;

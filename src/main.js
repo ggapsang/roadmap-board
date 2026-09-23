@@ -206,7 +206,13 @@ async function boot() {
   }
   const nudgeFont = (delta) => setFont((store.meta.display?.fontScale ?? 1) + delta);
 
-  addEventListener('resize', () => board.redrawArrows());
+  // 걸치는 카드는 실제 컬럼 너비로 px를 잡으므로 창 크기가 바뀌면 다시 그려야 한다
+  let resizeTimer = null;
+  addEventListener('resize', () => {
+    board.redrawArrows();
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => refresh(), 120);
+  });
 
   // ── 첫 화면 ─────────────────────────────────────────────
 

@@ -189,6 +189,9 @@ async function runSmoke(target) {
   let nested = null;
   let trackResize = null;
   let spanEdit = null;
+  let newTrack = null;
+  let spanDrag = null;
+  let edgeDrag = null;
   let result;
   try {
     await new Promise((r) => setTimeout(r, 600));
@@ -304,6 +307,87 @@ async function runSmoke(target) {
       return { before, after, label: document.querySelector('label[for="i-span"]')?.textContent };
     })()`), 20000, 'span');
     console.log('[smoke] span ' + JSON.stringify(spanEdit));
+
+    // 위 가장자리 드래그 = 시작일, 아래 = 종료일
+    edgeDrag = await withTimeout(target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const grid = document.getElementById('grid');
+      const card = document.querySelector('.col > .ev:not(.ms)');
+      const id = card.dataset.id;
+      const it = () => r.store.item(id);
+      const before = { s: it().s, e: it().e };
+      const ppd = r.view.ppd;
+
+      const pull = async (selector, dyDays) => {
+        const el = document.querySelector('[data-id="' + id + '"]');
+        const g = el.querySelector(selector);
+        if (!g) return '손잡이 없음: ' + selector;
+        const b = g.getBoundingClientRect();
+        const at = (y) => ({ bubbles: true, clientX: b.left + b.width / 2, clientY: y, button: 0 });
+        g.dispatchEvent(new PointerEvent('pointerdown', at(b.top + 2)));
+        grid.dispatchEvent(new PointerEvent('pointermove', at(b.top + 2 + dyDays * ppd)));
+        await new Promise((res) => setTimeout(res, 100));
+        grid.dispatchEvent(new PointerEvent('pointerup', at(b.top + 2 + dyDays * ppd)));
+        await new Promise((res) => setTimeout(res, 150));
+        return null;
+      };
+
+      await pull('.grip-top', 4);        // 시작일을 4일 뒤로
+      const afterTop = { s: it().s, e: it().e };
+      await pull('.grip', 5);            // 종료일을 5일 뒤로
+      const afterBottom = { s: it().s, e: it().e };
+
+      r.store.commit('원복', () => { it().s = before.s; it().e = before.e; });
+      return { before, afterTop, afterBottom,
+               startMoved: afterTop.s !== before.s && afterTop.e === before.e,
+               endMoved: afterBottom.e !== afterTop.e && afterBottom.s === afterTop.s };
+    })()`), 20000, 'edge-drag');
+    console.log('[smoke] edge-drag ' + JSON.stringify(edgeDrag));
+
+    // 트랙 걸침 드래그 — 오른쪽 가장자리를 끌면 칸 단위로 붙는가
+    spanDrag = await withTimeout(target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const card = document.querySelector('.col > .ev:not(.ms)');
+      const id = card.dataset.id;
+      r.store.commit('초기화', () => { r.store.item(id).sp = 1; });
+      await new Promise((res) => setTimeout(res, 150));
+      const el = () => document.querySelector('[data-id="' + id + '"]');
+      const grip = el().querySelector('.grip-span');
+      if (!grip) return { error: 'grip-span 없음' };
+      const box = grip.getBoundingClientRect();
+      const cols = [...document.querySelectorAll('.col')].map((c) => c.getBoundingClientRect());
+      const at = (x) => ({ bubbles: true, clientX: x, clientY: box.top + 20, button: 0 });
+      const grid = document.getElementById('grid');
+      // pointerdown은 손잡이에 쏴야 한다 — 핸들러가 ev.target으로 모드를 가른다
+      grip.dispatchEvent(new PointerEvent('pointerdown', at(box.left + 2)));
+      // 세 번째 트랙 한가운데로 끈다
+      grid.dispatchEvent(new PointerEvent('pointermove', at(cols[2].left + cols[2].width / 2)));
+      await new Promise((res) => setTimeout(res, 120));
+      grid.dispatchEvent(new PointerEvent('pointerup', at(cols[2].left + cols[2].width / 2)));
+      await new Promise((res) => setTimeout(res, 150));
+      const sp = r.store.item(id).sp;
+      const px = Math.round(el().getBoundingClientRect().width);
+      r.store.commit('원복', () => { r.store.item(id).sp = 2; });
+      return { sp, px, colW: Math.round(cols[0].width) };
+    })()`), 20000, 'span-drag');
+    console.log('[smoke] span-drag ' + JSON.stringify(spanDrag));
+
+    // 트랙을 새로 추가하면 그 트랙에 카드가 들어가는가
+    newTrack = await withTimeout(target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const before = document.querySelectorAll('.col').length;
+      document.getElementById('t-add').click();
+      await new Promise((res) => setTimeout(res, 250));
+      const after = document.querySelectorAll('.col').length;
+      const id = r.store.tracks[r.store.tracks.length - 1].id;
+      const hasColumn = !!document.querySelector('.col[data-t="' + id + '"]');
+      // 그 트랙에 일정을 만들어 본다
+      const item = r.board.createItem(id, 10);
+      await new Promise((res) => setTimeout(res, 200));
+      const drawn = !!document.querySelector('.col[data-t="' + id + '"] [data-id="' + item.id + '"]');
+      return { before, after, hasColumn, drawn };
+    })()`), 20000, 'new-track');
+    console.log('[smoke] new-track ' + JSON.stringify(newTrack));
 
     // 다크 테마도 찍는다 — 가이드 적용 결과를 눈으로 봐야 한다
     if (shotDir()) {
@@ -421,6 +505,9 @@ async function runSmoke(target) {
     && layout?.panelOpen === true && layout?.shrunk > 280 && layout?.selectable === 'text'
     && trackResize?.grew === true && trackResize?.reset === null
     && spanEdit?.after?.sp === 3 && spanEdit?.after?.px > spanEdit?.before?.px
+    && newTrack?.after === newTrack?.before + 1 && newTrack?.hasColumn === true
+    && newTrack?.drawn === true && spanDrag?.sp === 3
+    && edgeDrag?.startMoved === true && edgeDrag?.endMoved === true
     && banded?.merged === 1 && banded?.after === banded?.before - 2
     && compressed?.shrank === true && compressed?.cardAfter < compressed?.cardBefore
     && nested?.inside === 6 && nested?.isContainer === true

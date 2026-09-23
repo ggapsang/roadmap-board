@@ -127,12 +127,26 @@ export class Board {
     this.renderCards();
   }
 
-  /** 일정만 바뀐 경우. 컬럼 폭이 달라질 수 있어 head도 갱신한다. */
+  /**
+   * 일정만 바뀐 경우. 컬럼 폭이 달라질 수 있어 head도 갱신한다.
+   *
+   * 트랙이 늘거나 줄거나 순서가 바뀌었으면 본문 컬럼(.col)까지 다시 만든다.
+   * 헤더만 갱신하면 새 트랙에 카드가 들어갈 자리가 없어서, 그 트랙에는
+   * 카드가 그려지지도 않고 빈 칸을 더블클릭해도 일정이 생기지 않는다.
+   */
   render() {
     this.#buildScale();
     this.#computeLayout();
     this.#renderHead();
+    if (!this.#columnsMatchTracks()) this.#renderSkeleton();
     this.renderCards();
+  }
+
+  #columnsMatchTracks() {
+    const tracks = this.store.tracks;
+    if (this.columns.size !== tracks.length) return false;
+    const rendered = [...this.grid.querySelectorAll('.col')].map((c) => c.dataset.t);
+    return rendered.length === tracks.length && rendered.every((id, i) => id === tracks[i].id);
   }
 
   #computeLayout() {
@@ -199,6 +213,7 @@ export class Board {
 
     const byId = new Map(this.store.items.map((i) => [i.id, i]));
     const cardEls = new Map();
+    const colWidth = this.#columnWidths();
 
     const ordered = [...this.store.items].sort(
       (a, b) => (depthOf.get(a.id) ?? 0) - (depthOf.get(b.id) ?? 0),
@@ -217,6 +232,7 @@ export class Board {
         match: this.view.matches(item),
         parent,
         hasChildren: (childrenOf.get(item.id) ?? []).length > 0,
+        spanBox: parent ? null : this.#spanBox(item, placement.get(item.id), colWidth),
       });
       host.append(node);
       cardEls.set(item.id, node);
@@ -224,6 +240,38 @@ export class Board {
 
     // 카드가 붙은 뒤에야 offsetLeft/offsetTop이 확정된다
     drawArrows(this.arrowLayer, this.grid, this.store.items, this.store.meta.display);
+  }
+
+  /** 각 트랙 컬럼의 실제 너비(px) */
+  #columnWidths() {
+    const widths = new Map();
+    for (const [id, col] of this.columns) widths.set(id, col.offsetWidth);
+    return widths;
+  }
+
+  /**
+   * 여러 트랙에 걸치는 카드의 좌표를 실제 컬럼 너비로 계산한다.
+   * 퍼센트로는 트랙마다 너비가 다른 경우를 표현할 수 없고, 레인 분할과도 뒤섞인다.
+   * @returns {{left:number,width:number}|null} 걸치지 않으면 null (퍼센트 배치)
+   */
+  #spanBox(item, place, colWidth) {
+    const span = Math.max(1, item.sp ?? 1);
+    if (span <= 1) return null;
+
+    const tracks = this.store.tracks;
+    const home = tracks.findIndex((t) => t.id === item.t);
+    if (home < 0) return null;
+
+    const lanes = Math.max(1, place?.lanes ?? 1);
+    const lane = place?.lane ?? 0;
+    const own = colWidth.get(item.t) ?? 0;
+
+    // 자기 트랙에서는 레인 몫만, 넘어가는 트랙은 통째로 차지한다
+    let width = own / lanes;
+    for (let k = 1; k < span && home + k < tracks.length; k++) {
+      width += colWidth.get(tracks[home + k].id) ?? 0;
+    }
+    return { left: (lane * own) / lanes, width };
   }
 
   redrawArrows() {

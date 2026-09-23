@@ -93,7 +93,24 @@
 
 .ev .pg{position:absolute;left:4px;right:0;bottom:0;height:2px;background:var(--border-subtle)}
 .ev .pg i{display:block;height:100%;background:var(--text-tertiary)}
+/* 위·아래 가장자리 = 기간. 위는 시작일, 아래는 종료일. */
 .ev .grip{position:absolute;left:0;right:0;bottom:0;height:var(--u2);cursor:ns-resize}
+.ev>.grip-top{position:absolute;left:0;right:var(--u2);top:0;height:var(--u2);cursor:ns-resize;
+  display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .12s ease}
+.ev:hover>.grip-top{opacity:.5}
+.ev>.grip-top:hover{opacity:1}
+.ev>.grip-top::after{content:"";height:3px;width:22px;border-radius:2px;background:var(--accent)}
+.select-text .ev>.grip-top{display:none}
+@media (prefers-reduced-motion:reduce){.ev>.grip-top{transition:none}}
+
+/* 오른쪽 가장자리 = 트랙 걸침. 끌면 트랙 칸 단위로 붙는다. */
+.ev>.grip-span{position:absolute;top:0;bottom:var(--u2);right:0;width:var(--u2);cursor:ew-resize;
+  display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .12s ease}
+.ev:hover>.grip-span{opacity:.55}
+.ev>.grip-span:hover{opacity:1}
+.ev>.grip-span::after{content:"";width:3px;height:22px;border-radius:2px;background:var(--accent)}
+.select-text .ev>.grip-span{display:none}
+@media (prefers-reduced-motion:reduce){.ev>.grip-span{transition:none}}
 /* 선택 — Border만 Primary로. 배경을 칠하지 않는다 */
 .ev.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);z-index:16}
 .ev.dim{opacity:.28}
