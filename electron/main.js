@@ -304,6 +304,13 @@ async function runSmoke(target) {
         `window.__roadmap.launcher.show({ closable: true })`,
       );
       await capture(target, 'launcher-filled');
+      await target.webContents.executeJavaScript(
+        `document.documentElement.setAttribute('data-theme','dark')`,
+      );
+      await capture(target, 'launcher-dark');
+      await target.webContents.executeJavaScript(
+        `document.documentElement.setAttribute('data-theme','light')`,
+      );
       await target.webContents.executeJavaScript(`window.__roadmap.launcher.hide()`);
     }
   } catch (err) {
