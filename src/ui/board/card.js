@@ -65,7 +65,6 @@ export function renderCard(item, ctx) {
       el('span.meta', { text: shortMD(item.s) }),
     );
     node.title = `${item.ti} · ${item.s} · ${item.og}`;
-    addGrips(node, { horizontal: true, vertical: false });
     return node;
   }
 
@@ -95,16 +94,10 @@ export function renderCard(item, ctx) {
     node.append(el('div.pg', {}, [el('i', { style: { width: item.pg + '%' } })]));
   }
 
-  addGrips(node, { horizontal: true, vertical: true });
+  // 기간 조절 손잡이(아래 가장자리). 가로 폭 손잡이는 두지 않는다 —
+  // 트랙 열 너비로 조절하는 편이 예측 가능하다.
+  node.append(el('div.grip', { attrs: { 'aria-hidden': 'true' } }));
   node.title = `${item.ti}\n${item.s} – ${item.e} · ${item.og}${item.pg ? ' · ' + item.pg + '%' : ''}`;
   return node;
 }
 
-/** 크기 조절 손잡이 — 아래(기간), 좌우(가로 폭) */
-function addGrips(node, { horizontal, vertical }) {
-  if (vertical) node.append(el('div.grip', { attrs: { 'aria-hidden': 'true' } }));
-  if (horizontal) {
-    node.append(el('div.grip-w', { attrs: { 'aria-hidden': 'true' } }));
-    node.append(el('div.grip-e', { attrs: { 'aria-hidden': 'true' } }));
-  }
-}

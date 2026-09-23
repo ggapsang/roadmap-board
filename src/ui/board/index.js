@@ -57,19 +57,24 @@ export class Board {
   }
 
   /**
-   * 트랙 너비 드래그.
-   * 폭은 문서에 저장한다 — 보드를 어떻게 보고 싶은지는 프로젝트마다 다르고,
-   * 반출한 JSON을 다른 PC에서 열어도 같은 모양이어야 한다.
+   * 트랙 열 너비 드래그.
+   *
+   * 리스너를 손잡이 요소에 붙이면 안 된다. 드래그 중 store.commit이 재렌더를
+   * 부르고, 재렌더는 헤더를 통째로 다시 그리면서 그 손잡이를 DOM에서 없앤다.
+   * 리스너와 포인터 캡처가 같이 사라져 첫 픽셀 이후 이벤트가 끊긴다.
+   * 그래서 window에 붙이고 드래그가 끝날 때 떼어 낸다.
+   *
+   * 너비는 문서에 저장한다 — 반출한 JSON을 다른 PC에서 열어도 같은 모양이어야 한다.
    */
   #trackResizer = {
-    start: (trackId, ev, startWidth) => {
+    start: (trackId, ev) => {
       if (this.store.readonly) return;
-      const startX = ev.clientX;
-      const handle = ev.currentTarget;
-      handle.classList.add('dragging');
-      handle.setPointerCapture(ev.pointerId);
 
+      const column = this.columns.get(trackId);
+      const startWidth = column ? column.getBoundingClientRect().width : 200;
+      const startX = ev.clientX;
       let began = false;
+
       const move = (e) => {
         const next = Math.min(1200, Math.max(120, Math.round(startWidth + (e.clientX - startX))));
         if (!began) { this.store.begin('트랙 너비'); began = true; }
@@ -78,15 +83,21 @@ export class Board {
           if (track) track.w = next;
         });
       };
+
       const up = () => {
-        handle.classList.remove('dragging');
-        handle.removeEventListener('pointermove', move);
-        handle.removeEventListener('pointerup', up);
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        window.removeEventListener('pointercancel', up);
+        document.body.classList.remove('resizing-col');
         if (began) this.store.end();
       };
-      handle.addEventListener('pointermove', move);
-      handle.addEventListener('pointerup', up);
+
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+      window.addEventListener('pointercancel', up);
+      document.body.classList.add('resizing-col');
     },
+
     reset: (trackId) => {
       this.store.commit('트랙 너비 자동', (doc) => {
         const track = doc.tracks.find((t) => t.id === trackId);

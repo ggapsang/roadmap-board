@@ -34,9 +34,10 @@ export function renderHead(head, { tracks, items, selectedTrack, template, onSel
         title: '끌어서 트랙 너비 조절 · 더블클릭하면 자동',
         on: {
           pointerdown: (ev) => {
+            if (ev.button !== 0) return;
             ev.preventDefault();
             ev.stopPropagation();
-            onResize.start(track.id, ev, cell.getBoundingClientRect().width);
+            onResize.start(track.id, ev);
           },
           dblclick: (ev) => { ev.stopPropagation(); onResize.reset(track.id); },
           click: (ev) => ev.stopPropagation(),

@@ -65,13 +65,6 @@ export class ItemPanel {
       if (!item) return;
       this.store.commit('비고 표시', () => { item.showNote = e.target.checked; });
     });
-    $('i-width-reset').addEventListener('click', () => {
-      const item = this.item;
-      if (!item) return;
-      this.store.commit('가로 폭 자동', () => { item.x = null; item.w = null; });
-      this.#syncWidth(item);
-    });
-
     $('i-del').addEventListener('click', () => this.remove());
     $('i-dup').addEventListener('click', () => this.duplicate());
   }
@@ -105,7 +98,6 @@ export class ItemPanel {
     this.#renderParents(item);
     this.#syncStatus(item);
     this.#syncAlign(item);
-    this.#syncWidth(item);
     $('i-shownote').checked = item.showNote === true;
     this.#renderDeps(item);
     this.panels.open('pItem');
@@ -130,13 +122,6 @@ export class ItemPanel {
     for (const b of $('i-align').querySelectorAll('button')) {
       b.setAttribute('aria-pressed', String(b.dataset.align === item.align));
     }
-  }
-
-  #syncWidth(item) {
-    const manual = item.x != null || item.w != null;
-    const button = $('i-width-reset');
-    button.disabled = !manual;
-    button.textContent = manual ? '자동으로 되돌리기' : '자동 (겹침에 따라)';
   }
 
   /**

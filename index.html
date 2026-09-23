@@ -99,16 +99,14 @@
       <div class="fld"><label for="i-end">종료</label><input id="i-end" type="date"></div>
     </div>
     <div class="two">
-      <div class="fld"><label for="i-span">트랙 병합 폭</label><input id="i-span" type="number" min="1" max="8" step="1"></div>
+      <div class="fld"><label for="i-span">트랙 걸침 (칸)</label><input id="i-span" type="number" min="1" max="8" step="1"></div>
       <div class="fld"><label for="i-prog">진척률 (%)</label><input id="i-prog" type="number" min="0" max="100" step="5"></div>
     </div>
+    <p class="note" style="margin-top:calc(var(--u3) * -1);margin-bottom:var(--u3)">
+      <b>트랙 걸침</b>은 이 일정이 차지할 트랙 칸 수입니다. 2로 하면 오른쪽 트랙까지 걸칩니다.</p>
     <div class="fld"><label for="i-org">담당</label><select id="i-org"></select></div>
     <div class="fld"><label for="i-parent">상위 일정</label><select id="i-parent"></select></div>
-    <div class="two">
-      <div class="fld"><label>글자 세로 정렬</label><div class="pick" id="i-align"></div></div>
-      <div class="fld"><label>가로 폭</label>
-        <button class="btn outline wide" id="i-width-reset" type="button">자동으로</button></div>
-    </div>
+    <div class="fld"><label>글자 세로 정렬</label><div class="pick" id="i-align"></div></div>
     <div class="fld">
       <label class="chk"><input id="i-shownote" type="checkbox"> 비고를 카드에 표시</label>
     </div>

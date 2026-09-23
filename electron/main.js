@@ -187,7 +187,8 @@ async function runSmoke(target) {
   let banded = null;
   let compressed = null;
   let nested = null;
-  let widthDrag = null;
+  let trackResize = null;
+  let spanEdit = null;
   let result;
   try {
     await new Promise((r) => setTimeout(r, 600));
@@ -251,24 +252,58 @@ async function runSmoke(target) {
     console.log('[smoke] nesting ' + JSON.stringify(nested));
     await capture(target, 'board-nested');
 
-    // 가로 폭 수동 지정이 렌더에 반영되는가
-    widthDrag = await target.webContents.executeJavaScript(`(async () => {
+    // 트랙 열 너비 드래그 — 재렌더로 손잡이가 사라져도 이어져야 한다
+    trackResize = await withTimeout(target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const handle = document.querySelector('.th .th-resize');
+      if (!handle) return { error: '손잡이 없음' };
+      const id = handle.closest('.th').dataset.t;
+      const col = () => document.querySelector('.col[data-t="' + id + '"]').getBoundingClientRect().width;
+      const before = Math.round(col());
+      const box = handle.getBoundingClientRect();
+      const at = (x) => ({ bubbles: true, clientX: x, clientY: box.top + box.height / 2, button: 0 });
+
+      handle.dispatchEvent(new PointerEvent('pointerdown', at(box.left)));
+      // 여러 번 나눠 움직인다 — 중간 재렌더를 견디는지 보는 것이 핵심
+      for (const dx of [20, 60, 120]) {
+        window.dispatchEvent(new PointerEvent('pointermove', at(box.left + dx)));
+        await new Promise((res) => setTimeout(res, 30));
+      }
+      window.dispatchEvent(new PointerEvent('pointerup', at(box.left + 120)));
+      await new Promise((res) => setTimeout(res, 120));
+
+      const after = Math.round(col());
+      const stored = r.store.track(id).w;
+
+      // 더블클릭하면 자동으로 되돌아가는가
+      document.querySelector('.th[data-t="' + id + '"] .th-resize')
+        .dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      await new Promise((res) => setTimeout(res, 120));
+      const reset = r.store.track(id).w;
+
+      return { before, after, stored, grew: after > before + 80, reset };
+    })()`), 20000, 'track-resize');
+    console.log('[smoke] track-resize ' + JSON.stringify(trackResize));
+
+    // 트랙 걸침(sp) — 오른쪽 패널에서 조절되는가
+    spanEdit = await withTimeout(target.webContents.executeJavaScript(`(async () => {
       const r = window.__roadmap;
       const card = document.querySelector('.col > .ev:not(.ms)');
       const id = card.dataset.id;
-      const before = card.getBoundingClientRect().width;
-      const hasGrips = !!card.querySelector('.grip-e') && !!card.querySelector('.grip-w');
-      r.store.commit('폭', () => { const it = r.store.item(id); it.x = 0.1; it.w = 0.5; });
-      await new Promise((res) => setTimeout(res, 150));
+      card.click();
+      await new Promise((res) => setTimeout(res, 200));
+      const input = document.getElementById('i-span');
+      const before = { sp: r.store.item(id).sp, px: Math.round(card.getBoundingClientRect().width) };
+      input.value = '3';
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      await new Promise((res) => setTimeout(res, 200));
       const el = document.querySelector('[data-id="' + id + '"]');
-      const col = el.parentElement.getBoundingClientRect().width;
-      const after = el.getBoundingClientRect().width;
-      r.store.commit('폭 원복', () => { const it = r.store.item(id); it.x = null; it.w = null; });
-      await new Promise((res) => setTimeout(res, 100));
-      return { hasGrips, before: Math.round(before), after: Math.round(after),
-               expected: Math.round(col * 0.5 - 8) };
-    })()`);
-    console.log('[smoke] width ' + JSON.stringify(widthDrag));
+      const after = { sp: r.store.item(id).sp, px: Math.round(el.getBoundingClientRect().width) };
+      r.store.commit('원복', () => { r.store.item(id).sp = before.sp; });
+      document.querySelector('#pItem [data-close]').click();
+      return { before, after, label: document.querySelector('label[for="i-span"]')?.textContent };
+    })()`), 20000, 'span');
+    console.log('[smoke] span ' + JSON.stringify(spanEdit));
 
     // 다크 테마도 찍는다 — 가이드 적용 결과를 눈으로 봐야 한다
     if (shotDir()) {
@@ -384,7 +419,8 @@ async function runSmoke(target) {
 
   const ok = !result.error && !opened?.error && !renamed?.error
     && layout?.panelOpen === true && layout?.shrunk > 280 && layout?.selectable === 'text'
-    && widthDrag?.after === widthDrag?.expected && widthDrag?.hasGrips === true
+    && trackResize?.grew === true && trackResize?.reset === null
+    && spanEdit?.after?.sp === 3 && spanEdit?.after?.px > spanEdit?.before?.px
     && banded?.merged === 1 && banded?.after === banded?.before - 2
     && compressed?.shrank === true && compressed?.cardAfter < compressed?.cardBefore
     && nested?.inside === 6 && nested?.isContainer === true

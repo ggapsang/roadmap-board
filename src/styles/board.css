@@ -73,9 +73,7 @@
 /* 텍스트 선택 모드 — 드래그 이동 대신 글자를 긁을 수 있다.
    둘을 동시에 지원하면 작은 드래그가 선택인지 이동인지 모호해진다. */
 .select-text .ev{cursor:text;user-select:text}
-.select-text .ev .grip,
-.select-text .ev .grip-w,
-.select-text .ev .grip-e{display:none}
+.select-text .ev .grip{display:none}
 
 /* 상태 표시자 — 좌측 4px */
 .ev::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;
@@ -96,17 +94,6 @@
 .ev .pg{position:absolute;left:4px;right:0;bottom:0;height:2px;background:var(--border-subtle)}
 .ev .pg i{display:block;height:100%;background:var(--text-tertiary)}
 .ev .grip{position:absolute;left:0;right:0;bottom:0;height:var(--u2);cursor:ns-resize}
-/* 가로 폭 손잡이 — 트랙 안에서 자유롭게 넓히고 좁힌다.
-   투명하게만 두면 있는 줄을 모른다. 카드에 올리면 잡는 자리를 보여 준다. */
-.ev>.grip-w,.ev>.grip-e{position:absolute;top:0;bottom:0;width:var(--u2);cursor:ew-resize;
-  display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .12s ease}
-.ev>.grip-w{left:0}
-.ev>.grip-e{right:0}
-.ev:hover>.grip-w,.ev:hover>.grip-e{opacity:1}
-.ev>.grip-w::after,.ev>.grip-e::after{content:"";width:3px;height:22px;border-radius:2px;
-  background:var(--accent);opacity:.75}
-@media (prefers-reduced-motion:reduce){.ev>.grip-w,.ev>.grip-e{transition:none}}
-
 /* 선택 — Border만 Primary로. 배경을 칠하지 않는다 */
 .ev.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);z-index:16}
 .ev.dim{opacity:.28}
@@ -165,12 +152,17 @@
 .ev.ms .meta{margin:0 0 0 auto;padding:0}
 .ev.ms .meta .tag::before{content:none}
 
-/* 트랙 너비 조절 손잡이 — 헤더 오른쪽 가장자리 */
-.th-resize{position:absolute;top:0;bottom:0;right:-3px;width:var(--u1-5);cursor:ew-resize;z-index:2;
+/* 트랙 열 너비 조절 손잡이 — 헤더 오른쪽 가장자리 */
+.th-resize{position:absolute;top:0;bottom:0;right:-4px;width:var(--u2);cursor:ew-resize;z-index:3;
   display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .12s ease}
-.th:hover .th-resize,.th-resize.dragging{opacity:1}
-.th-resize::after{content:"";width:2px;height:60%;border-radius:2px;background:var(--accent)}
+.th:hover .th-resize{opacity:.6}
+.th-resize:hover{opacity:1}
+.th-resize::after{content:"";width:3px;height:64%;border-radius:2px;background:var(--accent)}
 @media (prefers-reduced-motion:reduce){.th-resize{transition:none}}
+
+/* 드래그 중에는 커서를 유지하고 텍스트가 선택되지 않게 한다 */
+body.resizing-col{cursor:ew-resize!important;user-select:none}
+body.resizing-col .th-resize{opacity:1}
 
 /* 묶은 구간 높이 조절 — 아래 가장자리를 끌어 접는다 */
 .gut-m b.merged{position:absolute}
