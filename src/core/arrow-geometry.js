@@ -121,56 +121,146 @@ function trianglePath(tip, dir, half, len) {
 
 const round = (n) => Math.round(n * 10) / 10;
 
+/* ── 경로 찾기 ──────────────────────────────────────────────
+   화살표가 다른 카드를 가로지르면 글씨를 덮는다. 그래서 후보 경로를 여러 개
+   만들어 보고 **카드를 가장 적게 지나는** 것을 고른다.
+   그래도 못 피하는 구간은 카드 뒤로 지나간다 (렌더 레이어가 카드보다 아래).   */
+
+/** 축에 평행한 선분이 사각형 안에 잠긴 길이 */
+function overlapLength(p1, p2, box) {
+  const loX = Math.min(p1.x, p2.x), hiX = Math.max(p1.x, p2.x);
+  const loY = Math.min(p1.y, p2.y), hiY = Math.max(p1.y, p2.y);
+  const x = Math.max(0, Math.min(hiX, box.x + box.w) - Math.max(loX, box.x));
+  const y = Math.max(0, Math.min(hiY, box.y + box.h) - Math.max(loY, box.y));
+  // 세로선이면 x가 0에 가깝고, 가로선이면 y가 0에 가깝다
+  if (hiX - loX < 0.5) return x > 0 || (loX >= box.x && loX <= box.x + box.w) ? y : 0;
+  if (hiY - loY < 0.5) return y > 0 || (loY >= box.y && loY <= box.y + box.h) ? x : 0;
+  return 0;
+}
+
+/** 경로가 장애물을 지나는 총 길이 + 전체 길이 */
+function scorePath(points, obstacles) {
+  let blocked = 0;
+  let length = 0;
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i], b = points[i + 1];
+    length += Math.abs(b.x - a.x) + Math.abs(b.y - a.y);
+    for (const box of obstacles) blocked += overlapLength(a, b, box);
+  }
+  return { blocked, length, bends: points.length - 2 };
+}
+
+const between = (v, lo, hi) => v > Math.min(lo, hi) && v < Math.max(lo, hi);
+
 /**
- * 두 카드 사이의 직교 경로를 만든다.
+ * 두 카드를 잇는 경로를 고른다.
  *
- * 화살표는 **카드 밖으로만** 지나간다. 카드 안으로 파고들면 제목을 가려서
- * 정작 읽어야 할 정보가 사라진다. 대신 길이는 카드 사이에 확보해 둔 간격
- * (LAYOUT.cardGap)에서 얻는다.
- *
- * 같은 트랙 : 아래 → 위 (세로)
- * 다른 트랙 : 옆면 → 옆면 (가로)
+ * 세로(같은 트랙)든 가로(다른 트랙)든 후보를 여러 개 만들어 점수를 매긴다.
+ * 점수는 "장애물을 지나는 길이"가 1순위, 그다음이 꺾임 수와 전체 길이다.
+ * 가운데에서만 출발하지 않고 카드 가장자리 쪽 지점도 후보로 넣어, 겹치면
+ * 옆으로 비껴갈 수 있게 한다.
  *
  * @param {{x,y,w,h}} from 선행 카드
  * @param {{x,y,w,h}} to   후행 카드
  * @param {boolean} sameTrack
- * @param {number} bite 0보다 크면 그만큼 카드 안쪽에서 시작/끝난다 (기본 0)
+ * @param {number} bite 0보다 크면 그만큼 카드 안쪽에서 시작/끝난다
+ * @param {{x,y,w,h}[]} obstacles 피해야 할 다른 카드들
  */
-export function routeBetween(from, to, sameTrack, bite = 0) {
-  const fromCx = from.x + from.w / 2;
-  const toCx = to.x + to.w / 2;
-  const fromCy = from.y + from.h / 2;
-  const toCy = to.y + to.h / 2;
-
+export function routeBetween(from, to, sameTrack, bite = 0, obstacles = []) {
   const biteV = (box) => Math.min(Math.max(bite, 0), box.h * 0.4);
   const biteH = (box) => Math.min(Math.max(bite, 0), box.w * 0.4);
 
-  if (sameTrack && to.y >= from.y + from.h - 1) {
+  // 카드 가장자리에서 조금 안쪽인 지점들 — 가운데가 막히면 옆으로 비껴간다
+  const spread = (lo, size) => {
+    const inset = Math.min(24, size * 0.3);
+    return [lo + size / 2, lo + inset, lo + size - inset];
+  };
+
+  const candidates = [];
+  const downward = to.y >= from.y + from.h - 1;
+
+  // ── 세로 경로 (위 -> 아래) ───────────────────────────────
+  if (downward) {
     const y1 = from.y + from.h - biteV(from);
     const y2 = to.y + biteV(to);
-    if (Math.abs(fromCx - toCx) < 1) return [{ x: fromCx, y: y1 }, { x: toCx, y: y2 }];
     const mid = (from.y + from.h + to.y) / 2;
-    return [
-      { x: fromCx, y: y1 },
-      { x: fromCx, y: mid },
-      { x: toCx, y: mid },
-      { x: toCx, y: y2 },
-    ];
+    for (const sx of spread(from.x, from.w)) {
+      for (const tx of spread(to.x, to.w)) {
+        if (Math.abs(sx - tx) < 1) {
+          candidates.push([{ x: sx, y: y1 }, { x: tx, y: y2 }]);
+        } else {
+          candidates.push([
+            { x: sx, y: y1 }, { x: sx, y: mid }, { x: tx, y: mid }, { x: tx, y: y2 },
+          ]);
+        }
+      }
+    }
   }
 
-  const goRight = toCx >= fromCx;
+  // ── 가로 경로 (옆면 -> 옆면) ─────────────────────────────
+  const goRight = to.x + to.w / 2 >= from.x + from.w / 2;
   const sx = goRight ? from.x + from.w - biteH(from) : from.x + biteH(from);
   const tx = goRight ? to.x + biteH(to) : to.x + to.w - biteH(to);
+  const sideOut = goRight ? from.x + from.w : from.x;
+  const sideIn = goRight ? to.x : to.x + to.w;
 
-  if (Math.abs(fromCy - toCy) < 1) {
-    return [{ x: sx, y: fromCy }, { x: tx, y: toCy }];
+  // 세로로 꺾을 x 후보: 두 카드 사이의 빈 곳 + 장애물 가장자리 바깥
+  const turnXs = new Set([(sideOut + sideIn) / 2]);
+  for (const box of obstacles) {
+    if (between(box.x - 6, sideOut, sideIn)) turnXs.add(box.x - 6);
+    if (between(box.x + box.w + 6, sideOut, sideIn)) turnXs.add(box.x + box.w + 6);
   }
 
-  const gapMid = ((goRight ? from.x + from.w : from.x) + (goRight ? to.x : to.x + to.w)) / 2;
-  return [
-    { x: sx, y: fromCy },
-    { x: gapMid, y: fromCy },
-    { x: gapMid, y: toCy },
-    { x: tx, y: toCy },
+  for (const sy of spread(from.y, from.h)) {
+    for (const ty of spread(to.y, to.h)) {
+      if (Math.abs(sy - ty) < 1) {
+        candidates.push([{ x: sx, y: sy }, { x: tx, y: ty }]);
+        continue;
+      }
+      for (const cx of turnXs) {
+        candidates.push([
+          { x: sx, y: sy }, { x: cx, y: sy }, { x: cx, y: ty }, { x: tx, y: ty },
+        ]);
+      }
+    }
+  }
+
+  // 가로로 꺾을 y 후보 — 카드 사이 빈 줄로 지나간다
+  const turnYs = new Set();
+  for (const box of obstacles) {
+    turnYs.add(box.y - 7);
+    turnYs.add(box.y + box.h + 7);
+  }
+  for (const cy of turnYs) {
+    if (!between(cy, from.y, to.y + to.h) && !between(cy, to.y, from.y + from.h)) continue;
+    candidates.push([
+      { x: from.x + from.w / 2, y: from.y + from.h - biteV(from) },
+      { x: from.x + from.w / 2, y: cy },
+      { x: to.x + to.w / 2, y: cy },
+      { x: to.x + to.w / 2, y: to.y + biteV(to) },
+    ]);
+  }
+
+  let best = null;
+  let bestScore = null;
+  for (const path of candidates) {
+    const points = simplify(path);
+    if (points.length < 2) continue;
+    const score = scorePath(points, obstacles);
+    if (
+      !bestScore ||
+      score.blocked < bestScore.blocked - 0.5 ||
+      (Math.abs(score.blocked - bestScore.blocked) <= 0.5 &&
+        (score.bends < bestScore.bends ||
+          (score.bends === bestScore.bends && score.length < bestScore.length)))
+    ) {
+      best = points;
+      bestScore = score;
+    }
+  }
+
+  return best ?? [
+    { x: from.x + from.w / 2, y: from.y + from.h },
+    { x: to.x + to.w / 2, y: to.y },
   ];
 }
