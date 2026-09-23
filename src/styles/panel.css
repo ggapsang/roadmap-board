@@ -1,4 +1,11 @@
 /* ── 사이드 패널 ──────────────────────────────────── */
+/* 패널이 열리면 본문을 그만큼 좁힌다. 덮어 버리면 오른쪽 트랙이 가려지는데
+   가로 스크롤로 되찾기 번거롭다. --panel-w는 패널이 열릴 때만 채워진다. */
+body{--panel-w:0px}
+body.panel-open{--panel-w:340px}
+.bar,.status,.scroll{margin-right:var(--panel-w);transition:margin-right .16s ease}
+@media (prefers-reduced-motion:reduce){.bar,.status,.scroll{transition:none}}
+
 .panel{position:fixed;top:0;right:0;bottom:0;width:340px;background:var(--bg-panel);
   border-left:1px solid var(--border-strong);box-shadow:var(--shadow);z-index:60;
   display:flex;flex-direction:column;transform:translateX(100%);transition:transform .16s ease;

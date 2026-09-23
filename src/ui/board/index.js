@@ -140,11 +140,15 @@ export class Board {
 
   #attachEvents() {
     this.grid.addEventListener('click', (ev) => {
+      // 텍스트 선택 모드에서는 패널을 열지 않는다.
+      // 열면 재렌더가 일어나 카드가 새로 그려지고 긁어 둔 선택이 날아간다.
+      if (this.view.textSelect) return;
       const card = ev.target.closest('.ev');
       if (card) this.handlers.openItem(card.dataset.id);
     });
 
     this.grid.addEventListener('dblclick', (ev) => {
+      if (this.view.textSelect) return;
       if (ev.target.closest('.ev')) return;
       const col = ev.target.closest('.col');
       if (!col) return;

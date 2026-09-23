@@ -16,6 +16,8 @@ export class ViewState extends Emitter {
     this.weekHeight = defaultZoom;
     this.selectedItem = null;
     this.selectedTrack = null;
+    /** 카드 글자를 긁어 복사할 수 있는 모드. 켜면 드래그 이동이 멈춘다. */
+    this.textSelect = false;
   }
 
   /** px per day */

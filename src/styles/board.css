@@ -48,7 +48,13 @@
 /* ── 일정 카드 ────────────────────────────────────── */
 .ev{position:absolute;border-radius:var(--u1-5);border:1px solid var(--border-strong);
   background:var(--bg-panel);cursor:grab;overflow:hidden;z-index:6;
-  display:flex;flex-direction:column;padding:var(--u1-5) var(--u2) var(--u1-5) var(--u2-5)}
+  display:flex;flex-direction:column;padding:var(--u1-5) var(--u2) var(--u1-5) var(--u2-5);
+  user-select:none}
+
+/* 텍스트 선택 모드 — 드래그 이동 대신 글자를 긁을 수 있다.
+   둘을 동시에 지원하면 작은 드래그가 선택인지 이동인지 모호해진다. */
+.select-text .ev{cursor:text;user-select:text}
+.select-text .ev .grip{display:none}
 .ev::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--border-bold)}
 .ev:active{cursor:grabbing}
 .ev .t{font-size:calc(12px * var(--fs,1));line-height:calc(16px * var(--fs,1));font-weight:600;letter-spacing:-.01em;word-break:keep-all;

@@ -151,6 +151,7 @@ async function runSmoke(target) {
 
   let opened = null;
   let renamed = null;
+  let layout = null;
   let result;
   try {
     await new Promise((r) => setTimeout(r, 600));
@@ -171,6 +172,27 @@ async function runSmoke(target) {
 
     result = await target.webContents.executeJavaScript(probe);
     await capture(target, 'board');
+
+    // 패널을 열면 본문이 밀리는가 / 텍스트 선택 모드가 걸리는가
+    layout = await target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const scroll = document.getElementById('scroll');
+      const before = scroll.getBoundingClientRect().width;
+      document.querySelector('.ev').click();
+      await new Promise((res) => setTimeout(res, 300));
+      const after = scroll.getBoundingClientRect().width;
+      const panelOpen = document.body.classList.contains('panel-open');
+      document.getElementById('btnSelect').click();
+      await new Promise((res) => setTimeout(res, 100));
+      const selectable = getComputedStyle(document.querySelector('.ev')).userSelect;
+      document.getElementById('btnSelect').click();
+      return { before, after, shrunk: before - after, panelOpen, selectable };
+    })()`);
+    console.log('[smoke] layout ' + JSON.stringify(layout));
+    await capture(target, 'board-panel');
+    await target.webContents.executeJavaScript(
+      `document.querySelector('#pItem [data-close]').click()`,
+    );
 
     // 이름 변경 — Electron에 prompt()가 없어 직접 만든 다이얼로그를 거친다.
     renamed = await target.webContents.executeJavaScript(`(async () => {
@@ -220,6 +242,7 @@ async function runSmoke(target) {
   }
 
   const ok = !result.error && !opened?.error && !renamed?.error
+    && layout?.panelOpen === true && layout?.shrunk === 340 && layout?.selectable === 'text'
     && renamed?.name === '이름 변경 테스트' && renamed?.dialogClosed === true
     && opened?.launcherClosed === true
     && opened?.projectsAfter === opened?.projectsBefore + 1

@@ -1,13 +1,17 @@
 /* ── 툴바 ─────────────────────────────────────────── */
+/* 패널이 열리면 폭이 340px 줄어든다. 그래도 버튼이 줄바꿈되거나 잘리지 않아야 한다. */
 .bar{display:flex;align-items:center;gap:var(--u2);padding:var(--u2-5) var(--u4);
-  background:var(--bg-panel);border-bottom:1px solid var(--border);flex:none}
-.brand{display:flex;align-items:baseline;gap:var(--u2-5);margin-right:var(--u2)}
+  background:var(--bg-panel);border-bottom:1px solid var(--border);flex:none;
+  flex-wrap:nowrap;min-width:0}
+.bar>.btn,.bar>.seg{flex:none}
+.brand{display:flex;align-items:baseline;gap:var(--u2-5);margin-right:var(--u2);min-width:0;flex:0 1 auto}
 .brand .mk{width:var(--u2);height:var(--u5);background:var(--accent);border-radius:2px;align-self:center}
-.brand h1{margin:0;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em;white-space:nowrap}
-.brand .sub{font-size:12px;line-height:16px;color:var(--text-tertiary);white-space:nowrap}
+.brand h1{margin:0;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em;white-space:nowrap;flex:none}
+.brand .sub{font-size:12px;line-height:16px;color:var(--text-tertiary);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;min-width:0}
 .search{display:flex;align-items:center;gap:var(--u2);height:var(--u8);padding:0 var(--u3);
   background:var(--bg-input);border:1px solid var(--border-strong);border-radius:var(--u1-5);
-  color:var(--text-tertiary);width:200px}
+  color:var(--text-tertiary);flex:0 1 200px;min-width:96px}
 .search input{border:0;background:none;outline:0;width:100%;font-size:13px;color:var(--text-primary)}
 
 /* ── 상태 요약 (상태 우선 원칙) ─────────────────────── */

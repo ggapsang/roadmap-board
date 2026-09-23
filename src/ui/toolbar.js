@@ -31,6 +31,7 @@ export function initToolbar({ store, view, actions }) {
   });
 
   $('btnProjects').addEventListener('click', () => actions.openProjects());
+  $('btnSelect').addEventListener('click', () => actions.toggleTextSelect());
   $('btnTracks').addEventListener('click', () => actions.openTracks());
   $('btnData').addEventListener('click', () => actions.openData());
   $('btnAdd').addEventListener('click', () => actions.addItem());
@@ -46,6 +47,8 @@ export function initToolbar({ store, view, actions }) {
 
   return {
     sync() {
+      $('btnSelect').setAttribute('aria-pressed', String(view.textSelect));
+      document.body.classList.toggle('select-text', view.textSelect);
       $('btnUndo').disabled = !store.canUndo;
       $('btnRedo').disabled = !store.canRedo;
       const period = `${store.meta.start.replace(/-/g, '.')} — ${store.meta.end.replace(/-/g, '.')}`;

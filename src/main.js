@@ -40,11 +40,15 @@ async function boot() {
 
   // ── 화면 조립 ───────────────────────────────────────────
 
-  const panels = new PanelManager(() => {
-    view.selectedItem = null;
-    view.selectedTrack = null;
-    refresh();
-  });
+  const panels = new PanelManager(
+    () => {
+      view.selectedItem = null;
+      view.selectedTrack = null;
+      refresh();
+    },
+    // 패널이 열리고 닫히면 본문 폭이 바뀐다 — 화살표 좌표를 다시 잡는다
+    () => board.redrawArrows(),
+  );
 
   const board = new Board({
     head: $('head'), grid: $('grid'), lines: $('lines'),
@@ -83,6 +87,11 @@ async function boot() {
       openTracks: () => configPanel.open(view.selectedTrack),
       openData: () => dataPanel.open(),
       openProjects: () => { panels.close(); launcher.show({ closable: true }); },
+      toggleTextSelect: () => {
+        view.textSelect = !view.textSelect;
+        toast(view.textSelect ? '텍스트 선택 모드 — 드래그 이동이 멈춥니다' : '텍스트 선택 모드 해제');
+        refresh();
+      },
       addItem: () => {
         const origin = new Date(store.meta.start.replace(/-/g, '/'));
         const day = Math.round((new Date().setHours(0, 0, 0, 0) - origin) / 86400000);
@@ -158,6 +167,13 @@ async function boot() {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
       e.preventDefault();
       if (!store.redo()) toast('다시 실행할 작업이 없습니다');
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      view.textSelect = !view.textSelect;
+      toast(view.textSelect ? '텍스트 선택 모드 — 드래그 이동이 멈춥니다' : '텍스트 선택 모드 해제');
+      refresh();
       return;
     }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
