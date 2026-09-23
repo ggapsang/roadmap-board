@@ -1,6 +1,9 @@
 /**
- * 런타임 설정 — 코드 수정 없이 과제 체계에 맞춰 바꾸는 지점.
- * 기획안 §9 검토요청 2·3번(상태 5종 / 담당 조직 분류)이 확정되면 여기만 고친다.
+ * 런타임 설정.
+ *
+ * 여기 있는 값은 **새 프로젝트의 초기값**이거나 화면 동작 상수다.
+ * 사용자가 바꾸는 것(담당 조직 목록, 트랙 구성)은 문서 안에 들어 있고
+ * 보드에서 직접 편집한다 — 코드를 고칠 필요 없다.
  */
 
 /** 저장 키. P0 시안과 동일하게 유지 — 기존 브라우저 저장분을 그대로 이어받는다. */
@@ -21,8 +24,12 @@ export const STATUSES = [
 export const STATUS_KEYS = STATUSES.map((s) => s.key);
 export const DEFAULT_STATUS = 'plan';
 
-/** 담당 조직. 기획안 §9-3에서 확정 대기 중. */
-export const ORGS = [
+/**
+ * 담당 조직의 **초기값**. 새 프로젝트를 만들 때만 쓰인다.
+ * 실제 목록은 문서(`doc.orgs`)에 들어 있고 보드 구성 패널에서 편집한다.
+ * 조직명은 일정의 `og`에 문자열로 들어가므로, 이름을 바꾸면 참조도 함께 갱신한다.
+ */
+export const DEFAULT_ORGS = [
   '다임리서치',
   '다임랩스',
   '에이텍모빌리티',
@@ -30,7 +37,9 @@ export const ORGS = [
   'LG에너지솔루션',
   '공동',
 ];
-export const DEFAULT_ORG = ORGS[0];
+
+/** 문서에 조직 목록이 하나도 없을 때의 최후 폴백 */
+export const FALLBACK_ORG = DEFAULT_ORGS[0];
 
 /** 일정 유형 */
 export const ITEM_TYPES = [

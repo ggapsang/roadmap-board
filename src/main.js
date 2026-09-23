@@ -20,7 +20,7 @@ import { initToolbar } from './ui/toolbar.js';
 import { renderStatusBar } from './ui/statusbar.js';
 import { PanelManager } from './ui/panels/manager.js';
 import { ItemPanel } from './ui/panels/item.js';
-import { TrackPanel } from './ui/panels/track.js';
+import { ConfigPanel } from './ui/panels/config.js';
 import { DataPanel } from './ui/panels/data.js';
 
 async function boot() {
@@ -58,16 +58,16 @@ async function boot() {
     store, view,
     handlers: {
       openItem: (id) => itemPanel.open(id),
-      openTrack: (id) => trackPanel.open(id),
-      addTrack: () => trackPanel.add(),
+      openTrack: (id) => configPanel.open(id),
+      addTrack: () => configPanel.add(),
     },
   });
 
   const itemPanel = new ItemPanel({ store, view, panels });
-  const trackPanel = new TrackPanel({ store, view, panels });
+  const configPanel = new ConfigPanel({ store, view, panels });
   const dataPanel = new DataPanel({
     store, view, panels, adapter,
-    onReplaced: () => { rebuild(); trackPanel.render(); },
+    onReplaced: () => { rebuild(); configPanel.render(); },
   });
 
   const toolbar = initToolbar({
@@ -76,7 +76,7 @@ async function boot() {
       render: () => refresh(),
       rebuild: () => rebuild(),
       redrawArrows: () => board.redrawArrows(),
-      openTracks: () => trackPanel.open(view.selectedTrack),
+      openTracks: () => configPanel.open(view.selectedTrack),
       openData: () => dataPanel.open(),
       addItem: () => {
         const origin = new Date(store.meta.start.replace(/-/g, '/'));

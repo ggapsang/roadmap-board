@@ -30,7 +30,7 @@
   <div class="seg" id="zoom" role="group" aria-label="행 높이"></div>
 
   <button class="btn" id="btnTracks" type="button">
-    <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h10"/></svg>트랙</button>
+    <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h10"/></svg>구성</button>
   <button class="btn icon" id="btnUndo" type="button" title="되돌리기 (Ctrl+Z)" aria-label="되돌리기">
     <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10h11a5 5 0 0 1 0 10H9"/><path d="m7 6-4 4 4 4"/></svg></button>
   <button class="btn icon" id="btnRedo" type="button" title="다시 실행 (Ctrl+Shift+Z)" aria-label="다시 실행">
@@ -95,18 +95,30 @@
 </aside>
 
 <!-- ── 트랙 관리 ─────────────────────────────────────────── -->
-<aside class="panel" id="pTrack" aria-label="트랙 관리">
+<aside class="panel" id="pTrack" aria-label="보드 구성">
   <header>
-    <h2>트랙 관리</h2><div class="grow"></div>
+    <h2>보드 구성</h2><div class="grow"></div>
     <button class="btn icon" data-close type="button" aria-label="닫기">
       <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
   </header>
   <div class="body2">
-    <div class="sect">트랙 목록</div>
+    <div class="sect">트랙</div>
     <div class="tlist" id="tlist"></div>
     <button class="btn cta wide" id="t-add" type="button">
       <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>트랙 추가</button>
-    <p class="note">위 칸은 분류 라벨, 아래 칸은 트랙 이름입니다. 삭제하면 해당 트랙의 일정도 함께 제거됩니다.</p>
+    <p class="note">위 칸은 분류 라벨, 아래 칸은 트랙 이름입니다. 요구사항·작업패키지·조직 등
+      무엇을 축으로 삼을지는 정해져 있지 않습니다. 삭제하면 해당 트랙의 일정도 함께 제거됩니다.</p>
+
+    <div class="sect">담당 조직</div>
+    <div class="tlist" id="olist"></div>
+    <div class="row">
+      <input id="o-new" type="text" placeholder="새 조직 이름" aria-label="새 조직 이름"
+             style="flex:2;height:var(--u8);padding:0 var(--u2-5);background:var(--bg-input);
+                    border:1px solid var(--border-strong);border-radius:var(--u1-5);font-size:13px">
+      <button class="btn" id="o-add" type="button">추가</button>
+    </div>
+    <p class="note">오른쪽 숫자는 그 조직이 담당한 일정 수입니다.
+      이름을 바꾸면 해당 일정의 담당도 함께 바뀝니다.</p>
   </div>
 </aside>
 

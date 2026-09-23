@@ -4,10 +4,12 @@
  * "기본 로드맵으로 되돌리기"가 이 문서를 복원한다.
  */
 import { SCHEMA_VERSION } from '../core/schema.js';
+import { DEFAULT_ORGS } from './index.js';
 
 export const SEED = {
   version: SCHEMA_VERSION,
-  meta: { start: '2026-09-21', end: '2027-04-04' },
+  meta: { start: '2026-09-21', end: '2027-04-04', name: 'Project Machina 1차년도' },
+  orgs: [...DEFAULT_ORGS],
   tracks: [
     { id: 't0', lab: '테스트베드', name: '테스트베드 구축' },
     { id: 't1', lab: '요구사항 5', name: '자율 유지보수 차량' },

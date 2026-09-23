@@ -72,7 +72,16 @@ function createWindow() {
 
   win.once('ready-to-show', () => { if (!SMOKE) win.show(); });
   win.loadURL('app://board/index.html');
-  if (SMOKE) win.webContents.once('did-finish-load', () => runSmoke(win));
+  if (SMOKE) {
+    // 렌더러 콘솔을 그대로 끌어온다 — 부팅 실패 원인이 여기 찍힌다
+    win.webContents.on('console-message', (e) => {
+      const level = ['debug', 'info', 'warn', 'error'][e.level] ?? e.level;
+      console.log(`[renderer:${level}] ${e.message}`);
+    });
+    win.webContents.on('did-fail-load', (_e, code, desc, url) =>
+      console.log(`[renderer] 로드 실패 ${code} ${desc} ${url}`));
+    win.webContents.once('did-finish-load', () => runSmoke(win));
+  }
   if (DEV) win.webContents.openDevTools({ mode: 'detach' });
 
   // 외부 링크는 기본 브라우저로

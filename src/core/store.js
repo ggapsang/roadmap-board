@@ -32,6 +32,7 @@ export class Store extends Emitter {
   get readonly() { return this.#adapter.readonly; }
 
   get tracks() { return this.#doc.tracks; }
+  get orgs() { return this.#doc.orgs; }
   get items() { return this.#doc.items; }
   get meta() { return this.#doc.meta; }
 

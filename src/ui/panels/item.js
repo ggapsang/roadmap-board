@@ -4,7 +4,7 @@
  */
 import { shortMD, dayIndex, parseDate } from '../../core/dates.js';
 import { newId } from '../../core/schema.js';
-import { STATUSES, ITEM_TYPES, ORGS } from '../../config/index.js';
+import { STATUSES, ITEM_TYPES } from '../../config/index.js';
 import { $, el, clear } from '../dom.js';
 import { toast } from '../toast.js';
 
@@ -23,9 +23,6 @@ export class ItemPanel {
   get item() { return this.view.selectedItem ? this.store.item(this.view.selectedItem) : null; }
 
   #buildStatic() {
-    const org = $(F.org);
-    for (const o of ORGS) org.append(el('option', { value: o, text: o }));
-
     const type = $(F.type);
     clear(type);
     for (const t of ITEM_TYPES) type.append(el('option', { value: t.key, text: t.label }));
@@ -64,6 +61,11 @@ export class ItemPanel {
     const track = $(F.track);
     clear(track);
     for (const t of this.store.tracks) track.append(el('option', { value: t.id, text: t.name }));
+
+    // 조직 목록은 문서가 들고 있고 런타임에 바뀐다 — 열 때마다 다시 만든다
+    const org = $(F.org);
+    clear(org);
+    for (const o of this.store.orgs) org.append(el('option', { value: o, text: o }));
 
     $(F.title).value = item.ti;
     track.value = item.t;

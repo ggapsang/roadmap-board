@@ -14,7 +14,7 @@
 import { parseDate, dayIndex, dateAt } from '../../core/dates.js';
 import { computeLayout, gridTemplate } from '../../core/layout.js';
 import { newId } from '../../core/schema.js';
-import { LAYOUT, DEFAULT_ORG, DEFAULT_STATUS, DEFAULT_TYPE } from '../../config/index.js';
+import { LAYOUT, DEFAULT_STATUS, DEFAULT_TYPE } from '../../config/index.js';
 import { el, clear } from '../dom.js';
 import { renderHead } from './head.js';
 import { renderAxis, makeTodayLine } from './axis.js';
@@ -172,7 +172,7 @@ export class Board {
       id: newId('e'), t: trackId, sp: 1,
       s: dateAt(origin, start), e: dateAt(origin, end),
       ti: '새 일정', ty: DEFAULT_TYPE, st: DEFAULT_STATUS,
-      og: DEFAULT_ORG, pg: 0, dp: [], note: '',
+      og: this.store.orgs[0], pg: 0, dp: [], note: '',
     };
     this.store.commit('일정 추가', (doc) => { doc.items.push(item); });
     this.handlers.openItem(item.id);

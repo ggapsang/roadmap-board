@@ -3,7 +3,7 @@
  * 상태 칩과 조직 칩은 토글 필터를 겸한다 (기획안 §5).
  */
 import { DAY, parseDate, today } from '../core/dates.js';
-import { STATUSES, ORGS, UPCOMING_DAYS } from '../config/index.js';
+import { STATUSES, UPCOMING_DAYS } from '../config/index.js';
 import { el, clear } from './dom.js';
 
 export function renderStatusBar(bar, { store, view, onChange }) {
@@ -46,9 +46,9 @@ export function renderStatusBar(bar, { store, view, onChange }) {
 
   bar.append(el('span.divider'));
 
-  // 실제로 쓰이고 있는 조직만 칩으로 보여 준다
+  // 실제로 쓰이고 있는 조직만 칩으로 보여 준다. 순서는 문서의 조직 목록을 따른다.
   const used = new Set(store.items.map((i) => i.og));
-  const orgs = [...ORGS.filter((o) => used.has(o)), ...[...used].filter((o) => !ORGS.includes(o))];
+  const orgs = store.orgs.filter((o) => used.has(o));
 
   const wrap = el('span.orgs');
   for (const org of orgs) {

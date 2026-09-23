@@ -11,10 +11,10 @@
  */
 import {
   STATUS_KEYS, DEFAULT_STATUS, TYPE_KEYS, DEFAULT_TYPE,
-  ORGS, DEFAULT_ORG,
+  DEFAULT_ORGS,
 } from '../config/index.js';
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 /**
  * v0 = P0 시안 문서(version 필드 없음).
@@ -25,8 +25,21 @@ function v0_to_v1(doc) {
   return doc;
 }
 
+/**
+ * v2 = 담당 조직 목록을 문서가 직접 들고 있다.
+ * v1까지는 코드 상수(config의 ORGS)에 박혀 있어서 과제마다 손을 대야 했다.
+ * 문서에서 실제로 쓰이는 조직을 먼저 살리고, 기본 목록을 뒤에 붙인다.
+ */
+function v1_to_v2(doc) {
+  const used = [...new Set((doc.items ?? []).map((i) => i?.og).filter((o) => typeof o === 'string' && o))];
+  doc.orgs = [...DEFAULT_ORGS, ...used.filter((o) => !DEFAULT_ORGS.includes(o))];
+  doc.version = 2;
+  return doc;
+}
+
 const MIGRATIONS = {
   0: v0_to_v1,
+  1: v1_to_v2,
 };
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -52,6 +65,14 @@ export function normalize(doc) {
     [doc.meta.start, doc.meta.end] = [doc.meta.end, doc.meta.start];
     warnings.push('표시 기간의 시작/종료가 뒤집혀 있어 교환했습니다.');
   }
+
+  // ── 담당 조직
+  // 일정의 og가 문자열 값이라, 목록에 없는 값이 나오면 버리지 말고 목록에 넣는다.
+  if (!Array.isArray(doc.orgs)) doc.orgs = [...DEFAULT_ORGS];
+  doc.orgs = [...new Set(
+    doc.orgs.filter((o) => typeof o === 'string').map((o) => o.trim()).filter(Boolean),
+  )];
+  if (!doc.orgs.length) doc.orgs = [...DEFAULT_ORGS];
 
   // ── 트랙
   const seenTrack = new Set();
@@ -85,7 +106,7 @@ export function normalize(doc) {
     n.ti = typeof n.ti === 'string' ? n.ti : '';
     n.ty = TYPE_KEYS.includes(n.ty) ? n.ty : DEFAULT_TYPE;
     n.st = STATUS_KEYS.includes(n.st) ? n.st : DEFAULT_STATUS;
-    n.og = typeof n.og === 'string' && n.og ? n.og : DEFAULT_ORG;
+    n.og = typeof n.og === 'string' && n.og.trim() ? n.og.trim() : doc.orgs[0];
     n.note = typeof n.note === 'string' ? n.note : '';
 
     if (!ISO.test(n.s)) n.s = doc.meta.start;
@@ -101,6 +122,14 @@ export function normalize(doc) {
     n.dp = Array.isArray(n.dp) ? n.dp.filter((d) => typeof d === 'string') : [];
     return n;
   });
+
+  // 목록에 없는 조직이 일정에 남아 있으면 목록에 추가한다 (반입 데이터 보존)
+  for (const it of doc.items) {
+    if (!doc.orgs.includes(it.og)) {
+      doc.orgs.push(it.og);
+      warnings.push(`담당 조직 '${it.og}'을(를) 목록에 추가했습니다.`);
+    }
+  }
 
   // ── 선행 참조 정리: 없는 id / 자기 자신 / 중복 제거
   const itemIds = new Set(doc.items.map((i) => i.id));

@@ -27,6 +27,10 @@ export class BoardRepository {
       'SELECT id, lab, name FROM track WHERE board_id = ? ORDER BY ord',
     ).all(this.boardId);
 
+    const orgs = this.db.prepare(
+      'SELECT name FROM org WHERE board_id = ? ORDER BY ord',
+    ).all(this.boardId).map((r) => r.name);
+
     const rows = this.db.prepare(
       'SELECT * FROM item WHERE board_id = ? ORDER BY ord',
     ).all(this.boardId);
@@ -44,6 +48,7 @@ export class BoardRepository {
     return {
       version: board.doc_version,
       meta: { start: board.start_date, end: board.end_date, name: board.name },
+      orgs,
       tracks,
       items: rows.map((r) => ({
         id: r.id, t: r.track_id, sp: r.span,
@@ -79,6 +84,12 @@ export class BoardRepository {
       // 자식 테이블을 비우고 다시 채운다. FK CASCADE가 dependency까지 정리한다.
       this.db.prepare('DELETE FROM item WHERE board_id = ?').run(this.boardId);
       this.db.prepare('DELETE FROM track WHERE board_id = ?').run(this.boardId);
+      this.db.prepare('DELETE FROM org WHERE board_id = ?').run(this.boardId);
+
+      const insOrg = this.db.prepare(
+        'INSERT INTO org (board_id, ord, name) VALUES (?, ?, ?)',
+      );
+      (doc.orgs ?? []).forEach((o, i) => insOrg.run(this.boardId, i, o));
 
       const insTrack = this.db.prepare(
         'INSERT INTO track (board_id, id, ord, lab, name) VALUES (?, ?, ?, ?, ?)',
