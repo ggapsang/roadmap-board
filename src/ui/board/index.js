@@ -18,6 +18,7 @@ import { LAYOUT, DEFAULT_STATUS, DEFAULT_TYPE } from '../../config/index.js';
 import { el, clear } from '../dom.js';
 import { renderHead } from './head.js';
 import { renderAxis, makeTodayLine } from './axis.js';
+import { attachBandEditing } from './bands.js';
 import { renderCard } from './card.js';
 import { createArrowLayer, drawArrows } from './arrows.js';
 import { attachDrag } from './drag.js';
@@ -39,6 +40,11 @@ export class Board {
     this._layout = { placement: new Map(), trackLanes: new Map() };
 
     this.#attachEvents();
+    attachBandEditing(gutM, {
+      store,
+      getOrigin: () => this.origin,
+      onChange: () => this.rebuild(),
+    });
     attachDrag(grid, {
       store, view,
       getOrigin: () => this.origin,
@@ -93,6 +99,7 @@ export class Board {
       lines: this.lines, gutM: this.gutM, gutW: this.gutW, grid: this.grid,
       origin: this.origin, endDate: this.endDate,
       totalDays: this.totalDays, ppd: this.view.ppd,
+      bands: this.store.doc.bands ?? [],
     });
 
     for (const node of this.grid.querySelectorAll('.col,.pad,.now,.arrows')) node.remove();

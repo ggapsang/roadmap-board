@@ -112,6 +112,10 @@ export class BoardRepository {
       'SELECT name FROM org WHERE board_id = ? ORDER BY ord',
     ).all(this.boardId).map((r) => r.name);
 
+    const bands = this.db.prepare(
+      'SELECT id, from_date, to_date, label FROM band WHERE board_id = ? ORDER BY ord',
+    ).all(this.boardId).map((r) => ({ id: r.id, from: r.from_date, to: r.to_date, label: r.label }));
+
     const rows = this.db.prepare(
       'SELECT * FROM item WHERE board_id = ? ORDER BY ord',
     ).all(this.boardId);
@@ -130,6 +134,7 @@ export class BoardRepository {
       version: board.doc_version,
       meta: { start: board.start_date, end: board.end_date, name: board.name },
       orgs,
+      bands,
       tracks,
       items: rows.map((r) => ({
         id: r.id, t: r.track_id, sp: r.span,
@@ -167,6 +172,12 @@ export class BoardRepository {
       this.db.prepare('DELETE FROM item WHERE board_id = ?').run(this.boardId);
       this.db.prepare('DELETE FROM track WHERE board_id = ?').run(this.boardId);
       this.db.prepare('DELETE FROM org WHERE board_id = ?').run(this.boardId);
+      this.db.prepare('DELETE FROM band WHERE board_id = ?').run(this.boardId);
+
+      const insBand = this.db.prepare(
+        'INSERT INTO band (board_id, id, ord, from_date, to_date, label) VALUES (?, ?, ?, ?, ?, ?)',
+      );
+      (doc.bands ?? []).forEach((b, i) => insBand.run(this.boardId, b.id, i, b.from, b.to, b.label ?? ''));
 
       const insOrg = this.db.prepare(
         'INSERT INTO org (board_id, ord, name) VALUES (?, ?, ?)',

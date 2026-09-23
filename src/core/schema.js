@@ -14,7 +14,7 @@ import {
   DEFAULT_ORGS, DEFAULT_DISPLAY, DISPLAY_LIMITS,
 } from '../config/index.js';
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 /**
  * v0 = P0 시안 문서(version 필드 없음).
@@ -48,10 +48,21 @@ function v2_to_v3(doc) {
   return doc;
 }
 
+/**
+ * v4 = 시간축 구간(bands). 왼쪽 월 칸을 사용자가 묶어 이름을 붙일 수 있다.
+ * 예: 2027년 1~3월을 "1Q"로. 비어 있으면 월 단위로 자동 표시한다.
+ */
+function v3_to_v4(doc) {
+  doc.bands = Array.isArray(doc.bands) ? doc.bands : [];
+  doc.version = 4;
+  return doc;
+}
+
 const MIGRATIONS = {
   0: v0_to_v1,
   1: v1_to_v2,
   2: v2_to_v3,
+  3: v3_to_v4,
 };
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -77,6 +88,26 @@ export function normalize(doc) {
     [doc.meta.start, doc.meta.end] = [doc.meta.end, doc.meta.start];
     warnings.push('표시 기간의 시작/종료가 뒤집혀 있어 교환했습니다.');
   }
+
+  // ── 시간축 구간 (사용자가 묶은 월 칸)
+  // 겹치는 구간은 뒤엣것을 버린다. 겹치면 어느 쪽을 그릴지 모호해진다.
+  doc.bands = (Array.isArray(doc.bands) ? doc.bands : [])
+    .filter((b) => isObj(b) && ISO.test(b.from) && ISO.test(b.to))
+    .map((b, i) => ({
+      id: typeof b.id === 'string' && b.id ? b.id : `b${i}`,
+      from: b.from <= b.to ? b.from : b.to,
+      to: b.from <= b.to ? b.to : b.from,
+      label: typeof b.label === 'string' ? b.label : '',
+    }))
+    .sort((a, b) => a.from.localeCompare(b.from))
+    .filter((b, i, arr) => {
+      const prev = arr[i - 1];
+      if (prev && b.from <= prev.to) {
+        warnings.push(`구간 '${b.label || b.from}'이 앞 구간과 겹쳐 제외했습니다.`);
+        return false;
+      }
+      return true;
+    });
 
   // ── 표시 설정
   const display = { ...DEFAULT_DISPLAY, ...(doc.meta.display ?? {}) };

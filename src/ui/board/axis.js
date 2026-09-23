@@ -1,14 +1,55 @@
 /**
- * 시간축 — 주 단위 행선, 월 밴드, 오늘 기준선.
+ * 시간축 — 주 단위 행선, 왼쪽 구간 칸, 오늘 기준선.
  * 세로축 1주 = 1행. 월 경계는 굵은 실선 (기획안 §4).
+ *
+ * 왼쪽 칸은 기본적으로 월 단위지만, 사용자가 여러 달을 끌어 하나로 묶을 수 있다
+ * (doc.bands). 2027년 1~3월을 "1Q"로 보는 식이다. 묶인 구간은 월 칸을 대체한다.
  */
-import { DAY, dateAt, formatDate, shortMD, today } from '../../core/dates.js';
+import { DAY, dateAt, formatDate, shortMD, today, parseDate, dayIndex } from '../../core/dates.js';
 import { el, clear } from '../dom.js';
 
 /**
- * @param {object} ctx {lines, gutM, gutW, grid, origin, totalDays, ppd}
+ * 왼쪽 칸에 들어갈 구간 목록을 만든다.
+ * 사용자가 묶은 구간을 먼저 배치하고, 남는 기간은 월 단위로 채운다.
+ * @returns {{from:number, to:number, label:string, sub:string, bandId:string|null}[]}
  */
-export function renderAxis({ lines, gutM, gutW, grid, origin, endDate, totalDays, ppd }) {
+export function buildBands(origin, endDate, totalDays, userBands = []) {
+  const covered = [];
+  const out = [];
+
+  for (const band of userBands) {
+    const from = Math.max(0, dayIndex(band.from, origin));
+    const to = Math.min(totalDays, dayIndex(band.to, origin) + 1);
+    if (to <= from) continue;
+    out.push({ from, to, label: band.label || '구간', sub: '', bandId: band.id });
+    covered.push([from, to]);
+  }
+
+  const overlaps = (a, b) => covered.some(([s, e]) => a < e && b > s);
+
+  let month = new Date(origin.getFullYear(), origin.getMonth(), 1);
+  while (month < endDate) {
+    const next = new Date(month.getFullYear(), month.getMonth() + 1, 1);
+    const from = Math.max(0, Math.round((month - origin) / DAY));
+    const to = Math.min(totalDays, Math.round((next - origin) / DAY));
+    if (to > from && !overlaps(from, to)) {
+      out.push({
+        from, to,
+        label: `${month.getMonth() + 1}월`,
+        sub: String(month.getFullYear()),
+        bandId: null,
+      });
+    }
+    month = next;
+  }
+
+  return out.sort((a, b) => a.from - b.from);
+}
+
+/**
+ * @param {object} ctx {lines, gutM, gutW, grid, origin, endDate, totalDays, ppd, bands}
+ */
+export function renderAxis({ lines, gutM, gutW, grid, origin, endDate, totalDays, ppd, bands = [] }) {
   grid.style.height = totalDays * ppd + 'px';
   clear(lines); clear(gutM); clear(gutW);
 
@@ -20,19 +61,20 @@ export function renderAxis({ lines, gutM, gutW, grid, origin, endDate, totalDays
     gutW.append(el('s', { text: shortMD(formatDate(date)), style: { top: i * ppd + 'px' } }));
   }
 
-  // 월 밴드
-  let month = new Date(origin.getFullYear(), origin.getMonth(), 1);
-  while (month < endDate) {
-    const next = new Date(month.getFullYear(), month.getMonth() + 1, 1);
-    const from = Math.max(0, Math.round((month - origin) / DAY));
-    const to = Math.min(totalDays, Math.round((next - origin) / DAY));
-    if (to > from) {
-      gutM.append(el('b', {
-        style: { top: from * ppd + 'px', height: (to - from) * ppd + 'px' },
-        html: `<u>${month.getMonth() + 1}월<em>${month.getFullYear()}</em></u>`,
-      }));
-    }
-    month = next;
+  // 왼쪽 구간 칸
+  for (const band of buildBands(origin, endDate, totalDays, bands)) {
+    const cell = el('b', {
+      style: { top: band.from * ppd + 'px', height: (band.to - band.from) * ppd + 'px' },
+      dataset: { from: String(band.from), to: String(band.to), band: band.bandId ?? '' },
+      className: band.bandId ? 'merged' : '',
+      title: band.bandId ? '더블클릭하면 이름을 바꾸고, 우클릭하면 해제합니다' : '끌어서 여러 달을 하나로 묶습니다',
+    }, [
+      el('u', {}, [
+        document.createTextNode(band.label),
+        band.sub ? el('em', { text: band.sub }) : null,
+      ]),
+    ]);
+    gutM.append(cell);
   }
 }
 

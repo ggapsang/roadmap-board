@@ -19,11 +19,17 @@
 .lines i{position:absolute;left:var(--gut-m);right:0;border-top:1px solid var(--border);display:block}
 .lines i.m{border-top:1px solid var(--border-bold)}
 .gut-m{position:relative;z-index:21;border-right:1px solid var(--border);background:var(--bg-panel)}
+.gut-m{cursor:ns-resize}
 .gut-m b{position:absolute;left:0;right:0;border-top:1px solid var(--border-bold);
+  user-select:none;
   text-align:center;font-size:12px;line-height:16px;font-weight:600;color:var(--text-secondary);
   overflow:hidden;display:flex;flex-direction:column;align-items:center}
 .gut-m b u{position:sticky;top:var(--u2);text-decoration:none;padding:var(--u2) 0 var(--u3);display:block}
 .gut-m b em{display:block;font-style:normal;font-size:11px;font-weight:400;color:var(--text-tertiary)}
+/* 사용자가 묶은 구간 — 월 칸과 구분되게 */
+.gut-m b.merged{background:var(--bg-sunken)}
+.gut-m b.merged u{color:var(--text-primary);font-weight:600}
+.gut-m b.picking{background:var(--accent-weak);box-shadow:inset 0 0 0 1px var(--accent)}
 .gut-w{position:relative;z-index:20}
 .gut-w s{position:absolute;left:0;right:var(--u2);text-align:right;text-decoration:none;
   font-size:11px;line-height:16px;color:var(--text-tertiary);font-variant-numeric:tabular-nums;padding-top:var(--u1)}

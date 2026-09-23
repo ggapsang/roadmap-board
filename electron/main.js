@@ -153,6 +153,7 @@ async function runSmoke(target) {
   let renamed = null;
   let layout = null;
   let exported = null;
+  let banded = null;
   let result;
   try {
     await new Promise((r) => setTimeout(r, 600));
@@ -194,6 +195,23 @@ async function runSmoke(target) {
     await target.webContents.executeJavaScript(
       `document.querySelector('#pItem [data-close]').click()`,
     );
+
+    // 시간축 구간 묶기 — 2027년 1~3월을 하나로
+    banded = await target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const cells = () => [...document.querySelectorAll('.gut-m b')].map((b) => b.textContent);
+      const before = cells();
+      r.store.commit('구간', (doc) => {
+        doc.bands.push({ id: 'q1', from: '2027-01-01', to: '2027-03-31', label: '2027 1Q' });
+      });
+      r.board.rebuild();
+      await new Promise((res) => setTimeout(res, 150));
+      const after = cells();
+      const merged = document.querySelectorAll('.gut-m b.merged').length;
+      return { before: before.length, after: after.length, merged, labels: after };
+    })()`);
+    console.log('[smoke] bands ' + JSON.stringify(banded));
+    await capture(target, 'board-bands');
 
     // 내보내기 — 보드 전체가 한 장으로 나오는지
     exported = await target.webContents.executeJavaScript(`(async () => {
@@ -257,6 +275,7 @@ async function runSmoke(target) {
 
   const ok = !result.error && !opened?.error && !renamed?.error
     && layout?.panelOpen === true && layout?.shrunk === 340 && layout?.selectable === 'text'
+    && banded?.merged === 1 && banded?.after === banded?.before - 2
     && renamed?.name === '이름 변경 테스트' && renamed?.dialogClosed === true
     && opened?.launcherClosed === true
     && opened?.projectsAfter === opened?.projectsBefore + 1
