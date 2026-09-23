@@ -11,6 +11,7 @@ npm install
 npm start          # 앱 실행
 npm run dev        # 개발자 도구 함께
 npm test           # 스모크 — 창을 띄워 렌더/저장 왕복을 확인하고 종료
+npm test -- --shot ./shots   # 스모크에 화면 캡처 추가 (CSS 확인용)
 npm start -- --db ./other.db   # DB 파일 지정
 ```
 

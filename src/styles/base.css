@@ -1,4 +1,6 @@
 *,*::before,*::after{box-sizing:inherit}
+/* [hidden]은 UA 스타일이라 display를 지정한 클래스(.btn 등)에 밀린다 */
+[hidden]{display:none!important}
 html,body{height:100%}
 body{
   margin:0;background:var(--bg-canvas);color:var(--text-primary);

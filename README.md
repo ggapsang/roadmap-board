@@ -22,6 +22,7 @@ Electron 앱이 뜨면 **프로젝트 목록**이 먼저 나온다. 보드 하�
 | `npm start` | 앱 실행 |
 | `npm run dev` | 개발자 도구를 함께 연다 |
 | `npm test` | 스모크 — 창을 띄워 렌더와 저장 왕복을 확인하고 종료 |
+| `npm test -- --shot ./shots` | 위에 더해 화면을 PNG로 남긴다 |
 | `npm start -- --db ./machina.db` | DB 파일을 직접 지정 (과제별로 나눠 쓸 때) |
 
 DB 기본 위치는 `%APPDATA%/roadmap-board/roadmap.db` — 메뉴의 **파일 › DB 파일 위치 열기**로 바로 갈 수 있다.

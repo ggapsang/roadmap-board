@@ -19,6 +19,11 @@ const ROOT = path.join(HERE, '..');
 const DEV = process.argv.includes('--dev');
 /** --smoke : 창을 띄워 렌더 결과를 점검하고 바로 종료한다 (npm test) */
 const SMOKE = process.argv.includes('--smoke');
+/** --shot <디렉터리> : 스모크 중 화면을 캡처한다 */
+function shotDir() {
+  const i = process.argv.indexOf('--shot');
+  return i >= 0 && process.argv[i + 1] ? path.resolve(process.argv[i + 1]) : null;
+}
 
 /** --db <경로> 로 DB 파일을 지정할 수 있다 (여러 과제를 따로 관리할 때) */
 function resolveDbPath() {
@@ -72,7 +77,7 @@ function createWindow() {
     },
   });
 
-  win.once('ready-to-show', () => { if (!SMOKE) win.show(); });
+  win.once('ready-to-show', () => { if (!SMOKE || shotDir()) win.show(); });
   win.loadURL('app://board/index.html');
   if (SMOKE) {
     // 렌더러 콘솔을 그대로 끌어온다 — 부팅 실패 원인이 여기 찍힌다
@@ -105,9 +110,13 @@ async function runSmoke(target) {
     const before = await r.adapter.listProjects();
     const id = await r.adapter.createProject(window.__smokeSeed, '스모크 프로젝트');
     await r.openProject(id);
+    r.launcher.hide();          // 실제 사용 경로에서는 Launcher가 닫아 준다
     await new Promise((res) => setTimeout(res, 300));
     const after = await r.adapter.listProjects();
-    return { projectsBefore: before.length, projectsAfter: after.length, opened: id };
+    return {
+      projectsBefore: before.length, projectsAfter: after.length, opened: id,
+      launcherClosed: document.getElementById('launcher').hidden,
+    };
   })()`;
 
   const probe = `(() => {
@@ -150,6 +159,7 @@ async function runSmoke(target) {
       `!document.getElementById('launcher').hidden`,
     );
     console.log('[smoke] launcher ' + (launcherUp ? 'ok' : 'FAIL (첫 화면에 안 떴다)'));
+    await capture(target, 'launcher');
 
     // 렌더러에 시드를 넣어 주고 프로젝트를 만들어 연다
     await target.webContents.executeJavaScript(
@@ -159,6 +169,16 @@ async function runSmoke(target) {
     console.log('[smoke] project ' + JSON.stringify(opened));
 
     result = await target.webContents.executeJavaScript(probe);
+    await capture(target, 'board');
+
+    // 프로젝트가 담긴 목록 화면
+    if (shotDir()) {
+      await target.webContents.executeJavaScript(
+        `window.__roadmap.launcher.show({ closable: true })`,
+      );
+      await capture(target, 'launcher-filled');
+      await target.webContents.executeJavaScript(`window.__roadmap.launcher.hide()`);
+    }
   } catch (err) {
     result = { error: String(err) };
   }
@@ -180,7 +200,8 @@ async function runSmoke(target) {
     }
   }
 
-  const ok = !result.error && !opened?.error && opened?.projectsAfter === opened?.projectsBefore + 1
+  const ok = !result.error && !opened?.error && opened?.launcherClosed === true
+    && opened?.projectsAfter === opened?.projectsBefore + 1
     && result.tracks > 0 && result.cards > 0 && result.items > 0 && wrote === true;
   console.log('[smoke] ' + (ok ? 'PASS' : 'FAIL'));
 
@@ -189,6 +210,22 @@ async function runSmoke(target) {
   for (const suffix of ['', '-wal', '-shm']) fs.rmSync(file + suffix, { force: true });
 
   app.exit(ok ? 0 : 1);
+}
+
+/** --shot이 켜져 있으면 현재 화면을 PNG로 남긴다 */
+async function capture(target, name) {
+  const dir = shotDir();
+  if (!dir) return;
+  fs.mkdirSync(dir, { recursive: true });
+  // 직전 DOM 변경이 실제로 그려질 때까지 기다린다
+  await target.webContents.executeJavaScript(
+    'new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))',
+  );
+  await new Promise((r) => setTimeout(r, 250));
+  const image = await target.webContents.capturePage();
+  const file = path.join(dir, `${name}.png`);
+  fs.writeFileSync(file, image.toPNG());
+  console.log('[smoke] 캡처 ' + file);
 }
 
 function buildMenu() {
