@@ -28,6 +28,7 @@ electron/          메인 프로세스 — 창, IPC, SQLite
 src/               렌더러 (프레임워크 없음, ES 모듈)
   config/            상태·조직·배율 등 런타임 설정, 기본 로드맵(seed)
   core/              DOM을 모르는 순수 로직
+    arrow-geometry.js  직교 경로 -> 블록 화살표 다각형 (순수 계산)
     dates.js           날짜 (로컬 타임존 고정)
     schema.js          문서 버전 · 마이그레이션 · 정규화
     store.js           문서 상태 + 되돌리기 + 저장
@@ -61,6 +62,8 @@ src/               렌더러 (프레임워크 없음, ES 모듈)
    `MIGRATIONS`에 함수를 추가한다. DB 스키마는 `migrations/`에 파일을 **추가**한다
    (기존 파일 수정 금지).
 9. **화살표는 렌더 마지막에.** DOM 좌표를 읽으므로 컬럼 폭이 확정된 뒤여야 한다.
+   `.col`에 z-index를 주지 말 것 — 쌓임 맥락이 생겨 컬럼 전체가 한 층으로 묶이고,
+   카드의 z-index가 컬럼 안에서만 유효해져 화살표가 카드를 덮는다.
 10. 저장소를 늘릴 때는 `StorageAdapter`를 구현하고 `createAdapter()`에 끼운다.
    그 아래 코드는 저장 위치를 몰라야 한다.
 11. **프로젝트 전환은 `store.adopt()`로.** Store/Board를 새로 만들지 않고 문서만

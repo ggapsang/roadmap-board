@@ -11,10 +11,10 @@
  */
 import {
   STATUS_KEYS, DEFAULT_STATUS, TYPE_KEYS, DEFAULT_TYPE,
-  DEFAULT_ORGS,
+  DEFAULT_ORGS, DEFAULT_DISPLAY, DISPLAY_LIMITS,
 } from '../config/index.js';
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 /**
  * v0 = P0 시안 문서(version 필드 없음).
@@ -37,9 +37,21 @@ function v1_to_v2(doc) {
   return doc;
 }
 
+/**
+ * v3 = 표시 설정(meta.display)을 문서가 들고 있다.
+ * 화살표 굵기·글자 크기처럼 "이 보드를 이렇게 보고 싶다"는 값이라 문서와 함께 다닌다.
+ */
+function v2_to_v3(doc) {
+  doc.meta = doc.meta ?? {};
+  doc.meta.display = { ...DEFAULT_DISPLAY, ...(doc.meta.display ?? {}) };
+  doc.version = 3;
+  return doc;
+}
+
 const MIGRATIONS = {
   0: v0_to_v1,
   1: v1_to_v2,
+  2: v2_to_v3,
 };
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -65,6 +77,14 @@ export function normalize(doc) {
     [doc.meta.start, doc.meta.end] = [doc.meta.end, doc.meta.start];
     warnings.push('표시 기간의 시작/종료가 뒤집혀 있어 교환했습니다.');
   }
+
+  // ── 표시 설정
+  const display = { ...DEFAULT_DISPLAY, ...(doc.meta.display ?? {}) };
+  for (const [key, lim] of Object.entries(DISPLAY_LIMITS)) {
+    const n = Number(display[key]);
+    display[key] = Number.isFinite(n) ? Math.min(lim.max, Math.max(lim.min, n)) : DEFAULT_DISPLAY[key];
+  }
+  doc.meta.display = display;
 
   // ── 담당 조직
   // 일정의 og가 문자열 값이라, 목록에 없는 값이 나오면 버리지 말고 목록에 넣는다.

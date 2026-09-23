@@ -9,6 +9,7 @@
  * 그 조직을 쓰는 일정을 함께 갱신해야 한다. #renameOrg가 그 일을 한다.
  */
 import { newId } from '../../core/schema.js';
+import { DISPLAY_LIMITS } from '../../config/index.js';
 import { $, el, clear, button, ICONS } from '../dom.js';
 import { toast } from '../toast.js';
 
@@ -18,6 +19,36 @@ export class ConfigPanel {
     $('t-add').addEventListener('click', () => this.add());
     $('o-add').addEventListener('click', () => this.#addOrg());
     $('o-new').addEventListener('keydown', (e) => { if (e.key === 'Enter') this.#addOrg(); });
+    this.#bindDisplay();
+  }
+
+  // ── 표시 설정 ───────────────────────────────────────────
+
+  #bindDisplay() {
+    const fields = [
+      ['v-arrow', 'arrowWidth', (v) => `${v}px`],
+      ['v-head', 'arrowHead', (v) => `×${Number(v).toFixed(1)}`],
+      ['v-font', 'fontScale', (v) => `${Math.round(v * 100)}%`],
+    ];
+    for (const [id, key, format] of fields) {
+      const input = $(id);
+      const lim = DISPLAY_LIMITS[key];
+      input.min = lim.min; input.max = lim.max; input.step = lim.step;
+      input.addEventListener('input', () => {
+        const value = Number(input.value);
+        $(`${id}-out`).textContent = format(value);
+        this.store.commit('표시 설정', (doc) => { doc.meta.display[key] = value; });
+      });
+    }
+    this._displayFields = fields;
+  }
+
+  #renderDisplay() {
+    const display = this.store.meta.display ?? {};
+    for (const [id, key, format] of this._displayFields) {
+      $(id).value = display[key];
+      $(`${id}-out`).textContent = format(display[key]);
+    }
   }
 
   open(trackId = null) {
@@ -30,6 +61,7 @@ export class ConfigPanel {
   render() {
     this.#renderTracks();
     this.#renderOrgs();
+    this.#renderDisplay();
   }
 
   // ── 트랙 ────────────────────────────────────────────────

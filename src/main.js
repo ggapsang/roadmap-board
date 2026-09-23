@@ -10,7 +10,7 @@
  *   브라우저 : localStorage
  * 어느 쪽인지는 createAdapter()가 판단하고, 그 아래 코드는 구분하지 않는다.
  */
-import { STORAGE_KEY } from './config/index.js';
+import { STORAGE_KEY, DISPLAY_LIMITS } from './config/index.js';
 import { prepare } from './core/schema.js';
 import { createAdapter } from './core/storage.js';
 import { Store } from './core/store.js';
@@ -163,9 +163,28 @@ async function boot() {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
       e.preventDefault(); $('q').focus(); return;
     }
+    // 글자 크기 — Ctrl +/- (= 키와 텐키 +/- 모두 받는다)
+    if ((e.ctrlKey || e.metaKey) && ['=', '+', '-', '_'].includes(e.key)) {
+      e.preventDefault();
+      nudgeFont(e.key === '-' || e.key === '_' ? -0.1 : +0.1);
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === '0') {
+      e.preventDefault(); setFont(1); return;
+    }
     if (e.key === 'Escape') { panels.close(); return; }
     if (e.key === 'Delete' && view.selectedItem && !typing) itemPanel.remove();
   });
+
+  function setFont(scale) {
+    const lim = DISPLAY_LIMITS.fontScale;
+    const next = Math.round(Math.min(lim.max, Math.max(lim.min, scale)) * 100) / 100;
+    if (next === store.meta.display.fontScale) return;
+    store.commit('글자 크기', (doc) => { doc.meta.display.fontScale = next; });
+    configPanel.render();
+    toast(`글자 크기 ${Math.round(next * 100)}%`);
+  }
+  const nudgeFont = (delta) => setFont((store.meta.display?.fontScale ?? 1) + delta);
 
   addEventListener('resize', () => board.redrawArrows());
 

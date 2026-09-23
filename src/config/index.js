@@ -70,6 +70,24 @@ export const LAYOUT = {
   newItemDays: 14,
 };
 
+/**
+ * 표시 설정의 기본값. 문서(meta.display)에 저장되므로 프로젝트마다 다르게 둘 수 있다.
+ */
+export const DEFAULT_DISPLAY = {
+  /** 화살표 몸통 굵기(px) */
+  arrowWidth: 7,
+  /** 화살표 머리 크기 = 몸통 × 이 배율 */
+  arrowHead: 2.0,
+  /** 카드 글자 배율 */
+  fontScale: 1.0,
+};
+
+export const DISPLAY_LIMITS = {
+  arrowWidth: { min: 1, max: 24, step: 1 },
+  arrowHead: { min: 1.2, max: 4, step: 0.1 },
+  fontScale: { min: 0.7, max: 2.0, step: 0.05 },
+};
+
 /** undo 스택 최대 깊이 (기획안 §5) */
 export const UNDO_LIMIT = 60;
 

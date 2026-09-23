@@ -112,6 +112,7 @@ export class Board {
 
   renderCards() {
     for (const node of this.grid.querySelectorAll('.ev')) node.remove();
+    this.grid.style.setProperty('--fs', this.store.meta.display?.fontScale ?? 1);
 
     const ctx = {
       origin: this.origin,
@@ -128,11 +129,11 @@ export class Board {
     }
 
     // 카드가 붙은 뒤에야 offsetLeft/offsetTop이 확정된다
-    drawArrows(this.arrowLayer, this.grid, this.store.items);
+    drawArrows(this.arrowLayer, this.grid, this.store.items, this.store.meta.display);
   }
 
   redrawArrows() {
-    drawArrows(this.arrowLayer, this.grid, this.store.items);
+    drawArrows(this.arrowLayer, this.grid, this.store.items, this.store.meta.display);
   }
 
   // ── 입력 ────────────────────────────────────────────────

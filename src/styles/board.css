@@ -18,16 +18,18 @@
 .lines{position:absolute;inset:0;z-index:0;pointer-events:none}
 .lines i{position:absolute;left:var(--gut-m);right:0;border-top:1px solid var(--border);display:block}
 .lines i.m{border-top:1px solid var(--border-bold)}
-.gut-m{position:relative;z-index:2;border-right:1px solid var(--border);background:var(--bg-panel)}
+.gut-m{position:relative;z-index:21;border-right:1px solid var(--border);background:var(--bg-panel)}
 .gut-m b{position:absolute;left:0;right:0;border-top:1px solid var(--border-bold);
   text-align:center;font-size:12px;line-height:16px;font-weight:600;color:var(--text-secondary);
   overflow:hidden;display:flex;flex-direction:column;align-items:center}
 .gut-m b u{position:sticky;top:var(--u2);text-decoration:none;padding:var(--u2) 0 var(--u3);display:block}
 .gut-m b em{display:block;font-style:normal;font-size:11px;font-weight:400;color:var(--text-tertiary)}
-.gut-w{position:relative;z-index:1}
+.gut-w{position:relative;z-index:20}
 .gut-w s{position:absolute;left:0;right:var(--u2);text-align:right;text-decoration:none;
   font-size:11px;line-height:16px;color:var(--text-tertiary);font-variant-numeric:tabular-nums;padding-top:var(--u1)}
-.col{position:relative;z-index:1;border-left:1px solid var(--border)}
+.col{position:relative;border-left:1px solid var(--border)}
+/* z-index를 주면 쌓임 맥락이 생겨 컬럼 전체가 한 층으로 묶인다.
+   그러면 카드의 z-index가 컬럼 안에서만 유효해져 화살표(z:5)가 카드를 덮는다. */
 .col:nth-child(even){background:var(--bg-canvas)}
 .pad{border-left:1px solid var(--border)}
 .now{position:absolute;height:0;border-top:2px solid var(--accent);z-index:22;pointer-events:none;
@@ -36,7 +38,12 @@
   border-radius:50%;background:var(--accent)}
 .now span{position:absolute;left:var(--u3);top:-9px;background:var(--accent);color:#fff;
   font-size:11px;line-height:16px;font-weight:600;padding:0 var(--u1-5);border-radius:var(--u1)}
-.arrows{position:absolute;inset:0;z-index:8;pointer-events:none;overflow:visible}
+.arrows{position:absolute;inset:0;z-index:5;pointer-events:none;overflow:visible}
+/* 파워포인트 화살표 도형처럼 채움 + 테두리. 굵기는 meta.display에서 온다.
+   카드(z-index 6)보다 아래에 깔아 글자를 가리지 않게 한다. */
+.arrow{fill:var(--bg-panel);stroke:var(--text-tertiary);stroke-width:1.25;
+  stroke-linejoin:round;pointer-events:auto}
+.arrow:hover{stroke:var(--accent);fill:var(--accent-weak)}
 
 /* ── 일정 카드 ────────────────────────────────────── */
 .ev{position:absolute;border-radius:var(--u1-5);border:1px solid var(--border-strong);
@@ -44,12 +51,12 @@
   display:flex;flex-direction:column;padding:var(--u1-5) var(--u2) var(--u1-5) var(--u2-5)}
 .ev::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--border-bold)}
 .ev:active{cursor:grabbing}
-.ev .t{font-size:12px;line-height:16px;font-weight:600;letter-spacing:-.01em;word-break:keep-all;
+.ev .t{font-size:calc(12px * var(--fs,1));line-height:calc(16px * var(--fs,1));font-weight:600;letter-spacing:-.01em;word-break:keep-all;
   color:var(--text-primary);overflow:hidden}
-.ev .meta{margin-top:var(--u1);display:flex;align-items:center;gap:var(--u1-5);font-size:11px;line-height:16px;
+.ev .meta{margin-top:var(--u1);display:flex;align-items:center;gap:var(--u1-5);font-size:calc(11px * var(--fs,1));line-height:16px;
   color:var(--text-tertiary);font-variant-numeric:tabular-nums;flex-wrap:wrap}
 .ev .meta .tag{border:1px solid var(--border);border-radius:var(--u1);padding:0 var(--u1);
-  color:var(--text-secondary);font-size:10px}
+  color:var(--text-secondary);font-size:calc(10px * var(--fs,1))}
 .ev .meta.hidden{display:none}
 .ev .pg{position:absolute;left:3px;right:0;bottom:0;height:2px;background:var(--border)}
 .ev .pg i{display:block;height:100%;background:var(--text-secondary)}
@@ -78,7 +85,7 @@
 
 .ev.big{align-items:center;text-align:center}
 .ev.big .meta{justify-content:center}
-.ev.big .t{font-size:14px;line-height:20px}
+.ev.big .t{font-size:calc(14px * var(--fs,1));line-height:calc(20px * var(--fs,1))}
 
 .ev.ms{height:var(--u6);flex-direction:row;align-items:center;gap:var(--u1-5);padding:0 var(--u2);
   background:var(--bg-panel);border-color:var(--border-bold);z-index:18;box-shadow:var(--shadow)}
