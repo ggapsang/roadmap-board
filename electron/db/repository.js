@@ -13,13 +13,94 @@ const REVISION_INTERVAL_MIN = 5;
 const REVISION_KEEP = 200;
 
 export class BoardRepository {
-  constructor(db) {
+  /**
+   * @param {import('better-sqlite3').Database} db
+   * @param {number|null} boardId 다룰 보드. open()으로 바꾼다.
+   */
+  constructor(db, boardId = null) {
     this.db = db;
-    this.boardId = 1;              // 현재는 단일 보드 (기획안 P1 "문서 1건")
+    this.boardId = boardId;
   }
+
+  open(boardId) { this.boardId = boardId; }
+
+  // ── 프로젝트 목록 ───────────────────────────────────────
+
+  /** 최근 연 순서. 목록 화면용이라 문서 본문은 싣지 않는다. */
+  listProjects() {
+    return this.db.prepare(`
+      SELECT b.id, b.name, b.start_date AS start, b.end_date AS end,
+             b.updated_at AS updatedAt, b.opened_at AS openedAt,
+             (SELECT count(*) FROM item  WHERE board_id = b.id) AS items,
+             (SELECT count(*) FROM track WHERE board_id = b.id) AS tracks
+      FROM board b
+      ORDER BY COALESCE(b.opened_at, b.updated_at) DESC, b.id DESC
+    `).all();
+  }
+
+  /**
+   * 새 보드를 만들고 문서를 채운다.
+   * @returns {number} 새 보드 id
+   */
+  createProject(doc, name) {
+    const create = this.db.transaction(() => {
+      const info = this.db.prepare(`
+        INSERT INTO board (name, start_date, end_date, doc_version, opened_at)
+        VALUES (?, ?, ?, ?, datetime('now','localtime'))
+      `).run(name, doc.meta.start, doc.meta.end, doc.version ?? 1);
+
+      const id = Number(info.lastInsertRowid);
+      const previous = this.boardId;
+      this.boardId = id;
+      try {
+        this.save({ ...doc, meta: { ...doc.meta, name } }, '새 프로젝트');
+      } catch (err) {
+        this.boardId = previous;
+        throw err;
+      }
+      return id;
+    });
+    return create();
+  }
+
+  deleteProject(id) {
+    // board의 자식은 전부 ON DELETE CASCADE다
+    this.db.prepare('DELETE FROM board WHERE id = ?').run(id);
+    if (this.boardId === id) this.boardId = null;
+  }
+
+  renameProject(id, name) {
+    this.db.prepare(
+      "UPDATE board SET name = ?, updated_at = datetime('now','localtime') WHERE id = ?",
+    ).run(name, id);
+  }
+
+  /** 문서를 그대로 복사해 새 보드를 만든다 */
+  duplicateProject(id, name) {
+    const previous = this.boardId;
+    this.boardId = id;
+    let doc;
+    try { doc = this.load(); } finally { this.boardId = previous; }
+    if (!doc) throw new Error('복제할 프로젝트를 찾을 수 없습니다.');
+    return this.createProject(doc, name);
+  }
+
+  /** 목록 정렬용 — 프로젝트를 열 때 찍는다 */
+  touchOpened(id) {
+    this.db.prepare(
+      "UPDATE board SET opened_at = datetime('now','localtime') WHERE id = ?",
+    ).run(id);
+  }
+
+  #requireBoard() {
+    if (this.boardId == null) throw new Error('열린 프로젝트가 없습니다.');
+  }
+
+  // ── 문서 ────────────────────────────────────────────────
 
   /** @returns {object|null} 렌더러 문서. 아직 아무것도 없으면 null. */
   load() {
+    if (this.boardId == null) return null;
     const board = this.db.prepare('SELECT * FROM board WHERE id = ?').get(this.boardId);
     if (!board) return null;
 
@@ -66,6 +147,7 @@ export class BoardRepository {
    * @param {string} label 변경 설명 (리비전 라벨)
    */
   save(doc, label = '') {
+    this.#requireBoard();
     const write = this.db.transaction(() => {
       this.db.prepare(`
         INSERT INTO board (id, name, start_date, end_date, doc_version)
@@ -145,8 +227,11 @@ export class BoardRepository {
     `).run(this.boardId, this.boardId, REVISION_KEEP);
   }
 
+  // ── 변경 이력 ───────────────────────────────────────────
+
   /** 변경 이력 목록 (문서 본문 제외) */
   listRevisions(limit = 50) {
+    if (this.boardId == null) return [];
     return this.db.prepare(`
       SELECT id, created_at, label, items FROM revision
       WHERE board_id = ? ORDER BY id DESC LIMIT ?
@@ -155,16 +240,11 @@ export class BoardRepository {
 
   /** 특정 리비전의 문서 */
   getRevision(id) {
+    if (this.boardId == null) return null;
     const row = this.db.prepare(
       'SELECT doc FROM revision WHERE board_id = ? AND id = ?',
     ).get(this.boardId, id);
     return row ? JSON.parse(row.doc) : null;
   }
 
-  /** 보드 비우기 — 기본 로드맵 복원 전에 호출 */
-  clear() {
-    this.db.transaction(() => {
-      this.db.prepare('DELETE FROM board WHERE id = ?').run(this.boardId);
-    })();
-  }
 }

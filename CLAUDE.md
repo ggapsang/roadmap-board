@@ -34,6 +34,7 @@ src/               렌더러 (프레임워크 없음, ES 모듈)
     layout.js          레인(겹침) 배치 — 순수 함수
     storage.js         저장소 어댑터 (Local / Electron / Memory)
   ui/                DOM 렌더
+    launcher.js        프로젝트 목록 — 앱의 첫 화면
     board/             축 · 헤더 · 카드 · 화살표 · 드래그
     panels/            일정 편집 · 보드 구성(트랙+조직) · 데이터
 ```
@@ -61,6 +62,11 @@ src/               렌더러 (프레임워크 없음, ES 모듈)
 9. **화살표는 렌더 마지막에.** DOM 좌표를 읽으므로 컬럼 폭이 확정된 뒤여야 한다.
 10. 저장소를 늘릴 때는 `StorageAdapter`를 구현하고 `createAdapter()`에 끼운다.
    그 아래 코드는 저장 위치를 몰라야 한다.
+11. **프로젝트 전환은 `store.adopt()`로.** Store/Board를 새로 만들지 않고 문서만
+   갈아끼운다. `adopt`는 되돌리기 스택을 비운다 — 프로젝트 A에서 Ctrl+Z를 눌러
+   B의 내용이 나오면 안 된다.
+12. **보드에 관한 모든 것은 `board_id`로 갈린다.** 새 테이블을 만들 때도
+   `board_id`를 넣고 `ON DELETE CASCADE`를 건다.
 
 ## 데이터
 

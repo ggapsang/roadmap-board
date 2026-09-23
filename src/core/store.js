@@ -126,6 +126,19 @@ export class Store extends Emitter {
     return { ok: true, error: null, warnings };
   }
 
+  /**
+   * 다른 프로젝트를 연다. 문서를 통째로 갈아끼우고 되돌리기 스택을 비운다.
+   * replace()와 달리 되돌리기 대상이 아니다 — 프로젝트 A에서 Ctrl+Z를 눌렀을 때
+   * 프로젝트 B의 내용이 나오면 안 된다.
+   */
+  adopt(doc) {
+    this.#doc = doc;
+    this.#undo.length = 0;
+    this.#redo.length = 0;
+    this.#tx = null;
+    this.emit('change', { label: '프로젝트 열기', reason: 'adopt' });
+  }
+
   /** 직렬화 — 데이터 패널 · 반출용 */
   toJSON(space = 1) { return JSON.stringify(this.#doc, null, space); }
 

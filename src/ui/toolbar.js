@@ -30,6 +30,7 @@ export function initToolbar({ store, view, actions }) {
     actions.render();
   });
 
+  $('btnProjects').addEventListener('click', () => actions.openProjects());
   $('btnTracks').addEventListener('click', () => actions.openTracks());
   $('btnData').addEventListener('click', () => actions.openData());
   $('btnAdd').addEventListener('click', () => actions.addItem());
@@ -47,8 +48,8 @@ export function initToolbar({ store, view, actions }) {
     sync() {
       $('btnUndo').disabled = !store.canUndo;
       $('btnRedo').disabled = !store.canRedo;
-      $('rangeLabel').textContent =
-        `${store.meta.start.replace(/-/g, '.')} — ${store.meta.end.replace(/-/g, '.')}`;
+      const period = `${store.meta.start.replace(/-/g, '.')} — ${store.meta.end.replace(/-/g, '.')}`;
+      $('rangeLabel').textContent = store.meta.name ? `${store.meta.name} · ${period}` : period;
     },
   };
 }

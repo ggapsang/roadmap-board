@@ -16,7 +16,14 @@ contextBridge.exposeInMainWorld('roadmapDB', {
 
   load: () => call('db:load'),
   save: (doc, label) => call('db:save', doc, label),
-  clear: () => call('db:clear'),
+
+  // 프로젝트 — 첫 화면의 목록
+  listProjects: () => call('project:list'),
+  openProject: (id) => call('project:open', id),
+  createProject: (doc, name) => call('project:create', doc, name),
+  renameProject: (id, name) => call('project:rename', id, name),
+  duplicateProject: (id, name) => call('project:duplicate', id, name),
+  deleteProject: (id) => call('project:delete', id),
 
   // 변경 이력 (기획안 P2)
   revisions: (limit) => call('db:revisions', limit),

@@ -1,5 +1,5 @@
 @media print{
-  .bar,.panel,.scrim,.toast,.status .orgs,.status .divider{display:none!important}
+  .bar,.panel,.scrim,.toast,.launcher,.status .orgs,.status .divider{display:none!important}
   body{overflow:visible;height:auto}
   .scroll{overflow:visible}
   .now{border-color:var(--neutral-900)}

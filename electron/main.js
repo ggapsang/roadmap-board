@@ -11,6 +11,8 @@ import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { openDatabase } from './db/index.js';
 import { BoardRepository } from './db/repository.js';
+// 스모크용. 렌더러와 같은 시드를 쓴다 — 순수 ESM이라 메인에서도 읽힌다.
+import { SEED as SMOKE_SEED } from '../src/config/seed.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, '..');
@@ -96,6 +98,18 @@ function createWindow() {
  * 창을 띄우지 않으므로 CI에서도 돌릴 수 있다.
  */
 async function runSmoke(target) {
+  // 런처가 첫 화면이다. 프로젝트를 하나 만들어 열고 나서 보드를 검사한다.
+  const openProbe = `(async () => {
+    const r = window.__roadmap;
+    if (!r) return { error: '__roadmap 없음 — 부팅 실패' };
+    const before = await r.adapter.listProjects();
+    const id = await r.adapter.createProject(window.__smokeSeed, '스모크 프로젝트');
+    await r.openProject(id);
+    await new Promise((res) => setTimeout(res, 300));
+    const after = await r.adapter.listProjects();
+    return { projectsBefore: before.length, projectsAfter: after.length, opened: id };
+  })()`;
+
   const probe = `(() => {
     const q = (s) => document.querySelectorAll(s).length;
     const r = window.__roadmap;
@@ -126,10 +140,24 @@ async function runSmoke(target) {
     return mark;
   })()`;
 
+  let opened = null;
   let result;
   try {
-    // 첫 렌더가 끝나도록 한 프레임 양보
     await new Promise((r) => setTimeout(r, 600));
+
+    // 런처가 떠 있는지 먼저 본다
+    const launcherUp = await target.webContents.executeJavaScript(
+      `!document.getElementById('launcher').hidden`,
+    );
+    console.log('[smoke] launcher ' + (launcherUp ? 'ok' : 'FAIL (첫 화면에 안 떴다)'));
+
+    // 렌더러에 시드를 넣어 주고 프로젝트를 만들어 연다
+    await target.webContents.executeJavaScript(
+      `window.__smokeSeed = ${JSON.stringify(SMOKE_SEED)}; true`,
+    );
+    opened = await target.webContents.executeJavaScript(openProbe);
+    console.log('[smoke] project ' + JSON.stringify(opened));
+
     result = await target.webContents.executeJavaScript(probe);
   } catch (err) {
     result = { error: String(err) };
@@ -141,7 +169,9 @@ async function runSmoke(target) {
   if (!result.error) {
     try {
       const mark = await target.webContents.executeJavaScript(writeProbe);
-      const row = db.prepare('SELECT title FROM item WHERE board_id = 1 ORDER BY ord LIMIT 1').get();
+      const row = db.prepare(
+        'SELECT title FROM item WHERE board_id = ? ORDER BY ord LIMIT 1',
+      ).get(opened.opened);
       wrote = row?.title === mark;
       console.log('[smoke] write round-trip ' + (wrote ? 'ok' : `FAIL (DB=${row?.title})`));
     } catch (err) {
@@ -150,7 +180,8 @@ async function runSmoke(target) {
     }
   }
 
-  const ok = !result.error && result.tracks > 0 && result.cards > 0 && result.items > 0 && wrote === true;
+  const ok = !result.error && !opened?.error && opened?.projectsAfter === opened?.projectsBefore + 1
+    && result.tracks > 0 && result.cards > 0 && result.items > 0 && wrote === true;
   console.log('[smoke] ' + (ok ? 'PASS' : 'FAIL'));
 
   const file = resolveDbPath();
@@ -213,12 +244,24 @@ function registerIpc() {
 
   ipcMain.handle('db:load', guard(() => repo.load()));
   ipcMain.handle('db:save', guard((_e, doc, label) => { repo.save(doc, label ?? ''); return true; }));
-  ipcMain.handle('db:clear', guard(() => { repo.clear(); return true; }));
+
+  // 프로젝트
+  ipcMain.handle('project:list', guard(() => repo.listProjects()));
+  ipcMain.handle('project:open', guard((_e, id) => {
+    repo.open(id);
+    repo.touchOpened(id);
+    return repo.load();
+  }));
+  ipcMain.handle('project:create', guard((_e, doc, name) => repo.createProject(doc, name)));
+  ipcMain.handle('project:rename', guard((_e, id, name) => { repo.renameProject(id, name); return true; }));
+  ipcMain.handle('project:duplicate', guard((_e, id, name) => repo.duplicateProject(id, name)));
+  ipcMain.handle('project:delete', guard((_e, id) => { repo.deleteProject(id); return true; }));
   ipcMain.handle('db:revisions', guard((_e, limit) => repo.listRevisions(limit ?? 50)));
   ipcMain.handle('db:revision', guard((_e, id) => repo.getRevision(id)));
   ipcMain.handle('db:info', guard(() => ({
     file: resolveDbPath(),
     schema: db.pragma('user_version', { simple: true }),
+    projects: repo.listProjects().length,
   })));
 
   // JSON 파일로 반출 / 반입
@@ -256,7 +299,7 @@ app.whenReady().then(() => {
   const file = resolveDbPath();
   console.log('[db] 파일:', file);
   db = openDatabase(file);
-  repo = new BoardRepository(db);
+  repo = new BoardRepository(db);   // 프로젝트는 런처에서 연다
 
   registerProtocol();
   registerIpc();

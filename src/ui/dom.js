@@ -61,6 +61,10 @@ export const ICONS = {
   up:     '<path d="m6 15 6-6 6 6"/>',
   down:   '<path d="m6 9 6 6 6-6"/>',
   trash:  '<path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13"/>',
+  copy:   '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/>',
+  pencil: '<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/>',
+  back:   '<path d="M19 12H5"/><path d="m11 18-6-6 6-6"/>',
+  folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
 };
 
 /** 버튼 한 줄 생성 헬퍼 */
