@@ -117,22 +117,45 @@ export class Board {
     if (now) this.grid.append(now);
   }
 
+  /**
+   * 카드를 그린다. 상위 일정부터 그려야 자식이 들어갈 자리가 생기므로
+   * 깊이 순으로 훑는다. 상위가 필터에 걸려 빠지면 자식도 함께 빠진다.
+   */
   renderCards() {
     for (const node of this.grid.querySelectorAll('.ev')) node.remove();
     this.grid.style.setProperty('--fs', this.store.meta.display?.fontScale ?? 1);
 
+    const { placement, childrenOf, depthOf } = this._layout;
     const ctx = {
       origin: this.origin,
       ppd: this.view.ppd,
-      placement: this._layout.placement,
+      placement,
       selectedId: this.view.selectedItem,
-      match: null,
     };
 
-    for (const item of this.store.items) {
-      const col = this.columns.get(item.t);
-      if (!col || !this.view.isVisible(item)) continue;
-      col.append(renderCard(item, { ...ctx, match: this.view.matches(item) }));
+    const byId = new Map(this.store.items.map((i) => [i.id, i]));
+    const cardEls = new Map();
+
+    const ordered = [...this.store.items].sort(
+      (a, b) => (depthOf.get(a.id) ?? 0) - (depthOf.get(b.id) ?? 0),
+    );
+
+    for (const item of ordered) {
+      if (!this.view.isVisible(item)) continue;
+
+      const parent = item.parent ? byId.get(item.parent) : null;
+      // 상위 카드가 안 그려졌으면(숨김/필터) 자식도 놓을 자리가 없다
+      const host = parent ? cardEls.get(parent.id) : this.columns.get(item.t);
+      if (!host) continue;
+
+      const node = renderCard(item, {
+        ...ctx,
+        match: this.view.matches(item),
+        parent,
+        hasChildren: (childrenOf.get(item.id) ?? []).length > 0,
+      });
+      host.append(node);
+      cardEls.set(item.id, node);
     }
 
     // 카드가 붙은 뒤에야 offsetLeft/offsetTop이 확정된다

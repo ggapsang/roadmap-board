@@ -27,6 +27,8 @@ body.panel-open{--panel-w:340px}
   border:1px solid var(--border-strong);border-radius:var(--u1-5);font-size:13px}
 .fld textarea{height:auto;min-height:var(--u10);padding:var(--u2) var(--u2-5);resize:vertical;line-height:20px}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:var(--u2)}
+.fld label.chk{display:flex;align-items:center;gap:var(--u2);font-size:13px;
+  color:var(--text-primary);font-weight:400;cursor:pointer;margin:0}
 .row{display:flex;gap:var(--u2);margin-top:var(--u2)}
 .row>.btn{flex:1;justify-content:center}
 

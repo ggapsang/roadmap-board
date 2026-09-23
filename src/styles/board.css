@@ -73,6 +73,25 @@
 .ev .pg{position:absolute;left:3px;right:0;bottom:0;height:2px;background:var(--border)}
 .ev .pg i{display:block;height:100%;background:var(--text-secondary)}
 .ev .grip{position:absolute;left:0;right:0;bottom:0;height:var(--u2);cursor:ns-resize}
+/* 가로 폭 손잡이 — 트랙 안에서 자유롭게 넓히고 좁힌다 */
+.ev .grip-w,.ev .grip-e{position:absolute;top:0;bottom:0;width:var(--u1-5);cursor:ew-resize}
+.ev .grip-w{left:0}
+.ev .grip-e{right:0}
+.ev:hover>.grip-w,.ev:hover>.grip-e{background:var(--accent-weak)}
+
+/* 비고를 카드에 함께 보여 줄 때 */
+.ev .card-note{margin-top:var(--u1);font-size:calc(11px * var(--fs,1));line-height:16px;
+  color:var(--text-secondary);white-space:pre-wrap;word-break:keep-all;overflow:hidden}
+
+/* 일정 안에 일정 — 상위 카드는 제목만 위에 두고 아래를 자식에게 내준다.
+   메타(기간·담당)는 숨긴다. 자식이 날짜 위치대로 들어오면서 겹치기 때문이다.
+   기간은 카드의 세로 길이가, 담당은 편집 패널이 알려 준다. */
+.ev.container{overflow:visible;padding-bottom:var(--u2)}
+.ev.container>.t{flex:none;width:100%;text-align:center}
+.ev.container>.meta{display:none}
+.ev.container>.card-note{flex:none}
+.ev.child{z-index:7}
+.ev.container.big{align-items:stretch;text-align:center}
 .ev.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-weak),var(--shadow);z-index:16}
 .ev.dim{opacity:.22}
 .ev.hit{box-shadow:0 0 0 2px var(--warning-500)}
@@ -96,6 +115,7 @@
 .ev.st-hold .t{color:var(--text-secondary);font-weight:500;position:sticky;top:var(--u2);text-align:center;width:100%}
 
 .ev.big{align-items:center;text-align:center}
+.ev.big.container{align-items:stretch}
 .ev.big .meta{justify-content:center}
 .ev.big .t{font-size:calc(14px * var(--fs,1));line-height:calc(20px * var(--fs,1))}
 

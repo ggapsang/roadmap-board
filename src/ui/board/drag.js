@@ -1,5 +1,9 @@
 /**
- * 카드 드래그 — 상하 = 일 단위 스냅 이동, 좌우 = 트랙 이동. 하단 그립 = 기간 조절.
+ * 카드 드래그.
+ *
+ *   카드 본체   상하 = 일 단위 스냅 이동, 좌우 = 트랙 이동
+ *   아래 손잡이 기간 조절 (종료일)
+ *   좌우 손잡이 가로 폭 조절 — 트랙(또는 상위 카드) 안에서 자유롭게
  *
  * 트랙 이동은 포인터가 실제로 올라가 있는 컬럼을 찾아 판정한다.
  * 레인 확장 때문에 컬럼 폭이 트랙마다 다르므로, 고정 폭으로 나눠 델타를 구하면
@@ -32,14 +36,28 @@ export function attachDrag(grid, {
     if (!item) return;
 
     const origin = getOrigin();
+    const cls = ev.target.classList;
+    const mode = cls.contains('grip') ? 'size'
+      : cls.contains('grip-w') ? 'width-w'
+      : cls.contains('grip-e') ? 'width-e'
+      : 'move';
+
+    // 가로 폭은 담고 있는 상자(컬럼 또는 상위 카드)에 대한 비율로 다룬다
+    const host = card.parentElement;
+    const hostWidth = host.getBoundingClientRect().width || 1;
+    const rect = card.getBoundingClientRect();
+
     drag = {
       id: item.id,
-      mode: ev.target.classList.contains('grip') ? 'size' : 'move',
+      mode,
       x: ev.clientX,
       y: ev.clientY,
       startDay: dayIndex(item.s, origin),
       endDay: dayIndex(item.e, origin),
       startTrack: trackIndexAt(ev.clientX),
+      hostWidth,
+      x0: item.x ?? (rect.left - host.getBoundingClientRect().left) / hostWidth,
+      w0: item.w ?? rect.width / hostWidth,
       moved: false,
     };
     card.setPointerCapture(ev.pointerId);
@@ -51,10 +69,19 @@ export function attachDrag(grid, {
     const ppd = view.ppd;
     const dDays = Math.round((ev.clientY - drag.y) / ppd);
     const dTrack = trackIndexAt(ev.clientX) - drag.startTrack;
-    if (!dDays && !dTrack && !drag.moved) return;
+    const dRatio = (ev.clientX - drag.x) / drag.hostWidth;
+    const horizontal = drag.mode.startsWith('width');
+
+    if (!horizontal && !dDays && !dTrack && !drag.moved) return;
+    if (horizontal && Math.abs(ev.clientX - drag.x) < 2 && !drag.moved) return;
 
     // 드래그 전체를 되돌리기 1단계로 묶는다 (기획안 §5)
-    if (!drag.moved) { store.begin(drag.mode === 'size' ? '기간 조절' : '일정 이동'); drag.moved = true; }
+    if (!drag.moved) {
+      const label = drag.mode === 'size' ? '기간 조절'
+        : drag.mode.startsWith('width') ? '가로 폭 조절' : '일정 이동';
+      store.begin(label);
+      drag.moved = true;
+    }
 
     const origin = getOrigin();
     const total = getTotalDays();
@@ -62,6 +89,19 @@ export function attachDrag(grid, {
     store.commit('드래그', () => {
       const item = store.item(drag.id);
       if (!item) return;
+      if (horizontal) {
+        const MIN = 0.06;
+        if (drag.mode === 'width-e') {
+          item.w = clamp(drag.w0 + dRatio, MIN, 1 - (drag.x0 ?? 0));
+          item.x = drag.x0;
+        } else {
+          const right = drag.x0 + drag.w0;
+          const nextX = clamp(drag.x0 + dRatio, 0, right - MIN);
+          item.x = nextX;
+          item.w = right - nextX;
+        }
+        return;
+      }
       if (drag.mode === 'move') {
         const length = drag.endDay - drag.startDay;
         const s = Math.max(0, Math.min(total - 1 - length, drag.startDay + dDays));
@@ -89,3 +129,5 @@ export function attachDrag(grid, {
 
   return { get dragging() { return !!drag && drag.moved; } };
 }
+
+const clamp = (v, min, max) => Math.min(Math.max(v, min), Math.max(min, max));

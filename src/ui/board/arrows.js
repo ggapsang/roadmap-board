@@ -32,15 +32,16 @@ export function drawArrows(layer, grid, items, display) {
   const width = display?.arrowWidth ?? 7;
   const head = display?.arrowHead ?? 2;
 
+  // 카드는 컬럼 안에, 중첩 카드는 상위 카드 안에 들어 있다.
+  // offsetLeft/offsetTop은 부모 기준이므로 grid 기준 절대 좌표로 환산한다.
   const box = new Map();
   for (const card of grid.querySelectorAll('.ev')) {
-    const col = card.parentElement;
-    box.set(card.dataset.id, {
-      x: col.offsetLeft + card.offsetLeft,
-      y: card.offsetTop,
-      w: card.offsetWidth,
-      h: card.offsetHeight,
-    });
+    let x = 0, y = 0;
+    for (let node = card; node && node !== grid; node = node.offsetParent) {
+      x += node.offsetLeft;
+      y += node.offsetTop;
+    }
+    box.set(card.dataset.id, { x, y, w: card.offsetWidth, h: card.offsetHeight });
   }
 
   const trackOf = new Map(items.map((i) => [i.id, i.t]));

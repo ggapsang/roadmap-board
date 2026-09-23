@@ -154,6 +154,7 @@ async function runSmoke(target) {
   let layout = null;
   let exported = null;
   let banded = null;
+  let nested = null;
   let result;
   try {
     await new Promise((r) => setTimeout(r, 600));
@@ -195,6 +196,27 @@ async function runSmoke(target) {
     await target.webContents.executeJavaScript(
       `document.querySelector('#pItem [data-close]').click()`,
     );
+
+    // 중첩 — PPT 시안처럼 '1년차 과제 제출용 화면 구성'이 세부 일정을 품는다
+    nested = await target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      r.store.commit('중첩', (doc) => {
+        const host = doc.items.find((i) => i.id === 'e10');
+        host.e = '2026-11-30';
+        host.align = 'top';
+        for (const id of ['e11','e12','e13','e14','e15','e16']) {
+          doc.items.find((i) => i.id === id).parent = 'e10';
+        }
+      });
+      r.board.rebuild();
+      await new Promise((res) => setTimeout(res, 200));
+      const host = document.querySelector('[data-id="e10"]');
+      const inside = host ? host.querySelectorAll(':scope > .ev').length : -1;
+      const topLevel = document.querySelectorAll('.col > .ev').length;
+      return { inside, topLevel, isContainer: host?.classList.contains('container') ?? false };
+    })()`);
+    console.log('[smoke] nesting ' + JSON.stringify(nested));
+    await capture(target, 'board-nested');
 
     // 시간축 구간 묶기 — 2027년 1~3월을 하나로
     banded = await target.webContents.executeJavaScript(`(async () => {
@@ -276,6 +298,7 @@ async function runSmoke(target) {
   const ok = !result.error && !opened?.error && !renamed?.error
     && layout?.panelOpen === true && layout?.shrunk === 340 && layout?.selectable === 'text'
     && banded?.merged === 1 && banded?.after === banded?.before - 2
+    && nested?.inside === 6 && nested?.isContainer === true
     && renamed?.name === '이름 변경 테스트' && renamed?.dialogClosed === true
     && opened?.launcherClosed === true
     && opened?.projectsAfter === opened?.projectsBefore + 1

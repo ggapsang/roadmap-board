@@ -3,7 +3,7 @@
  * 제목·상태·트랙·유형·기간·병합폭·진척률·담당·선행일정·비고 (기획안 §5).
  */
 import { shortMD, dayIndex, parseDate } from '../../core/dates.js';
-import { newId } from '../../core/schema.js';
+import { newId, ALIGNS } from '../../core/schema.js';
 import { STATUSES, ITEM_TYPES } from '../../config/index.js';
 import { $, el, clear } from '../dom.js';
 import { toast } from '../toast.js';
@@ -11,7 +11,10 @@ import { toast } from '../toast.js';
 const F = {
   title: 'i-title', track: 'i-track', type: 'i-type', start: 'i-start',
   end: 'i-end', span: 'i-span', prog: 'i-prog', org: 'i-org', note: 'i-note',
+  parent: 'i-parent',
 };
+
+const ALIGN_LABELS = { top: '위', middle: '가운데', bottom: '아래' };
 
 export class ItemPanel {
   constructor({ store, view, panels, onChange }) {
@@ -35,6 +38,15 @@ export class ItemPanel {
         on: { click: () => this.#setStatus(s.key) },
       }));
     }
+
+    const align = $('i-align');
+    clear(align);
+    for (const key of ALIGNS) {
+      align.append(el('button', {
+        type: 'button', dataset: { align: key }, text: ALIGN_LABELS[key],
+        on: { click: () => this.#setAlign(key) },
+      }));
+    }
   }
 
   #bind() {
@@ -46,6 +58,18 @@ export class ItemPanel {
       const item = this.item;
       if (!item) return;
       this.store.commit('제목 수정', () => { item.ti = $(F.title).value; });
+    });
+
+    $('i-shownote').addEventListener('change', (e) => {
+      const item = this.item;
+      if (!item) return;
+      this.store.commit('비고 표시', () => { item.showNote = e.target.checked; });
+    });
+    $('i-width-reset').addEventListener('click', () => {
+      const item = this.item;
+      if (!item) return;
+      this.store.commit('가로 폭 자동', () => { item.x = null; item.w = null; });
+      this.#syncWidth(item);
     });
 
     $('i-del').addEventListener('click', () => this.remove());
@@ -78,7 +102,11 @@ export class ItemPanel {
     $(F.org).value = item.og;
     $(F.note).value = item.note ?? '';
 
+    this.#renderParents(item);
     this.#syncStatus(item);
+    this.#syncAlign(item);
+    this.#syncWidth(item);
+    $('i-shownote').checked = item.showNote === true;
     this.#renderDeps(item);
     this.panels.open('pItem');
     this.onChange?.();
@@ -89,6 +117,60 @@ export class ItemPanel {
     if (!item) return;
     this.store.commit('상태 변경', () => { item.st = key; });
     this.#syncStatus(item);
+  }
+
+  #setAlign(key) {
+    const item = this.item;
+    if (!item) return;
+    this.store.commit('글자 정렬', () => { item.align = key; });
+    this.#syncAlign(item);
+  }
+
+  #syncAlign(item) {
+    for (const b of $('i-align').querySelectorAll('button')) {
+      b.setAttribute('aria-pressed', String(b.dataset.align === item.align));
+    }
+  }
+
+  #syncWidth(item) {
+    const manual = item.x != null || item.w != null;
+    const button = $('i-width-reset');
+    button.disabled = !manual;
+    button.textContent = manual ? '자동으로 되돌리기' : '자동 (겹침에 따라)';
+  }
+
+  /**
+   * 상위 일정 후보 — 같은 트랙에서 이 일정을 기간 안에 품을 수 있고,
+   * 자기 자신이나 자기 자손이 아닌 것.
+   */
+  #renderParents(item) {
+    const select = $(F.parent);
+    clear(select);
+    select.append(el('option', { value: '', text: '— 없음 (트랙에 직접) —' }));
+
+    const descendants = this.#descendantsOf(item.id);
+    for (const other of this.store.items) {
+      if (other.id === item.id || descendants.has(other.id)) continue;
+      if (other.ty === 'ms') continue;                 // 마일스톤은 품을 수 없다
+      if (other.t !== item.t && !item.parent) continue; // 다른 트랙은 후보에서 뺀다
+      const track = this.store.track(other.t)?.name ?? '';
+      select.append(el('option', { value: other.id, text: `${other.ti} · ${track}` }));
+    }
+    select.value = item.parent ?? '';
+  }
+
+  #descendantsOf(id) {
+    const out = new Set();
+    const walk = (parentId) => {
+      for (const child of this.store.items) {
+        if (child.parent === parentId && !out.has(child.id)) {
+          out.add(child.id);
+          walk(child.id);
+        }
+      }
+    };
+    walk(id);
+    return out;
   }
 
   #syncStatus(item) {
@@ -155,6 +237,18 @@ export class ItemPanel {
       item.pg = Math.min(100, Math.max(0, Math.round(Number($(F.prog).value) || 0)));
       item.og = $(F.org).value;
       item.note = $(F.note).value;
+
+      const parent = $(F.parent).value || null;
+      if (parent !== item.parent) {
+        item.parent = parent;
+        // 담기면 트랙과 가로 배치를 상위에 맞춘다
+        if (parent) {
+          const host = this.store.item(parent);
+          if (host) { item.t = host.t; item.sp = 1; }
+        }
+        item.x = null;
+        item.w = null;
+      }
     });
 
     // 정규화 결과를 폼에 되돌려 보여 준다

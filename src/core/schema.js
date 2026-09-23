@@ -14,7 +14,7 @@ import {
   DEFAULT_ORGS, DEFAULT_DISPLAY, DISPLAY_LIMITS,
 } from '../config/index.js';
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 /**
  * v0 = P0 시안 문서(version 필드 없음).
@@ -58,12 +58,37 @@ function v3_to_v4(doc) {
   return doc;
 }
 
+/**
+ * v5 = 일정 안에 일정을 넣을 수 있다 + 카드 표현 옵션.
+ *
+ *   parent   상위 일정 id. "1년차 과제 제출용 화면 구성"이 DT 개발·3D 모델링을
+ *            품는 식으로, 큰 덩어리 안에 세부 일정이 들어간다.
+ *   x, w     트랙(또는 상위 카드) 안에서의 가로 위치·폭 비율 0~1.
+ *            null이면 겹침 계산이 자동으로 정한다.
+ *   align    카드 안 글자의 세로 정렬
+ *   showNote 비고를 카드에 함께 보여 줄지
+ */
+function v4_to_v5(doc) {
+  for (const it of doc.items ?? []) {
+    it.parent = null;
+    it.x = null;
+    it.w = null;
+    it.align = 'middle';
+    it.showNote = false;
+  }
+  doc.version = 5;
+  return doc;
+}
+
 const MIGRATIONS = {
   0: v0_to_v1,
   1: v1_to_v2,
   2: v2_to_v3,
   3: v3_to_v4,
+  4: v4_to_v5,
 };
+
+export const ALIGNS = ['top', 'middle', 'bottom'];
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -171,6 +196,12 @@ export function normalize(doc) {
     n.sp = clampInt(n.sp, 1, doc.tracks.length - ti, 1);
 
     n.dp = Array.isArray(n.dp) ? n.dp.filter((d) => typeof d === 'string') : [];
+
+    n.parent = typeof n.parent === 'string' && n.parent ? n.parent : null;
+    n.align = ALIGNS.includes(n.align) ? n.align : 'middle';
+    n.showNote = n.showNote === true;
+    n.x = ratio(n.x);
+    n.w = n.w == null ? null : Math.min(1, Math.max(0.05, Number(n.w) || 0.05));
     return n;
   });
 
@@ -180,6 +211,34 @@ export function normalize(doc) {
       doc.orgs.push(it.og);
       warnings.push(`담당 조직 '${it.og}'을(를) 목록에 추가했습니다.`);
     }
+  }
+
+  // ── 상위 일정 정리
+  // 없는 부모 · 자기 자신 · 순환은 끊는다. 순환을 두면 렌더가 무한히 돈다.
+  const itemById = new Map(doc.items.map((i) => [i.id, i]));
+  for (const it of doc.items) {
+    if (!it.parent) continue;
+    if (it.parent === it.id || !itemById.has(it.parent)) {
+      it.parent = null;
+      continue;
+    }
+    const seen = new Set([it.id]);
+    let cursor = itemById.get(it.parent);
+    while (cursor) {
+      if (seen.has(cursor.id)) {
+        warnings.push(`'${it.ti || it.id}'의 상위 일정이 순환하여 해제했습니다.`);
+        it.parent = null;
+        break;
+      }
+      seen.add(cursor.id);
+      cursor = cursor.parent ? itemById.get(cursor.parent) : null;
+    }
+  }
+  // 자식은 상위 일정의 트랙을 따른다
+  for (const it of doc.items) {
+    if (!it.parent) continue;
+    const parent = itemById.get(it.parent);
+    if (parent) { it.t = parent.t; it.sp = 1; }
   }
 
   // ── 선행 참조 정리: 없는 id / 자기 자신 / 중복 제거
@@ -192,6 +251,14 @@ export function normalize(doc) {
 
   doc.version = SCHEMA_VERSION;
   return { doc, warnings };
+}
+
+/** 0~1 비율. 비어 있으면 null (= 자동 배치) */
+function ratio(v) {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  return Math.min(1, Math.max(0, n));
 }
 
 function clampInt(v, min, max, fallback) {
