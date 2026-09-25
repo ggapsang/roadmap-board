@@ -60,7 +60,7 @@ export function attachDrag(grid, {
       endDay: dayIndex(item.e, origin),
       startTrack: trackIndexAt(ev.clientX),
       homeTrack: store.trackIndex(item.t),
-      hd0: item.hd ?? null,
+      hd0: item.place?.hd ?? null,
       hostWidth,
       x0: item.x ?? (rect.left - hostLeft) / hostWidth,
       w0: item.w ?? rect.width / hostWidth,
@@ -149,7 +149,7 @@ export function attachDrag(grid, {
         item.s = dateAt(origin, s);
       } else if (drag.hd0 != null) {
         // 세로 크기 강제 — 날짜는 그대로, 세로 길이(일)만 늘리고 줄인다
-        item.hd = Math.max(1, Math.round(drag.hd0 + dDays));
+        item.place.hd = Math.max(1, Math.round(drag.hd0 + dDays));
       } else {
         // 종료일도 아래로는 막지 않는다 — 끌어 내리면 축이 늘어난다.
         item.e = dateAt(origin, Math.max(drag.startDay, drag.endDay + dDays));

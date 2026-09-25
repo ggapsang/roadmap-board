@@ -504,6 +504,7 @@ export class Board {
       s: dateAt(origin, start), e: dateAt(origin, end),
       ti: '새 일정', ty: DEFAULT_TYPE, st: DEFAULT_STATUS,
       og: this.store.orgs[0], pg: 0, dp: [], note: '',
+      place: { align: 'middle', showNote: false, hd: null },
     };
     this.store.commit('일정 추가', (doc) => { doc.items.push(item); });
     this.handlers.openItem(item.id);

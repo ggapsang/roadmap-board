@@ -255,7 +255,7 @@ async function runSmoke(target) {
       r.store.commit('중첩', (doc) => {
         const host = doc.items.find((i) => i.id === 'e10');
         host.e = '2026-11-30';
-        host.align = 'top';
+        host.place.align = 'top';
         for (const id of ['e11','e12','e13','e14','e15','e16']) {
           doc.items.find((i) => i.id === id).parent = 'e10';
         }
@@ -435,13 +435,13 @@ async function runSmoke(target) {
       const card = document.querySelector('.col > .ev:not(.ms)');
       const id = card.dataset.id;
       // 강제 아님 → 폭 손잡이 없고 걸침 손잡이만 있어야 한다
-      r.store.commit('자동', () => { const it = r.store.item(id); it.sp = 1; it.hd = null; it.x = null; it.w = null; });
+      r.store.commit('자동', () => { const it = r.store.item(id); it.sp = 1; it.place.hd = null; it.x = null; it.w = null; });
       r.board.render();
       await new Promise((res) => setTimeout(res, 150));
       const autoHasSpan = !!document.querySelector('[data-id="' + id + '"] .grip-span');
       const autoHasHe = !!document.querySelector('[data-id="' + id + '"] .grip-he');
       // 강제 켜기 → 좌우 폭 손잡이 등장
-      r.store.commit('강제', () => { r.store.item(id).hd = 20; });
+      r.store.commit('강제', () => { r.store.item(id).place.hd = 20; });
       r.board.render();
       await new Promise((res) => setTimeout(res, 150));
       const el = () => document.querySelector('[data-id="' + id + '"]');
@@ -458,7 +458,7 @@ async function runSmoke(target) {
       await new Promise((res) => setTimeout(res, 150));
       const w = r.store.item(id).w;
       const after = Math.round(el().getBoundingClientRect().width);
-      r.store.commit('원복', () => { const it = r.store.item(id); it.hd = null; it.x = null; it.w = null; it.sp = 2; });
+      r.store.commit('원복', () => { const it = r.store.item(id); it.place.hd = null; it.x = null; it.w = null; it.sp = 2; });
       r.board.render();
       return { autoHasSpan, autoHasHe, before, after, w, shrank: after < before, hasW: w != null && w < 1 };
     })()`), 20000, 'top-width');
@@ -616,15 +616,15 @@ async function runSmoke(target) {
     // 컨테이너 카드도 글자 세로 정렬(align)을 따르는가 — e10은 nesting 단계부터 컨테이너
     containerAlign = await target.webContents.executeJavaScript(`(async () => {
       const r = window.__roadmap;
-      const before = r.store.item('e10').align;
-      r.store.commit('정렬', () => { r.store.item('e10').align = 'bottom'; });
+      const before = r.store.item('e10').place.align;
+      r.store.commit('정렬', () => { r.store.item('e10').place.align = 'bottom'; });
       r.board.render();
       await new Promise((res) => setTimeout(res, 150));
       const node = document.querySelector('[data-id="e10"]');
       const jc = getComputedStyle(node).justifyContent;
       const cBottom = node.classList.contains('c-bottom');
       const isContainer = node.classList.contains('container');
-      r.store.commit('원복', () => { r.store.item('e10').align = before; });
+      r.store.commit('원복', () => { r.store.item('e10').place.align = before; });
       r.board.render();
       await new Promise((res) => setTimeout(res, 100));
       return { jc, cBottom, isContainer };
@@ -655,14 +655,14 @@ async function runSmoke(target) {
       const r = window.__roadmap;
       const id = 'e33';
       const it = () => r.store.item(id);
-      const before = { s: it().s, e: it().e, hd: it().hd ?? null };
+      const before = { s: it().s, e: it().e, hd: it().place.hd ?? null };
       const node = () => document.querySelector('[data-id="' + id + '"]');
-      r.store.commit('h15', () => { it().hd = 15; });
+      r.store.commit('h15', () => { it().place.hd = 15; });
       r.board.render();
       await new Promise((res) => setTimeout(res, 150));
       const h15 = Math.round(node().getBoundingClientRect().height);
       const noTopGrip = !node().querySelector('.grip-top');
-      r.store.commit('h25', () => { it().hd = 25; });
+      r.store.commit('h25', () => { it().place.hd = 25; });
       r.board.render();
       await new Promise((res) => setTimeout(res, 150));
       const h25 = Math.round(node().getBoundingClientRect().height);
@@ -677,9 +677,9 @@ async function runSmoke(target) {
       await new Promise((res) => setTimeout(res, 150));
       grid.dispatchEvent(new PointerEvent('pointerup', at(box.top + box.height / 2 + ppd * 8)));
       await new Promise((res) => setTimeout(res, 150));
-      const hdAfter = it().hd;
+      const hdAfter = it().place.hd;
       const datesUnchanged = it().s === before.s && it().e === before.e;
-      r.store.commit('원복', () => { it().hd = before.hd; });
+      r.store.commit('원복', () => { it().place.hd = before.hd; });
       r.board.render();
       await new Promise((res) => setTimeout(res, 100));
       return { h15, h25, hdAfter, noTopGrip, datesUnchanged, mapGrew: h25 > h15, dragChanged: hdAfter !== 25 };

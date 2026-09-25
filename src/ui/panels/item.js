@@ -77,7 +77,7 @@ export class ItemPanel {
     $('i-shownote').addEventListener('change', (e) => {
       const item = this.item;
       if (!item) return;
-      this.store.commit('비고 표시', () => { item.showNote = e.target.checked; });
+      this.store.commit('비고 표시', () => { item.place.showNote = e.target.checked; });
     });
     // 크기 강제 — 켜면 현재 기간 길이(일)로 시작하고 가로·세로를 드래그로 조절한다.
     // 끄면 강제 높이(hd)와 강제 폭(x/w)을 모두 비워 원래(자동) 크기로 돌아온다.
@@ -86,9 +86,9 @@ export class ItemPanel {
       if (!item) return;
       this.store.commit('크기 강제', () => {
         if (e.target.checked) {
-          item.hd = Math.max(1, inclusiveDays(item.s, item.e));
+          item.place.hd = Math.max(1, inclusiveDays(item.s, item.e));
         } else {
-          item.hd = null;
+          item.place.hd = null;
           item.x = null;
           item.w = null;
         }
@@ -128,8 +128,8 @@ export class ItemPanel {
     this.#renderParents(item);
     this.#syncStatus(item);
     this.#syncAlign(item);
-    $('i-shownote').checked = item.showNote === true;
-    $('i-fixedh').checked = item.hd != null;
+    $('i-shownote').checked = item.place?.showNote === true;
+    $('i-fixedh').checked = item.place?.hd != null;
     this.#renderDeps(item);
     this.panels.open('pItem');
     this.onChange?.();
@@ -145,13 +145,13 @@ export class ItemPanel {
   #setAlign(key) {
     const item = this.item;
     if (!item) return;
-    this.store.commit('글자 정렬', () => { item.align = key; });
+    this.store.commit('글자 정렬', () => { item.place.align = key; });
     this.#syncAlign(item);
   }
 
   #syncAlign(item) {
     for (const b of $('i-align').querySelectorAll('button')) {
-      b.setAttribute('aria-pressed', String(b.dataset.align === item.align));
+      b.setAttribute('aria-pressed', String(b.dataset.align === item.place?.align));
     }
   }
 

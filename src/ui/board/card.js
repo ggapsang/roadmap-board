@@ -44,7 +44,7 @@ export function renderCard(item, ctx) {
   // 점 마일스톤(s===e)만 얇은 표식으로 그린다. 기간 마일스톤은 막대로 떨어진다.
   const msPoint = isMilestone && item.s === item.e;
   // 크기 강제 모드 — 가로(x/w)·세로(hd)를 드래그로 자유 조절. hd가 그 표식이다.
-  const forced = item.hd != null;
+  const forced = item.place?.hd != null;
 
   // 자식은 상위 카드 기준으로, 최상위는 보드 기준으로 세로 위치를 잡는다.
   // 접힌 구간이 있으면 눈금이 균일하지 않으므로 TimeScale을 거친다.
@@ -119,7 +119,7 @@ export function renderCard(item, ctx) {
   }
 
   // 세로 크기 강제(hd, 일)면 날짜와 무관하게 그 길이로. 아니면 기간대로.
-  const rawH = item.hd != null ? item.hd * ppd : scale.span(item.s, item.e);
+  const rawH = forced ? item.place.hd * ppd : scale.span(item.s, item.e);
   const height = Math.max(LAYOUT.minCardHeight, rawH - LAYOUT.cardGap);
 
   node.style.height = height + 'px';
@@ -131,7 +131,7 @@ export function renderCard(item, ctx) {
   if (hasChildren) {
     // 컨테이너 제목도 세로 정렬(align)을 따른다 — 위/가운데/아래.
     // c-* 클래스로 제목 바 모양(위·아래 붙는 바 / 가운데 칩)을 가른다.
-    const al = item.align ?? 'middle';
+    const al = item.place?.align ?? 'middle';
     node.style.justifyContent = ALIGN_CSS[al];
     node.classList.add('c-' + al);
   } else if (isShort) {
@@ -139,7 +139,7 @@ export function renderCard(item, ctx) {
     // 세로 정렬(justifyContent)은 row 배치라 건드리지 않는다.
     node.classList.add('short');
   } else {
-    node.style.justifyContent = ALIGN_CSS[item.align] ?? 'center';
+    node.style.justifyContent = ALIGN_CSS[item.place?.align] ?? 'center';
     if (height >= LAYOUT.bigCardHeight || item.st === 'hold') node.classList.add('big');
   }
 
@@ -153,7 +153,7 @@ export function renderCard(item, ctx) {
 
   node.append(el('div.t', { text: item.ti }), meta);
 
-  if (item.showNote && item.note) {
+  if (item.place?.showNote && item.note) {
     node.append(el('div.card-note', { text: item.note }));
   }
   if (item.pg) {
@@ -162,7 +162,7 @@ export function renderCard(item, ctx) {
 
   // 위·아래 가장자리. 보통은 위=시작일·아래=종료일. 세로 크기 강제면 아래=높이,
   // 날짜는 손잡이로 바꾸지 않으므로 위 손잡이(시작일)는 숨긴다.
-  if (item.hd == null) node.append(el('div.grip-top', { attrs: { 'aria-hidden': 'true' } }));
+  if (!forced) node.append(el('div.grip-top', { attrs: { 'aria-hidden': 'true' } }));
   node.append(el('div.grip', { attrs: { 'aria-hidden': 'true' } }));
   // 자식·강제 모드 → 좌우 폭 손잡이(x/w). 강제 아닌 최상위 → 트랙 걸침 손잡이.
   const widthGrips = forced || !!parent;

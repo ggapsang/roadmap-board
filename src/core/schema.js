@@ -14,7 +14,7 @@ import {
   DEFAULT_ORGS, DEFAULT_DISPLAY, DISPLAY_LIMITS,
 } from '../config/index.js';
 
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 /**
  * v0 = P0 시안 문서(version 필드 없음).
@@ -100,6 +100,22 @@ function v6_to_v7(doc) {
   return doc;
 }
 
+function v7_to_v8(doc) {
+  // 배치(표시) 필드를 place로 모은다 (본질/배치 분리 1단계: align·showNote·hd).
+  for (const it of doc.items ?? []) {
+    const pl = (it.place && typeof it.place === 'object') ? it.place : {};
+    it.place = {
+      ...pl,
+      align: pl.align ?? it.align ?? 'middle',
+      showNote: pl.showNote ?? it.showNote ?? false,
+      hd: pl.hd ?? it.hd ?? null,
+    };
+    delete it.align; delete it.showNote; delete it.hd;
+  }
+  doc.version = 8;
+  return doc;
+}
+
 const MIGRATIONS = {
   0: v0_to_v1,
   1: v1_to_v2,
@@ -108,6 +124,7 @@ const MIGRATIONS = {
   4: v4_to_v5,
   5: v5_to_v6,
   6: v6_to_v7,
+  7: v7_to_v8,
 };
 
 export const ALIGNS = ['top', 'middle', 'bottom'];
@@ -228,12 +245,21 @@ export function normalize(doc) {
     n.dp = Array.isArray(n.dp) ? n.dp.filter((d) => typeof d === 'string') : [];
 
     n.parent = typeof n.parent === 'string' && n.parent ? n.parent : null;
-    n.align = ALIGNS.includes(n.align) ? n.align : 'middle';
-    n.showNote = n.showNote === true;
     n.x = ratio(n.x);
     n.w = n.w == null ? null : Math.min(1, Math.max(0.05, Number(n.w) || 0.05));
-    // 세로 크기 강제(일 단위). 없거나 잘못됐으면 null = 기간대로 자동.
-    n.hd = (typeof n.hd === 'number' && n.hd >= 1) ? Math.round(n.hd) : null;
+
+    // 배치(표시) 필드는 place로 모은다 — 이벤트 본질과 분리 (docs/DIRECTION.md #1).
+    // flat으로 오던 것도 관대하게 받아 place로 정규화한다. (Stage 1: align·showNote·hd)
+    const pl = isObj(it.place) ? it.place : {};
+    const align = pl.align ?? it.align;
+    const hd = pl.hd ?? it.hd;
+    n.place = {
+      align: ALIGNS.includes(align) ? align : 'middle',
+      showNote: (pl.showNote ?? it.showNote) === true,
+      // 세로 크기 강제(일 단위). 없거나 잘못됐으면 null = 기간대로 자동.
+      hd: (typeof hd === 'number' && hd >= 1) ? Math.round(hd) : null,
+    };
+    delete n.align; delete n.showNote; delete n.hd;
     return n;
   });
 
