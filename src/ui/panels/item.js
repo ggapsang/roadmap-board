@@ -1,20 +1,25 @@
 /**
- * 일정 편집 패널.
- * 제목·상태·트랙·유형·기간·병합폭·진척률·담당·선행일정·비고 (기획안 §5).
+ * 일정 편집 패널 — PPT 서식창처럼 탭으로 나눈다.
+ *   속성   제목·상태·트랙·유형·기간·걸침·진척·담당·비고
+ *   관계   선행·상위·별칭 — 셋 다 같은 "검색 리스트"로 통일 (엑셀 필터식)
+ *   표시   글자 정렬·비고 표시·크기 강제 — 아이콘 토글
+ *   태스크 순서 없는 할 일
  */
 import { shortMD, dayIndex, parseDate, inclusiveDays } from '../../core/dates.js';
 import { newId, ALIGNS } from '../../core/schema.js';
 import { STATUSES, ITEM_TYPES } from '../../config/index.js';
-import { $, el, clear } from '../dom.js';
+import { $, el, clear, icon, ICONS } from '../dom.js';
+import { createFilterList } from '../components/filter-list.js';
 import { toast } from '../toast.js';
 
+/** 값이 바로 문서로 반영되는 단순 입력들 (관계·별칭은 별도 리스트가 맡는다) */
 const F = {
   title: 'i-title', track: 'i-track', type: 'i-type', start: 'i-start',
   end: 'i-end', span: 'i-span', prog: 'i-prog', org: 'i-org', note: 'i-note',
-  parent: 'i-parent',
 };
 
-const ALIGN_LABELS = { top: '위', middle: '가운데', bottom: '아래' };
+const ALIGN_ICON = { top: ICONS.alignTop, middle: ICONS.alignMiddle, bottom: ICONS.alignBottom };
+const ALIGN_LABEL = { top: '위', middle: '가운데', bottom: '아래' };
 
 /** 여러 줄 제목 입력이 내용에 맞게 높이를 늘리도록 */
 function autogrow(node) {
@@ -26,6 +31,7 @@ export class ItemPanel {
   constructor({ store, view, panels, adapter, openProject, onChange }) {
     Object.assign(this, { store, view, panels, adapter, openProject, onChange });
     this.#buildStatic();
+    this.#buildLists();
     this.#bind();
   }
 
@@ -45,14 +51,50 @@ export class ItemPanel {
       }));
     }
 
+    // 글자 세로 정렬 — 아이콘 세그먼트
     const align = $('i-align');
     clear(align);
     for (const key of ALIGNS) {
       align.append(el('button', {
-        type: 'button', dataset: { align: key }, text: ALIGN_LABELS[key],
-        on: { click: () => this.#setAlign(key) },
-      }));
+        type: 'button', className: 'seg-btn', dataset: { align: key },
+        title: `글자 ${ALIGN_LABEL[key]} 정렬`, attrs: { 'aria-label': `글자 ${ALIGN_LABEL[key]} 정렬` },
+      }, [icon(ALIGN_ICON[key])]));
     }
+    align.querySelectorAll('.seg-btn').forEach((b) =>
+      b.addEventListener('click', () => this.#setAlign(b.dataset.align)));
+
+    // 표시 토글 아이콘
+    $('i-shownote').append(icon(ICONS.note));
+    $('i-fixedh').append(icon(ICONS.resize));
+    // 별칭 열기 버튼 — 아이콘 + 글자
+    $('i-aliasopen').append(icon(ICONS.external), el('span', { text: '별칭 보드 열기' }));
+
+    // 탭
+    for (const tab of $('pItem').querySelectorAll('.ptab')) {
+      tab.addEventListener('click', () => this.#showTab(tab.dataset.tab));
+    }
+  }
+
+  /** 관계 3종을 같은 검색 리스트로. 선택은 문서가 진실이라 isSelected를 매번 물어본다. */
+  #buildLists() {
+    this.depsList = createFilterList({
+      mode: 'multi', placeholder: '선행 일정 검색…', emptyText: '선택할 다른 일정이 없습니다.',
+      isSelected: (id) => this.store.relations.some((r) => r.type === 'dep' && r.from === id && r.to === this.item?.id),
+      onChange: (id) => this.#toggleDep(id),
+    });
+    this.parentList = createFilterList({
+      mode: 'single', placeholder: '상위 일정 검색…', emptyText: '품을 수 있는 일정이 없습니다.',
+      isSelected: (id) => (this.item?.parent ?? '') === id,
+      onChange: (id) => this.#setParent(id || null),
+    });
+    this.aliasList = createFilterList({
+      mode: 'single', placeholder: '보드 검색…', emptyText: '다른 보드가 없습니다.',
+      isSelected: (id) => String(this.item?.alias ?? '') === id,
+      onChange: (id) => this.#setAlias(id ? Number(id) : null),
+    });
+    $('i-deps').append(this.depsList.root);
+    $('i-parent').append(this.parentList.root);
+    $('i-alias').append(this.aliasList.root);
   }
 
   #bind() {
@@ -66,59 +108,47 @@ export class ItemPanel {
       this.store.commit('제목 수정', () => { item.ti = $(F.title).value; });
       autogrow($(F.title));
     });
-    // 제목은 여러 줄을 담는다. 줄바꿈은 Shift+Enter, 그냥 Enter는 편집 종료(줄바꿈 X).
+    // 줄바꿈은 Shift+Enter, 그냥 Enter는 편집 종료
     $(F.title).addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        $(F.title).blur();
-      }
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $(F.title).blur(); }
     });
 
-    $('i-shownote').addEventListener('change', (e) => {
+    // 표시 토글 — 아이콘 버튼(aria-pressed)
+    $('i-shownote').addEventListener('click', () => {
       const item = this.item;
       if (!item) return;
-      this.store.commit('비고 표시', () => { item.place.showNote = e.target.checked; });
+      const next = $('i-shownote').getAttribute('aria-pressed') !== 'true';
+      this.store.commit('비고 표시', () => { item.place.showNote = next; });
+      $('i-shownote').setAttribute('aria-pressed', String(next));
     });
-    // 크기 강제 — 켜면 현재 기간 길이(일)로 시작하고 가로·세로를 드래그로 조절한다.
-    // 끄면 강제 높이(hd)와 강제 폭(x/w)을 모두 비워 원래(자동) 크기로 돌아온다.
-    $('i-fixedh').addEventListener('change', (e) => {
+    // 크기 강제 — 켜면 현재 기간 길이(일)로 시작, 가로·세로를 드래그로. 끄면 자동 크기로.
+    $('i-fixedh').addEventListener('click', () => {
       const item = this.item;
       if (!item) return;
+      const next = $('i-fixedh').getAttribute('aria-pressed') !== 'true';
       this.store.commit('크기 강제', () => {
-        if (e.target.checked) {
-          item.place.hd = Math.max(1, inclusiveDays(item.s, item.e));
-        } else {
-          item.place.hd = null;
-          item.place.x = null;
-          item.place.w = null;
-        }
+        if (next) { item.place.hd = Math.max(1, inclusiveDays(item.s, item.e)); }
+        else { item.place.hd = null; item.place.x = null; item.place.w = null; }
       });
+      $('i-fixedh').setAttribute('aria-pressed', String(next));
     });
-    $('i-taskadd').addEventListener('click', () => this.#addTask());
 
-    // 보드 별칭 — 이 카드가 대신하는 다른 보드. 비우면 보통 카드.
-    $('i-alias').addEventListener('change', (e) => {
-      const item = this.item;
-      if (!item) return;
-      const val = e.target.value ? Number(e.target.value) : null;
-      const opt = e.target.selectedOptions[0];
-      this.store.commit('보드 별칭', () => {
-        item.alias = val;
-        // 제목이 비어 있으면 대상 보드 이름을 채운다 — 카드가 그 보드를 대신하니까.
-        if (val != null && !item.ti && opt) item.ti = opt.textContent.replace(/ ⧉$/, '');
-      });
-      $(F.title).value = item.ti;
-      autogrow($(F.title));
-      this.#syncAliasOpen(item);
-    });
     $('i-aliasopen').addEventListener('click', () => {
       const item = this.item;
-      if (!item || item.alias == null) return;
-      this.openProject?.(item.alias);
+      if (item?.alias != null) this.openProject?.(item.alias);
     });
-
+    $('i-taskadd').addEventListener('click', () => this.#addTask());
     $('i-del').addEventListener('click', () => this.remove());
     $('i-dup').addEventListener('click', () => this.duplicate());
+  }
+
+  #showTab(name) {
+    for (const b of $('pItem').querySelectorAll('.ptab')) {
+      b.setAttribute('aria-selected', String(b.dataset.tab === name));
+    }
+    for (const s of $('pItem').querySelectorAll('.ptab-panel')) {
+      s.hidden = s.dataset.panel !== name;
+    }
   }
 
   open(id) {
@@ -131,7 +161,6 @@ export class ItemPanel {
     clear(track);
     for (const t of this.store.tracks) track.append(el('option', { value: t.id, text: t.name }));
 
-    // 조직 목록은 문서가 들고 있고 런타임에 바뀐다 — 열 때마다 다시 만든다
     const org = $(F.org);
     clear(org);
     for (const o of this.store.orgs) org.append(el('option', { value: o, text: o }));
@@ -148,14 +177,18 @@ export class ItemPanel {
     $(F.org).value = item.og;
     $(F.note).value = item.note ?? '';
 
-    this.#renderParents(item);
-    this.#renderAlias(item);
     this.#syncStatus(item);
     this.#syncAlign(item);
-    $('i-shownote').checked = item.place?.showNote === true;
-    $('i-fixedh').checked = item.place?.hd != null;
+    $('i-shownote').setAttribute('aria-pressed', String(item.place?.showNote === true));
+    $('i-fixedh').setAttribute('aria-pressed', String(item.place?.hd != null));
+
     this.#renderDeps(item);
+    this.#renderParents(item);
+    this.#renderAlias(item);
     this.#renderTasks(item);
+    this.#syncAliasOpen(item);
+
+    this.#showTab('attr');
     this.panels.open('pItem');
     this.onChange?.();
   }
@@ -175,73 +208,9 @@ export class ItemPanel {
   }
 
   #syncAlign(item) {
-    for (const b of $('i-align').querySelectorAll('button')) {
+    for (const b of $('i-align').querySelectorAll('.seg-btn')) {
       b.setAttribute('aria-pressed', String(b.dataset.align === item.place?.align));
     }
-  }
-
-  /**
-   * 상위 일정 후보 — 같은 트랙에서 이 일정을 기간 안에 품을 수 있고,
-   * 자기 자신이나 자기 자손이 아닌 것.
-   */
-  #renderParents(item) {
-    const select = $(F.parent);
-    clear(select);
-    select.append(el('option', { value: '', text: '— 없음 (트랙에 직접) —' }));
-
-    const descendants = this.#descendantsOf(item.id);
-    for (const other of this.store.items) {
-      if (other.id === item.id || descendants.has(other.id)) continue;
-      if (other.ty === 'ms') continue;                 // 마일스톤은 품을 수 없다
-      if (other.place.t !== item.place.t && !item.parent) continue; // 다른 트랙은 후보에서 뺀다
-      const track = this.store.track(other.t)?.name ?? '';
-      select.append(el('option', { value: other.id, text: `${other.ti} · ${track}` }));
-    }
-    select.value = item.parent ?? '';
-  }
-
-  /**
-   * 보드 별칭 후보 — 이 보드를 뺀 다른 프로젝트들. 대상이 목록에 없으면(삭제됨)
-   * 값은 그대로 보여 준다. listProjects는 비동기라 열린 카드가 바뀌면 버린다.
-   */
-  async #renderAlias(item) {
-    const select = $('i-alias');
-    clear(select);
-    select.append(el('option', { value: '', text: '— 없음 (보통 카드) —' }));
-    if (!this.adapter?.listProjects) { this.#syncAliasOpen(item); return; }
-
-    let projects = [];
-    try { projects = await this.adapter.listProjects(); } catch { projects = []; }
-    if (this.item?.id !== item.id) return;                 // 그새 다른 카드로 넘어갔다
-
-    const currentId = this.adapter.projectId;
-    for (const p of projects) {
-      if (p.id === currentId) continue;                    // 자기 보드는 별칭할 수 없다(무한 펼침)
-      select.append(el('option', { value: String(p.id), text: p.name }));
-    }
-    if (item.alias != null && !projects.some((p) => p.id === item.alias)) {
-      select.append(el('option', { value: String(item.alias), text: `보드 #${item.alias} (없음)` }));
-    }
-    select.value = item.alias != null ? String(item.alias) : '';
-    this.#syncAliasOpen(item);
-  }
-
-  #syncAliasOpen(item) {
-    $('i-aliasopen').hidden = item.alias == null;
-  }
-
-  #descendantsOf(id) {
-    const out = new Set();
-    const walk = (parentId) => {
-      for (const child of this.store.items) {
-        if (child.parent === parentId && !out.has(child.id)) {
-          out.add(child.id);
-          walk(child.id);
-        }
-      }
-    };
-    walk(id);
-    return out;
   }
 
   #syncStatus(item) {
@@ -250,52 +219,107 @@ export class ItemPanel {
     }
   }
 
+  // ── 관계 (선행·상위·별칭) ────────────────────────────────
+
+  /** 선행 일정 — 트랙·시작일 순으로 후보를 늘어놓고, 검색으로 좁힌다. */
   #renderDeps(item) {
-    const box = $('i-deps');
-    clear(box);
     const order = (tid) => this.store.trackIndex(tid);
     const origin = parseDate(this.store.meta.start);
-    const others = this.store.items
+    const options = this.store.items
       .filter((x) => x.id !== item.id)
-      .sort((a, b) => order(a.place.t) - order(b.place.t) || dayIndex(a.s, origin) - dayIndex(b.s, origin));
-
-    if (!others.length) {
-      box.append(el('div.empty', { text: '선택할 다른 일정이 없습니다.' }));
-      return;
-    }
-
-    for (const other of others) {
-      const trackName = this.store.track(other.place.t)?.name ?? '';
-      const dep = (r) => r.type === 'dep' && r.from === other.id && r.to === item.id;
-      const cb = el('input', {
-        type: 'checkbox',
-        checked: this.store.relations.some(dep),
-        on: {
-          change: (e) => {
-            this.store.commit('선행 일정 변경', (doc) => {
-              if (e.target.checked) {
-                if (!doc.relations.some(dep)) doc.relations.push({ id: newId('r'), type: 'dep', from: other.id, to: item.id });
-              } else {
-                doc.relations = doc.relations.filter((r) => !dep(r));
-              }
-            });
-          },
-        },
-      });
-      box.append(el('label', {}, [
-        cb,
-        el('span', {}, [
-          document.createTextNode(other.ti || '(제목 없음)'),
-          el('em', { text: `${trackName} · ${shortMD(other.s)}` }),
-        ]),
-      ]));
-    }
+      .sort((a, b) => order(a.place.t) - order(b.place.t) || dayIndex(a.s, origin) - dayIndex(b.s, origin))
+      .map((x) => ({ id: x.id, label: x.ti || '(제목 없음)', sub: `${this.store.track(x.place.t)?.name ?? ''} · ${shortMD(x.s)}` }));
+    this.depsList.render(options);
   }
 
-  /**
-   * 순서 없는 태스크 목록. 체크(완료)·텍스트·삭제. 앞뒤가 생기면 하위 카드로
-   * 올려야 할 것들이지만, 여기선 카드 안 액션 아이템으로만 둔다 (DIRECTION #6).
-   */
+  #toggleDep(otherId) {
+    const item = this.item;
+    if (!item) return;
+    const dep = (r) => r.type === 'dep' && r.from === otherId && r.to === item.id;
+    this.store.commit('선행 일정 변경', (doc) => {
+      if (doc.relations.some(dep)) doc.relations = doc.relations.filter((r) => !dep(r));
+      else doc.relations.push({ id: newId('r'), type: 'dep', from: otherId, to: item.id });
+    });
+  }
+
+  /** 상위 일정 후보 — 자기·자손·마일스톤을 뺀 것 + '없음'. */
+  #renderParents(item) {
+    const descendants = this.#descendantsOf(item.id);
+    const options = [{ id: '', label: '— 없음 (트랙에 직접) —' }];
+    for (const other of this.store.items) {
+      if (other.id === item.id || descendants.has(other.id) || other.ty === 'ms') continue;
+      options.push({ id: other.id, label: other.ti || '(제목 없음)', sub: this.store.track(other.place.t)?.name ?? '' });
+    }
+    this.parentList.render(options);
+  }
+
+  #setParent(parentId) {
+    const item = this.item;
+    if (!item) return;
+    this.store.commit('상위 일정 변경', () => {
+      item.parent = parentId;
+      if (parentId) {
+        const host = this.store.item(parentId);
+        if (host) { item.place.t = host.place.t; item.place.sp = 1; }
+      }
+      item.place.x = null;
+      item.place.w = null;
+    });
+    // 트랙이 상위를 따라 바뀌었으면 속성 탭 선택도 맞춘다
+    $(F.track).value = item.place.t;
+    $(F.span).value = item.place.sp;
+  }
+
+  #descendantsOf(id) {
+    const out = new Set();
+    const walk = (parentId) => {
+      for (const child of this.store.items) {
+        if (child.parent === parentId && !out.has(child.id)) { out.add(child.id); walk(child.id); }
+      }
+    };
+    walk(id);
+    return out;
+  }
+
+  /** 보드 별칭 후보 — 이 보드를 뺀 다른 프로젝트 + '없음'. listProjects는 비동기. */
+  async #renderAlias(item) {
+    const base = [{ id: '', label: '— 없음 (보통 카드) —' }];
+    if (!this.adapter?.listProjects) { this.aliasList.render(base); return; }
+    let projects = [];
+    try { projects = await this.adapter.listProjects(); } catch { projects = []; }
+    if (this.item?.id !== item.id) return;                 // 그새 다른 카드로 넘어갔다
+    const currentId = this.adapter.projectId;
+    for (const p of projects) {
+      if (p.id === currentId) continue;                    // 자기 보드는 별칭할 수 없다
+      base.push({ id: String(p.id), label: p.name, sub: `일정 ${p.items ?? 0}` });
+    }
+    if (item.alias != null && !projects.some((p) => p.id === item.alias)) {
+      base.push({ id: String(item.alias), label: `보드 #${item.alias}`, sub: '없음' });
+    }
+    this.aliasList.render(base);
+  }
+
+  #setAlias(aliasId) {
+    const item = this.item;
+    if (!item) return;
+    // 대상 보드 이름(옵션 라벨)으로 빈 제목을 채운다
+    const opt = this.aliasList.root.querySelector(`.fl-opt[data-id="${aliasId ?? ''}"] .fl-label`);
+    const name = opt ? opt.childNodes[0]?.textContent ?? '' : '';
+    this.store.commit('보드 별칭', () => {
+      item.alias = aliasId;
+      if (aliasId != null && !item.ti && name) item.ti = name;
+    });
+    $(F.title).value = item.ti;
+    autogrow($(F.title));
+    this.#syncAliasOpen(item);
+  }
+
+  #syncAliasOpen(item) {
+    $('i-aliasopen').hidden = item.alias == null;
+  }
+
+  // ── 태스크 ──────────────────────────────────────────────
+
   #renderTasks(item) {
     const box = $('i-tasks');
     clear(box);
@@ -315,28 +339,23 @@ export class ItemPanel {
         on: {
           change: (e) => {
             this.store.commit('태스크 완료', () => { t.done = e.target.checked; });
-            this.#renderTasks(this.item);            // 카운트·취소선 갱신
+            this.#renderTasks(this.item);
           },
         },
       });
       const text = el('input.task-text', {
         type: 'text', value: t.text, placeholder: '할 일',
-        on: {
-          // 타이핑 즉시 반영하되 목록은 다시 그리지 않는다 — 포커스를 잃지 않게.
-          input: (e) => { this.store.commit('태스크 수정', () => { t.text = e.target.value; }); },
-        },
+        on: { input: (e) => { this.store.commit('태스크 수정', () => { t.text = e.target.value; }); } },
       });
       const rm = el('button.task-del', {
-        type: 'button', text: '×', title: '태스크 삭제',
+        type: 'button', title: '태스크 삭제',
         on: {
           click: () => {
-            this.store.commit('태스크 삭제', () => {
-              item.tasks = item.tasks.filter((x) => x.id !== t.id);
-            });
+            this.store.commit('태스크 삭제', () => { item.tasks = item.tasks.filter((x) => x.id !== t.id); });
             this.#renderTasks(this.item);
           },
         },
-      });
+      }, [icon(ICONS.close)]);
       const row = el('label.task', {}, [cb, text, rm]);
       if (t.done) row.classList.add('done');
       box.append(row);
@@ -352,12 +371,13 @@ export class ItemPanel {
       item.tasks.push(task);
     });
     this.#renderTasks(this.item);
-    // 새 줄에 바로 입력할 수 있게 포커스
     const inputs = $('i-tasks').querySelectorAll('.task-text');
     inputs[inputs.length - 1]?.focus();
   }
 
-  /** 폼 → 문서. 종료일 inclusive, 마일스톤도 기간 허용, 병합폭 트랙 경계 (D-3) */
+  // ── 폼 적용 ─────────────────────────────────────────────
+
+  /** 속성 탭의 단순 입력 → 문서. 관계·별칭은 각 리스트가 직접 반영한다. */
   apply() {
     const item = this.item;
     if (!item) return;
@@ -369,7 +389,6 @@ export class ItemPanel {
       item.s = $(F.start).value || item.s;
       item.e = $(F.end).value || item.s;
       if (item.e < item.s) item.e = item.s;
-      // 마일스톤도 기간을 가질 수 있다 — 종료일을 강제로 시작일에 맞추지 않는다.
 
       const ti = this.store.trackIndex(item.place.t);
       const maxSpan = Math.max(1, this.store.tracks.length - ti);
@@ -378,21 +397,8 @@ export class ItemPanel {
       item.pg = Math.min(100, Math.max(0, Math.round(Number($(F.prog).value) || 0)));
       item.og = $(F.org).value;
       item.note = $(F.note).value;
-
-      const parent = $(F.parent).value || null;
-      if (parent !== item.parent) {
-        item.parent = parent;
-        // 담기면 트랙과 가로 배치를 상위에 맞춘다
-        if (parent) {
-          const host = this.store.item(parent);
-          if (host) { item.place.t = host.place.t; item.place.sp = 1; }
-        }
-        item.place.x = null;
-        item.place.w = null;
-      }
     });
 
-    // 정규화 결과를 폼에 되돌려 보여 준다
     $(F.end).value = item.e;
     $(F.span).value = item.place.sp;
     $(F.prog).value = item.pg;
@@ -414,11 +420,9 @@ export class ItemPanel {
     const item = this.item;
     if (!item) return;
     const copy = { ...structuredClone(item), id: newId('e'), ti: item.ti + ' (복사)' };
-    // 태스크 id는 보드 전체에서 유일해야 한다(DB PK) — 복제본은 새 id를 받는다.
     copy.tasks = (Array.isArray(item.tasks) ? item.tasks : []).map((t) => ({ ...t, id: newId('k') }));
     this.store.commit('일정 복제', (doc) => {
       doc.items.push(copy);
-      // 원본으로 들어오던 선행 관계를 복제본에도 그대로 (같은 선행을 가진 새 일정)
       const incoming = (doc.relations ?? []).filter((r) => r.to === item.id);
       for (const r of incoming) doc.relations.push({ id: newId('r'), type: r.type, from: r.from, to: copy.id });
     });

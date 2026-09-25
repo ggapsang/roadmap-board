@@ -65,6 +65,17 @@ export const ICONS = {
   pencil: '<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/>',
   back:   '<path d="M19 12H5"/><path d="m11 18-6-6 6-6"/>',
   folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  check:  '<path d="m5 12 5 5 9-11"/>',
+  // 글자 세로 정렬 — 기준선 + 블록 위치로 위/가운데/아래를 나타낸다
+  alignTop:    '<path d="M5 4h14"/><rect x="8" y="8" width="8" height="5" rx="1"/>',
+  alignMiddle: '<path d="M4 12h3M17 12h3"/><rect x="8" y="9" width="8" height="6" rx="1"/>',
+  alignBottom: '<path d="M5 20h14"/><rect x="8" y="11" width="8" height="5" rx="1"/>',
+  // 비고를 카드에 표시 — 텍스트 줄이 있는 카드
+  note:   '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h6"/>',
+  // 카드 크기 강제 — 자유 리사이즈(대각 화살표)
+  resize: '<path d="M21 15v6h-6"/><path d="m21 21-6-6"/><path d="M3 9V3h6"/><path d="M3 3l6 6"/>',
+  // 다른 보드로 진입(별칭 포털)
+  external: '<path d="M14 4h6v6"/><path d="M10 14 20 4"/><path d="M20 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5"/>',
 };
 
 /** 버튼 한 줄 생성 헬퍼 */

@@ -37,6 +37,45 @@ body.panel-open{--panel-w:var(--panel-size)}
   border-radius:var(--u1-5);background:var(--bg-panel);font-size:12px;color:var(--text-secondary);cursor:pointer}
 .pick button[aria-pressed="true"]{border-color:var(--text-primary);background:var(--text-primary);color:var(--bg-panel);font-weight:600}
 
+/* ── 편집 패널 탭 (PPT 서식창식) ── */
+.ptabs{display:flex;gap:var(--u1);padding:0 var(--u4);border-bottom:1px solid var(--border-subtle);flex:none}
+.ptab{appearance:none;border:0;background:none;padding:var(--u2-5) var(--u2);margin-bottom:-1px;
+  font-size:12px;font-weight:500;color:var(--text-tertiary);cursor:pointer;border-bottom:2px solid transparent}
+.ptab:hover{color:var(--text-secondary)}
+.ptab[aria-selected="true"]{color:var(--text-primary);font-weight:600;border-bottom-color:var(--accent)}
+.ptab-panel[hidden]{display:none}
+
+/* ── 필터 리스트 — 선행·상위·별칭을 하나의 "검색 + 목록"으로 통일 ── */
+.filter-list{border:1px solid var(--border-default);border-radius:var(--r-control);overflow:hidden;background:var(--bg-input)}
+.fl-search{display:flex;align-items:center;gap:var(--u1-5);padding:0 var(--u2-5);
+  border-bottom:1px solid var(--border-subtle);background:var(--bg-panel)}
+.fl-search svg.ic{color:var(--text-tertiary)}
+.fl-input{flex:1;min-width:0;height:var(--u7);border:0;background:none;outline:0;font-size:13px;padding:0}
+.fl-options{max-height:220px;overflow:auto;padding:var(--u1)}
+.fl-opt{display:flex;align-items:center;gap:var(--u2);padding:var(--u1-5) var(--u2);
+  border-radius:var(--u1);cursor:pointer}
+.fl-opt:hover{background:var(--bg-hover)}
+.fl-opt.sel{background:var(--accent-soft)}
+.fl-check{width:var(--u4);height:var(--u4);flex:none;display:flex;align-items:center;justify-content:center;color:var(--accent)}
+.fl-label{flex:1;min-width:0;font-size:13px;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fl-label em{font-style:normal;font-size:11px;color:var(--text-tertiary);margin-left:var(--u1-5)}
+.fl-empty{color:var(--text-tertiary);font-size:12px;padding:var(--u2)}
+
+/* ── 표시 탭 아이콘 툴바 ── */
+.seg{display:inline-flex;border:1px solid var(--border-default);border-radius:var(--u1-5);overflow:hidden}
+.seg-btn{appearance:none;border:0;border-right:1px solid var(--border-default);background:var(--bg-panel);
+  width:var(--u9);height:var(--u8);display:flex;align-items:center;justify-content:center;
+  color:var(--text-secondary);cursor:pointer}
+.seg-btn:last-child{border-right:0}
+.seg-btn:hover{background:var(--bg-hover);color:var(--text-primary)}
+.seg-btn[aria-pressed="true"]{background:var(--accent);color:var(--text-on-accent)}
+.fmt-bar{display:flex;gap:var(--u2)}
+.fmt-btn{appearance:none;width:var(--u8);height:var(--u8);border:1px solid var(--border-default);
+  border-radius:var(--u1-5);background:var(--bg-panel);color:var(--text-secondary);cursor:pointer;
+  display:flex;align-items:center;justify-content:center}
+.fmt-btn:hover{background:var(--bg-hover);color:var(--text-primary)}
+.fmt-btn[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--text-on-accent)}
+
 
 .sect{font-size:11px;font-weight:600;color:var(--text-tertiary);margin:var(--u5) 0 var(--u2);
   padding-bottom:var(--u1);border-bottom:1px solid var(--border-subtle)}
@@ -84,13 +123,12 @@ body.panel-open{--panel-w:var(--panel-size)}
   border:1px solid var(--border-default);border-radius:var(--u1-5);font-size:13px}
 .task.done .task-text{color:var(--text-tertiary);text-decoration:line-through}
 .task-del{flex:none;width:var(--u6);height:var(--u6);border:none;background:none;
-  color:var(--text-tertiary);font-size:16px;line-height:1;cursor:pointer;border-radius:var(--u1)}
+  color:var(--text-tertiary);cursor:pointer;border-radius:var(--u1);
+  display:flex;align-items:center;justify-content:center}
 .task-del:hover{background:var(--bg-hover);color:var(--text-primary)}
 
-/* 보드 별칭 — 선택 + 열기 버튼 나란히 */
-.alias-row{display:flex;gap:var(--u2);align-items:center}
-.alias-row select{flex:1;min-width:0}
-.alias-row .btn.sm{margin-top:0;white-space:nowrap;flex:none}
+/* 별칭 열기 버튼 — 아이콘 + 글자 */
+#i-aliasopen{display:inline-flex;align-items:center;gap:var(--u1-5);margin-top:var(--u2)}
 
 /* ── 입력 다이얼로그 (Electron에 prompt()가 없어서 직접 만든다) ── */
 .dlg-scrim{position:fixed;inset:0;z-index:120;background:rgba(12,10,9,.32);

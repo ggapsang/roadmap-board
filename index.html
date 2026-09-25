@@ -87,46 +87,71 @@
     <button class="btn icon" data-close type="button" aria-label="닫기">
       <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
   </header>
+  <div class="ptabs" role="tablist" aria-label="편집 탭">
+    <button class="ptab" type="button" role="tab" data-tab="attr" aria-selected="true">속성</button>
+    <button class="ptab" type="button" role="tab" data-tab="rel"  aria-selected="false">관계</button>
+    <button class="ptab" type="button" role="tab" data-tab="disp" aria-selected="false">표시</button>
+    <button class="ptab" type="button" role="tab" data-tab="task" aria-selected="false">태스크</button>
+  </div>
   <div class="body2">
-    <div class="fld"><label for="i-title">제목</label><textarea id="i-title" rows="1" title="줄바꿈은 Shift+Enter"></textarea></div>
-    <div class="fld"><label>상태</label><div class="pick" id="i-status"></div></div>
-    <div class="two">
-      <div class="fld"><label for="i-track">트랙</label><select id="i-track"></select></div>
-      <div class="fld"><label for="i-type">유형</label><select id="i-type"></select></div>
-    </div>
-    <div class="two">
-      <div class="fld"><label for="i-start">시작</label><input id="i-start" type="date"></div>
-      <div class="fld"><label for="i-end">종료</label><input id="i-end" type="date"></div>
-    </div>
-    <div class="two">
-      <div class="fld"><label for="i-span">트랙 걸침 (칸)</label><input id="i-span" type="number" min="1" max="8" step="1"></div>
-      <div class="fld"><label for="i-prog">진척률 (%)</label><input id="i-prog" type="number" min="0" max="100" step="5"></div>
-    </div>
-    <p class="note" style="margin-top:calc(var(--u3) * -1);margin-bottom:var(--u3)">
-      <b>트랙 걸침</b>은 이 일정이 차지할 트랙 칸 수입니다. 2로 하면 오른쪽 트랙까지 걸칩니다.</p>
-    <div class="fld"><label for="i-org">담당</label><select id="i-org"></select></div>
-    <div class="fld"><label for="i-parent">상위 일정</label><select id="i-parent"></select></div>
-    <div class="fld">
-      <label for="i-alias">보드 별칭 <span class="muted">이 카드가 대신하는 다른 보드</span></label>
-      <div class="alias-row">
-        <select id="i-alias"></select>
-        <button class="btn outline sm" id="i-aliasopen" type="button" hidden>열기 ⧉</button>
+    <!-- 속성 -->
+    <section class="ptab-panel" data-panel="attr">
+      <div class="fld"><label for="i-title">제목</label><textarea id="i-title" rows="1" title="줄바꿈은 Shift+Enter"></textarea></div>
+      <div class="fld"><label>상태</label><div class="pick" id="i-status"></div></div>
+      <div class="two">
+        <div class="fld"><label for="i-track">트랙</label><select id="i-track"></select></div>
+        <div class="fld"><label for="i-type">유형</label><select id="i-type"></select></div>
       </div>
-    </div>
-    <div class="fld"><label>글자 세로 정렬</label><div class="pick" id="i-align"></div></div>
-    <div class="fld">
-      <label class="chk"><input id="i-shownote" type="checkbox"> 비고를 카드에 표시</label>
-    </div>
-    <div class="fld">
-      <label class="chk"><input id="i-fixedh" type="checkbox"> 카드 크기 강제 설정 (가로·세로 드래그로 조절)</label>
-    </div>
-    <div class="fld"><label>선행 일정</label><div class="deps" id="i-deps"></div></div>
-    <div class="fld">
-      <label>태스크 <span class="muted" id="i-taskcount"></span></label>
-      <div class="tasks" id="i-tasks"></div>
-      <button class="btn outline sm" id="i-taskadd" type="button">+ 태스크 추가</button>
-    </div>
-    <div class="fld"><label for="i-note">비고</label><textarea id="i-note"></textarea></div>
+      <div class="two">
+        <div class="fld"><label for="i-start">시작</label><input id="i-start" type="date"></div>
+        <div class="fld"><label for="i-end">종료</label><input id="i-end" type="date"></div>
+      </div>
+      <div class="two">
+        <div class="fld"><label for="i-span">트랙 걸침 (칸)</label><input id="i-span" type="number" min="1" max="8" step="1"></div>
+        <div class="fld"><label for="i-prog">진척률 (%)</label><input id="i-prog" type="number" min="0" max="100" step="5"></div>
+      </div>
+      <div class="fld"><label for="i-org">담당</label><select id="i-org"></select></div>
+      <div class="fld"><label for="i-note">비고</label><textarea id="i-note"></textarea></div>
+    </section>
+
+    <!-- 관계 — 선행·상위·별칭 모두 같은 검색 리스트 -->
+    <section class="ptab-panel" data-panel="rel" hidden>
+      <div class="fld">
+        <label>선행 일정 <span class="muted">먼저 끝나야 하는 것 · 여럿</span></label>
+        <div id="i-deps"></div>
+      </div>
+      <div class="fld">
+        <label>상위 일정 <span class="muted">이 카드를 품는 일정 · 하나</span></label>
+        <div id="i-parent"></div>
+      </div>
+      <div class="fld">
+        <label>보드 별칭 <span class="muted">이 카드가 대신하는 다른 보드 · 하나</span></label>
+        <div id="i-alias"></div>
+        <button class="btn outline sm" id="i-aliasopen" type="button" hidden></button>
+      </div>
+    </section>
+
+    <!-- 표시 — 아이콘 툴바 -->
+    <section class="ptab-panel" data-panel="disp" hidden>
+      <div class="fld"><label>글자 세로 정렬</label><div class="seg" id="i-align"></div></div>
+      <div class="fld">
+        <label>카드 표시</label>
+        <div class="fmt-bar">
+          <button class="fmt-btn" id="i-shownote" type="button" aria-pressed="false" title="비고를 카드에 표시"></button>
+          <button class="fmt-btn" id="i-fixedh" type="button" aria-pressed="false" title="카드 크기 강제 — 가로·세로를 드래그로 조절 (끄면 자동)"></button>
+        </div>
+        <p class="note">비고 표시를 켜면 카드 안에 비고가 함께 보입니다. 크기 강제를 켜면 좌·우로 폭, 아래로 세로 길이를 날짜와 무관하게 끌 수 있습니다.</p>
+      </div>
+    </section>
+
+    <!-- 태스크 -->
+    <section class="ptab-panel" data-panel="task" hidden>
+      <div class="fld">
+        <label>태스크 <span class="muted" id="i-taskcount"></span></label>
+        <div class="tasks" id="i-tasks"></div>
+        <button class="btn outline sm" id="i-taskadd" type="button">+ 태스크 추가</button>
+      </div>
+    </section>
   </div>
   <footer>
     <button class="btn outline danger" id="i-del" type="button">삭제</button>

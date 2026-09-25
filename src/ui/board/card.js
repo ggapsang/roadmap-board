@@ -7,7 +7,7 @@
  */
 import { dayIndex, shortMD } from '../../core/dates.js';
 import { LAYOUT } from '../../config/index.js';
-import { el } from '../dom.js';
+import { el, icon, ICONS } from '../dom.js';
 
 const ALIGN_CSS = { top: 'flex-start', middle: 'center', bottom: 'flex-end' };
 
@@ -151,7 +151,7 @@ export function renderCard(item, ctx) {
   // 태스크가 있으면 완료/전체를 작은 칩으로. 순서 없는 할 일이라 카드엔 개수만 보인다.
   if (Array.isArray(item.tasks) && item.tasks.length) {
     const done = item.tasks.filter((t) => t.done).length;
-    meta.append(el('span.tasks-chip', { text: `☑ ${done}/${item.tasks.length}` }));
+    meta.append(el('span.tasks-chip', { text: `✓ ${done}/${item.tasks.length}` }));
   }
   // 낮은 카드라도 기한(날짜)은 오른쪽에 남긴다(조직 태그는 CSS로 숨김).
   // 보통 카드는 낮으면 메타를 통째로 숨기고, 보류는 항상 숨긴다.
@@ -161,7 +161,7 @@ export function renderCard(item, ctx) {
 
   // 별칭 카드는 대상 보드로 들어가는 포털 표식을 단다. 클릭은 board가 가로채 연다.
   if (item.alias != null) {
-    node.append(el('span.portal', { text: '⧉', title: '별칭 보드 열기' }));
+    node.append(el('span.portal', { title: '별칭 보드 열기' }, [icon(ICONS.external)]));
   }
 
   if (item.place?.showNote && item.note) {
