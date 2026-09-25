@@ -188,6 +188,7 @@ async function runSmoke(target) {
   let compressed = null;
   let nested = null;
   let relCheck = null;
+  let orderCheck = null;
   let trackResize = null;
   let spanEdit = null;
   let newTrack = null;
@@ -289,6 +290,22 @@ async function runSmoke(target) {
       return { relCount: rels.length, allDep, c0, c1, c2, added: c1 === c0 + 1, removed: c2 === c0 };
     })()`);
     console.log('[smoke] relations ' + JSON.stringify(relCheck));
+
+    // 순서상 위치 계산 — 선행 그래프의 위상 순위가 정합적인가 (DIRECTION #4-b)
+    orderCheck = await target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const mod = await import('./src/core/order.js');
+      const rank = mod.computeOrder(r.store.items, r.store.relations);
+      let topoOk = true, edges = 0, maxRank = 0;
+      for (const rel of r.store.relations) {
+        if (rel.type !== 'dep') continue;
+        edges++;
+        if (!(rank.get(rel.from) < rank.get(rel.to))) topoOk = false;
+      }
+      for (const v of rank.values()) maxRank = Math.max(maxRank, v);
+      return { size: rank.size, edges, topoOk, maxRank };
+    })()`);
+    console.log('[smoke] order ' + JSON.stringify(orderCheck));
 
     // 트랙 열 너비 드래그 — 재렌더로 손잡이가 사라져도 이어져야 한다
     trackResize = await withTimeout(target.webContents.executeJavaScript(`(async () => {
@@ -972,6 +989,7 @@ async function runSmoke(target) {
 
   const ok = !result.error && !opened?.error && !renamed?.error
     && relCheck?.allDep === true && relCheck?.added === true && relCheck?.removed === true
+    && orderCheck?.topoOk === true && orderCheck?.edges > 0 && orderCheck?.maxRank > 0
     && layout?.panelOpen === true && layout?.shrunk > 280 && layout?.selectable === 'text'
     && trackResize?.grew === true && trackResize?.reset === null
     && spanEdit?.after?.sp === 3 && spanEdit?.after?.px > spanEdit?.before?.px
