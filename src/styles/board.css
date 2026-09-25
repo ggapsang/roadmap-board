@@ -1,6 +1,9 @@
 /* ── 캘린더 그리드 ────────────────────────────────── */
 .scroll{flex:1;overflow:auto;background:var(--bg-canvas)}
+/* 평소엔 내용 폭대로(제목이 짤리지 않게). 오른쪽 패널이 열려 본문이 좁아지면
+   내용 폭 강제를 풀어 컬럼이 함께 좁아지게 한다 — 가로 스크롤 대신 축소. */
 .cal{min-width:max-content}
+body.panel-open .cal{min-width:0}
 .head{display:grid;position:sticky;top:0;z-index:30;background:var(--bg-header);
   border-bottom:1px solid var(--border-default)}
 .head .cnr{border-right:1px solid var(--border-subtle)}
@@ -270,13 +273,15 @@ body.reordering-col{cursor:grabbing!important;user-select:none}
 .select-text .ev>.grip-hw,.select-text .ev>.grip-he{display:none}
 @media (prefers-reduced-motion:reduce){.ev>.grip-hw,.ev>.grip-he{transition:none}}
 
-/* 크기 강제 모서리 손잡이 — 오른쪽-아래. 가로·세로를 한 번에 끈다. 늘 보이게 둔다
+/* 크기 강제 네 모서리 손잡이 — 가로·세로를 함께 끈다. 늘 보이게 둔다
    (가장자리 손잡이처럼 hover에만 뜨면 못 찾는다). PPT 도형 모서리처럼. */
-.ev>.grip-corner{position:absolute;right:0;bottom:0;width:var(--u4);height:var(--u4);
-  cursor:nwse-resize;z-index:6;display:flex;align-items:flex-end;justify-content:flex-end;
-  opacity:.55;transition:opacity .12s ease}
+.ev>.grip-corner{position:absolute;width:var(--u4);height:var(--u4);z-index:6;
+  display:flex;align-items:center;justify-content:center;opacity:.6;transition:opacity .12s ease}
 .ev:hover>.grip-corner{opacity:1}
-.ev>.grip-corner::after{content:"";width:0;height:0;margin:0 2px 2px 0;
-  border-left:7px solid transparent;border-bottom:7px solid var(--accent)}
+.ev>.grip-corner[data-corner="tl"]{left:0;top:0;cursor:nwse-resize}
+.ev>.grip-corner[data-corner="br"]{right:0;bottom:0;cursor:nwse-resize}
+.ev>.grip-corner[data-corner="tr"]{right:0;top:0;cursor:nesw-resize}
+.ev>.grip-corner[data-corner="bl"]{left:0;bottom:0;cursor:nesw-resize}
+.ev>.grip-corner::after{content:"";width:7px;height:7px;background:var(--accent);border-radius:1px}
 .select-text .ev>.grip-corner{display:none}
 @media (prefers-reduced-motion:reduce){.ev>.grip-corner{transition:none}}

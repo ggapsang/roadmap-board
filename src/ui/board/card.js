@@ -166,16 +166,20 @@ export function renderCard(item, ctx) {
     node.append(el('div.pg', {}, [el('i', { style: { width: item.pg + '%' } })]));
   }
 
-  // 위·아래 가장자리. 보통은 위=시작일·아래=종료일. 세로 크기 강제면 아래=높이,
-  // 날짜는 손잡이로 바꾸지 않으므로 위 손잡이(시작일)는 숨긴다.
-  if (!forced) node.append(el('div.grip-top', { attrs: { 'aria-hidden': 'true' } }));
+  // 위·아래 가장자리. 보통은 위=시작일·아래=종료일. 크기 강제면 위·아래 둘 다 잡아
+  // 자유롭게 늘리고 줄인다(위로도, 아래로도).
+  node.append(el('div.grip-top', { attrs: { 'aria-hidden': 'true' } }));
   node.append(el('div.grip', { attrs: { 'aria-hidden': 'true' } }));
   // 자식·강제 모드 → 좌우 폭 손잡이(x/w). 강제 아닌 최상위 → 트랙 걸침 손잡이.
   const widthGrips = forced || !!parent;
   addHorizontalGrips(node, { span: !widthGrips });
-  // 크기 강제 최상위 카드는 오른쪽-아래 모서리를 끌어 가로·세로를 한 번에 조절한다.
+  // 크기 강제 최상위 카드는 네 모서리로 가로·세로를 자유롭게 조절한다 (PPT 도형식).
   if (forced && !parent) {
-    node.append(el('div.grip-corner', { attrs: { 'aria-hidden': 'true' }, title: '끌어서 가로·세로 크기 조절' }));
+    for (const c of ['tl', 'tr', 'bl', 'br']) {
+      node.append(el('div.grip-corner', {
+        dataset: { corner: c }, attrs: { 'aria-hidden': 'true' }, title: '끌어서 크기 조절',
+      }));
+    }
   }
   node.title = `${item.ti}\n${item.s} – ${item.e} · ${item.og}${item.pg ? ' · ' + item.pg + '%' : ''}`;
   return node;
@@ -184,7 +188,8 @@ export function renderCard(item, ctx) {
 /**
  * 제목이 카드를 넘치면 폰트(와 줄높이)를 줄여 잘리지 않게 한다.
  * 렌더가 끝나 카드가 DOM에 붙은 뒤(크기 확정) 호출해야 한다.
- * 세로(감싸는 제목)·가로(한 줄 제목) 넘침 둘 다 본다. 최소 8px까지 줄인다.
+ * 세로(감싸는 제목)·가로(한 줄 제목) 넘침 둘 다 본다. 패널이 열려 컬럼이 좁아진
+ * 상태에서도 제목이 짤리지 않도록 최소 6px까지 줄인다.
  */
 export function fitTitle(node) {
   const t = node.querySelector(':scope > .t');
@@ -195,7 +200,7 @@ export function fitTitle(node) {
     || node.scrollHeight > node.clientHeight + 1;
   if (!overflow()) return;
   let size = parseFloat(getComputedStyle(t).fontSize);
-  const MIN = 8;
+  const MIN = 6;
   let guard = 0;
   while (guard++ < 24 && size > MIN && overflow()) {
     size = Math.max(MIN, size - 1);

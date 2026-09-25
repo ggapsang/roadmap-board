@@ -800,7 +800,7 @@ async function runSmoke(target) {
       r.board.render();
       await new Promise((res) => setTimeout(res, 150));
       const h15 = Math.round(node().getBoundingClientRect().height);
-      const noTopGrip = !node().querySelector('.grip-top');
+      const hasTopGrip = !!node().querySelector('.grip-top');   // 강제 모드도 위 손잡이(위로 리사이즈)를 가진다
       r.store.commit('h25', () => { it().place.hd = 25; });
       r.board.render();
       await new Promise((res) => setTimeout(res, 150));
@@ -821,36 +821,54 @@ async function runSmoke(target) {
       r.store.commit('원복', () => { it().place.hd = before.hd; });
       r.board.render();
       await new Promise((res) => setTimeout(res, 100));
-      return { h15, h25, hdAfter, noTopGrip, datesUnchanged, mapGrew: h25 > h15, dragChanged: hdAfter !== 25 };
+      return { h15, h25, hdAfter, hasTopGrip, datesUnchanged, mapGrew: h25 > h15, dragChanged: hdAfter !== 25 };
     })()`), 20000, 'fixed-height');
     console.log('[smoke] fixed-height ' + JSON.stringify(fixedH));
 
-    // 크기 강제 모서리 — 오른쪽-아래 모서리를 대각선으로 끌면 가로(w)·세로(hd)가 함께 바뀐다
+    // 크기 강제 — 오른쪽-아래 모서리는 가로·세로 함께, 위 가장자리는 위로 늘림(바닥 고정)
     cornerCheck = await withTimeout(target.webContents.executeJavaScript(`(async () => {
       const r = window.__roadmap;
       const card = document.querySelector('.col > .ev:not(.ms)');
       const id = card.dataset.id;
-      r.store.commit('강제', () => { const it = r.store.item(id); it.place.sp = 1; it.place.hd = 20; it.place.x = null; it.place.w = null; });
+      const it = () => r.store.item(id);
+      r.store.commit('강제', () => { it().place.sp = 1; it().place.hd = 20; it().place.x = null; it().place.w = null; });
       r.board.render();
       await new Promise((res) => setTimeout(res, 150));
       const el = () => document.querySelector('[data-id="' + id + '"]');
-      const grip = el().querySelector('.grip-corner');
-      if (!grip) return { error: 'grip-corner 없음' };
-      const before = { w: r.store.item(id).place.w, hd: r.store.item(id).place.hd };
-      const box = grip.getBoundingClientRect();
       const grid = document.getElementById('grid');
       const ppd = r.view.ppd;
-      const cx = box.left + box.width / 2, cy = box.top + box.height / 2;
       const at = (x, y) => ({ bubbles: true, clientX: x, clientY: y, button: 0, pointerId: 1 });
-      grip.dispatchEvent(new PointerEvent('pointerdown', at(cx, cy)));
-      grid.dispatchEvent(new PointerEvent('pointermove', at(cx - 60, cy + ppd * 6)));   // 왼쪽·아래로
+      // 1) 오른쪽-아래 모서리 → 가로(w)·세로(hd) 함께
+      const br = el().querySelector('.grip-corner[data-corner="br"]');
+      if (!br) return { error: 'br 모서리 없음' };
+      const b0 = { w: it().place.w, hd: it().place.hd };
+      let box = br.getBoundingClientRect();
+      let cx = box.left + box.width / 2, cy = box.top + box.height / 2;
+      br.dispatchEvent(new PointerEvent('pointerdown', at(cx, cy)));
+      grid.dispatchEvent(new PointerEvent('pointermove', at(cx + 60, cy + ppd * 6)));   // 오른쪽·아래
       await new Promise((res) => setTimeout(res, 120));
-      grid.dispatchEvent(new PointerEvent('pointerup', at(cx - 60, cy + ppd * 6)));
+      grid.dispatchEvent(new PointerEvent('pointerup', at(cx + 60, cy + ppd * 6)));
+      await new Promise((res) => setTimeout(res, 100));
+      const mid = { w: it().place.w, hd: it().place.hd };
+      // 2) 위 가장자리 → 위로 늘림. 시작일이 앞당겨지고 hd가 커지되 바닥(s+hd)은 그대로
+      const s0 = it().s, hd0 = it().place.hd;
+      const gt = el().querySelector('.grip-top');
+      if (!gt) return { error: 'grip-top 없음(강제 위 손잡이)' };
+      box = gt.getBoundingClientRect();
+      cx = box.left + box.width / 2; cy = box.top + box.height / 2;
+      gt.dispatchEvent(new PointerEvent('pointerdown', at(cx, cy)));
+      grid.dispatchEvent(new PointerEvent('pointermove', at(cx, cy - ppd * 5)));   // 위로
       await new Promise((res) => setTimeout(res, 120));
-      const after = { w: r.store.item(id).place.w, hd: r.store.item(id).place.hd };
-      r.store.commit('원복', () => { const it = r.store.item(id); it.place.hd = null; it.place.x = null; it.place.w = null; it.place.sp = 2; });
+      grid.dispatchEvent(new PointerEvent('pointerup', at(cx, cy - ppd * 5)));
+      await new Promise((res) => setTimeout(res, 100));
+      const topGrew = it().place.hd > hd0 && it().s < s0;
+      r.store.commit('원복', () => { it().place.hd = null; it().place.x = null; it().place.w = null; it().place.sp = 2; });
       r.board.render();
-      return { before, after, widthChanged: after.w != null && after.w !== before.w, heightChanged: after.hd !== before.hd };
+      return {
+        widthChanged: mid.w != null && mid.w !== b0.w,
+        heightChanged: mid.hd !== b0.hd,
+        topGrew,
+      };
     })()`), 20000, 'corner');
     console.log('[smoke] corner ' + JSON.stringify(cornerCheck));
 
@@ -1143,8 +1161,8 @@ async function runSmoke(target) {
     && delKey?.existsBefore === true && delKey?.survivedWhileTyping === true && delKey?.deleted === true
     && containerAlign?.jc === 'flex-end' && containerAlign?.cBottom === true && containerAlign?.isContainer === true
     && titleFit?.shrank === true && titleFit?.fits === true
-    && fixedH?.mapGrew === true && fixedH?.noTopGrip === true && fixedH?.datesUnchanged === true && fixedH?.dragChanged === true
-    && cornerCheck?.widthChanged === true && cornerCheck?.heightChanged === true
+    && fixedH?.mapGrew === true && fixedH?.hasTopGrip === true && fixedH?.datesUnchanged === true && fixedH?.dragChanged === true
+    && cornerCheck?.widthChanged === true && cornerCheck?.heightChanged === true && cornerCheck?.topGrew === true
     && trim?.trimmed === true && trim?.shrank === true
     && monthResize?.made === true && monthResize?.scale < 1 && monthResize?.shrank === true
     && ctxDelete?.hadMenu === true && ctxDelete?.hadBtn === true && ctxDelete?.trimmed === true && ctxDelete?.menuClosed === true

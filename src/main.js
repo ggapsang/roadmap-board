@@ -48,8 +48,9 @@ async function boot() {
       view.selectedTrack = null;
       refresh();
     },
-    // 패널이 열리고 닫히면 본문 폭이 바뀐다 — 화살표 좌표를 다시 잡는다
-    () => board.redrawArrows(),
+    // 패널이 열리고 닫히면 본문 폭이 바뀐다 — 컬럼이 함께 좁아지므로 전체를 다시 그려
+    // 여러 트랙에 걸친 카드(px로 잡는다)와 화살표 좌표를 새 폭에 맞춘다.
+    () => board.render(),
   );
 
   const board = new Board({

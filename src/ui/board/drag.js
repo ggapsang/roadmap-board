@@ -56,6 +56,7 @@ export function attachDrag(grid, {
     drag = {
       id: item.id,
       mode,
+      corner: ev.target?.dataset?.corner ?? null,   // tl|tr|bl|br (크기 강제 모서리)
       x: ev.clientX,
       y: ev.clientY,
       startDay: dayIndex(item.s, origin),
@@ -80,7 +81,8 @@ export function attachDrag(grid, {
     const pointerTrack = trackIndexAt(ev.clientX);
     const dTrack = pointerTrack - drag.startTrack;
 
-    // 크기 강제 모서리 — 가로(폭 x/w)와 세로(hd, 일)를 한 번의 드래그로 함께.
+    // 크기 강제 모서리 — 어느 모서리를 잡았는지(tl/tr/bl/br)에 따라 가로 한 변 +
+    // 세로 한 변을 함께 옮긴다. 반대 변은 고정. PPT 도형 모서리처럼 자유 리사이즈.
     if (drag.mode === 'corner') {
       const dx = ev.clientX - drag.x;
       const dy = ev.clientY - drag.y;
@@ -88,14 +90,30 @@ export function attachDrag(grid, {
       if (!drag.moved) { store.begin('크기 조절'); drag.moved = true; }
       const MIN = 0.08;
       const ratio = dx / drag.hostWidth;
+      const c = drag.corner || 'br';
+      const origin = getOrigin();
       store.commit('크기 조절', () => {
         const item = store.item(drag.id);
         if (!item) return;
-        // 가로: 왼쪽 가장자리는 두고 오른쪽을 끈다
-        item.place.x = drag.x0;
-        item.place.w = Math.min(1 - drag.x0, Math.max(MIN, drag.w0 + ratio));
-        // 세로: 강제 높이(일)
-        item.place.hd = Math.max(1, Math.round((drag.hd0 ?? 1) + dDays));
+        // 가로: 오른쪽 모서리면 오른쪽 변을, 왼쪽 모서리면 왼쪽 변을 옮긴다 (반대 변 고정)
+        if (c.includes('r')) {
+          item.place.x = drag.x0;
+          item.place.w = Math.min(1 - drag.x0, Math.max(MIN, drag.w0 + ratio));
+        } else {
+          const right = drag.x0 + drag.w0;
+          const nextX = Math.min(right - MIN, Math.max(0, drag.x0 + ratio));
+          item.place.x = nextX;
+          item.place.w = right - nextX;
+        }
+        // 세로: 아래 모서리면 바닥(hd)을, 위 모서리면 위(시작일 s + hd 보정)를 옮긴다
+        if (c.includes('b')) {
+          item.place.hd = Math.max(1, Math.round((drag.hd0 ?? 1) + dDays));
+        } else {
+          const bottom = drag.startDay + (drag.hd0 ?? 1);
+          const newS = Math.max(0, Math.min(bottom - 1, drag.startDay + dDays));
+          item.s = dateAt(origin, newS);
+          item.place.hd = Math.max(1, bottom - newS);
+        }
       });
       return;
     }
@@ -165,10 +183,17 @@ export function attachDrag(grid, {
         const k = Math.max(0, Math.min(maxTrack, drag.startTrack + dTrack));
         item.place.t = store.tracks[k].id;
       } else if (drag.mode === 'size-top') {
-        // 위쪽을 끌면 시작일이 움직인다. 종료일은 그대로.
-        // (점 마일스톤은 위·아래 손잡이가 없어 이 분기에 오지 않는다)
-        const s = Math.max(0, Math.min(drag.endDay, drag.startDay + dDays));
-        item.s = dateAt(origin, s);
+        if (drag.hd0 != null) {
+          // 크기 강제: 위 가장자리를 끌면 바닥(아래)은 고정하고 위로/아래로 늘고 줄인다.
+          const bottom = drag.startDay + drag.hd0;
+          const newS = Math.max(0, Math.min(bottom - 1, drag.startDay + dDays));
+          item.s = dateAt(origin, newS);
+          item.place.hd = Math.max(1, bottom - newS);
+        } else {
+          // 보통 카드: 위쪽을 끌면 시작일이 움직인다. 종료일은 그대로.
+          const s = Math.max(0, Math.min(drag.endDay, drag.startDay + dDays));
+          item.s = dateAt(origin, s);
+        }
       } else if (drag.hd0 != null) {
         // 세로 크기 강제 — 날짜는 그대로, 세로 길이(일)만 늘리고 줄인다
         item.place.hd = Math.max(1, Math.round(drag.hd0 + dDays));
