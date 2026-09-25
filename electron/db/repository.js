@@ -125,6 +125,16 @@ export class BoardRepository {
       'SELECT item_id, depends_on FROM dependency WHERE board_id = ?',
     ).all(this.boardId);
 
+    // 순서 없는 태스크 — item_id로 묶어 각 일정에 붙인다.
+    const taskRows = this.db.prepare(
+      'SELECT id, item_id, text, done FROM task WHERE board_id = ? ORDER BY ord',
+    ).all(this.boardId);
+    const tasksByItem = new Map();
+    for (const t of taskRows) {
+      if (!tasksByItem.has(t.item_id)) tasksByItem.set(t.item_id, []);
+      tasksByItem.get(t.item_id).push({ id: t.id, text: t.text, done: t.done === 1 });
+    }
+
     // 선행(dependency) 테이블 = 'dep' 종류의 관계. from=선행(depends_on), to=후행(item_id).
     const relations = deps.map((d) => ({ id: `r_${d.item_id}_${d.depends_on}`, type: 'dep', from: d.depends_on, to: d.item_id }));
     // 포함(contain)은 item.parent_id에서 노출한다 (렌더는 item.parent를 그대로 쓴다).
@@ -145,6 +155,7 @@ export class BoardRepository {
         ti: r.title, ty: r.type, st: r.status,
         og: r.org, pg: r.progress, note: r.note,
         parent: r.parent_id ?? null,
+        tasks: tasksByItem.get(r.id) ?? [],
         place: {
           t: r.track_id, sp: r.span,
           align: r.align, showNote: r.show_note === 1, hd: r.height_days ?? null, x: r.pos_x, w: r.pos_w,
@@ -207,6 +218,9 @@ export class BoardRepository {
       const insDep = this.db.prepare(
         'INSERT OR IGNORE INTO dependency (board_id, item_id, depends_on) VALUES (?, ?, ?)',
       );
+      const insTask = this.db.prepare(
+        'INSERT INTO task (board_id, id, item_id, ord, text, done) VALUES (?, ?, ?, ?, ?, ?)',
+      );
 
       doc.items.forEach((it, i) => {
         // place(정규화된 배치) 또는 flat(정규화 전) 둘 다 받는다.
@@ -219,6 +233,9 @@ export class BoardRepository {
           hd: p.hd ?? null,
           align: p.align ?? 'middle', showNote: p.showNote ? 1 : 0,
         });
+        // 태스크는 item 뒤에 (FK 충족). item DELETE가 CASCADE로 옛 태스크를 이미 지웠다.
+        (Array.isArray(it.tasks) ? it.tasks : []).forEach((t, ti) =>
+          insTask.run(this.boardId, t.id, it.id, ti, t.text ?? '', t.done ? 1 : 0));
       });
       // 선행 관계는 모든 item이 들어간 뒤에 (FK 충족). relations의 'dep' 종류를 저장.
       // 정규화 전 문서(item.dp만 있는 경우)도 관대하게 받는다.

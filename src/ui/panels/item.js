@@ -94,6 +94,7 @@ export class ItemPanel {
         }
       });
     });
+    $('i-taskadd').addEventListener('click', () => this.#addTask());
     $('i-del').addEventListener('click', () => this.remove());
     $('i-dup').addEventListener('click', () => this.duplicate());
   }
@@ -131,6 +132,7 @@ export class ItemPanel {
     $('i-shownote').checked = item.place?.showNote === true;
     $('i-fixedh').checked = item.place?.hd != null;
     this.#renderDeps(item);
+    this.#renderTasks(item);
     this.panels.open('pItem');
     this.onChange?.();
   }
@@ -237,6 +239,71 @@ export class ItemPanel {
     }
   }
 
+  /**
+   * 순서 없는 태스크 목록. 체크(완료)·텍스트·삭제. 앞뒤가 생기면 하위 카드로
+   * 올려야 할 것들이지만, 여기선 카드 안 액션 아이템으로만 둔다 (DIRECTION #6).
+   */
+  #renderTasks(item) {
+    const box = $('i-tasks');
+    clear(box);
+    const tasks = Array.isArray(item.tasks) ? item.tasks : [];
+
+    const done = tasks.filter((t) => t.done).length;
+    $('i-taskcount').textContent = tasks.length ? `${done}/${tasks.length}` : '';
+
+    if (!tasks.length) {
+      box.append(el('div.empty', { text: '아직 태스크가 없습니다.' }));
+      return;
+    }
+
+    for (const t of tasks) {
+      const cb = el('input', {
+        type: 'checkbox', checked: t.done,
+        on: {
+          change: (e) => {
+            this.store.commit('태스크 완료', () => { t.done = e.target.checked; });
+            this.#renderTasks(this.item);            // 카운트·취소선 갱신
+          },
+        },
+      });
+      const text = el('input.task-text', {
+        type: 'text', value: t.text, placeholder: '할 일',
+        on: {
+          // 타이핑 즉시 반영하되 목록은 다시 그리지 않는다 — 포커스를 잃지 않게.
+          input: (e) => { this.store.commit('태스크 수정', () => { t.text = e.target.value; }); },
+        },
+      });
+      const rm = el('button.task-del', {
+        type: 'button', text: '×', title: '태스크 삭제',
+        on: {
+          click: () => {
+            this.store.commit('태스크 삭제', () => {
+              item.tasks = item.tasks.filter((x) => x.id !== t.id);
+            });
+            this.#renderTasks(this.item);
+          },
+        },
+      });
+      const row = el('label.task', {}, [cb, text, rm]);
+      if (t.done) row.classList.add('done');
+      box.append(row);
+    }
+  }
+
+  #addTask() {
+    const item = this.item;
+    if (!item) return;
+    const task = { id: newId('k'), text: '', done: false };
+    this.store.commit('태스크 추가', () => {
+      if (!Array.isArray(item.tasks)) item.tasks = [];
+      item.tasks.push(task);
+    });
+    this.#renderTasks(this.item);
+    // 새 줄에 바로 입력할 수 있게 포커스
+    const inputs = $('i-tasks').querySelectorAll('.task-text');
+    inputs[inputs.length - 1]?.focus();
+  }
+
   /** 폼 → 문서. 종료일 inclusive, 마일스톤도 기간 허용, 병합폭 트랙 경계 (D-3) */
   apply() {
     const item = this.item;
@@ -294,6 +361,8 @@ export class ItemPanel {
     const item = this.item;
     if (!item) return;
     const copy = { ...structuredClone(item), id: newId('e'), ti: item.ti + ' (복사)' };
+    // 태스크 id는 보드 전체에서 유일해야 한다(DB PK) — 복제본은 새 id를 받는다.
+    copy.tasks = (Array.isArray(item.tasks) ? item.tasks : []).map((t) => ({ ...t, id: newId('k') }));
     this.store.commit('일정 복제', (doc) => {
       doc.items.push(copy);
       // 원본으로 들어오던 선행 관계를 복제본에도 그대로 (같은 선행을 가진 새 일정)

@@ -89,6 +89,9 @@
   color:var(--text-tertiary);font-variant-numeric:tabular-nums;flex-wrap:wrap}
 .ev .meta .tag{color:var(--text-tertiary);font-size:calc(11px * var(--fs,1))}
 .ev .meta .tag::before{content:"· "}
+.ev .meta .tasks-chip{color:var(--text-tertiary);font-size:calc(11px * var(--fs,1));
+  white-space:nowrap}
+.ev.short>.meta .tasks-chip{display:none}
 .ev .meta.hidden{display:none}
 
 .ev .pg{position:absolute;left:4px;right:0;bottom:0;height:2px;background:var(--border-subtle)}

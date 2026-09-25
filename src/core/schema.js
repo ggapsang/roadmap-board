@@ -15,7 +15,7 @@ import {
   RELATION_TYPES, RELATION_KEYS, AXIS_KINDS, AXIS_DIRS,
 } from '../config/index.js';
 
-export const SCHEMA_VERSION = 12;
+export const SCHEMA_VERSION = 13;
 
 /**
  * v0 = P0 시안 문서(version 필드 없음).
@@ -162,6 +162,14 @@ function v11_to_v12(doc) {
   return doc;
 }
 
+function v12_to_v13(doc) {
+  // 태스크(순서 없는 할 일) 자리 — 카드 안에 담기는 액션 아이템 (docs/DIRECTION.md #6).
+  // 순서가 생기면 하위 카드로 승격한다. 없으면 빈 배열.
+  for (const it of doc.items ?? []) it.tasks = Array.isArray(it.tasks) ? it.tasks : [];
+  doc.version = 13;
+  return doc;
+}
+
 const MIGRATIONS = {
   0: v0_to_v1,
   1: v1_to_v2,
@@ -175,6 +183,7 @@ const MIGRATIONS = {
   9: v9_to_v10,
   10: v10_to_v11,
   11: v11_to_v12,
+  12: v12_to_v13,
 };
 
 export const ALIGNS = ['top', 'middle', 'bottom'];
@@ -268,6 +277,7 @@ export function normalize(doc) {
 
   // ── 일정
   const seenItem = new Set();
+  const seenTask = new Set();               // 태스크 id는 보드 전체에서 유일 (DB PK)
   doc.items = doc.items.filter((it) => isObj(it)).map((it, i) => {
     let id = typeof it.id === 'string' && it.id ? it.id : `e${i}`;
     while (seenItem.has(id)) id = `${id}_`;
@@ -290,6 +300,14 @@ export function normalize(doc) {
     n.pg = clampInt(n.pg, 0, 100, 0);
     n.dp = Array.isArray(n.dp) ? n.dp.filter((d) => typeof d === 'string') : [];
     n.parent = typeof n.parent === 'string' && n.parent ? n.parent : null;
+
+    // 순서 없는 태스크(액션 아이템). 이벤트 본질이라 place가 아니라 item에 직접 둔다.
+    n.tasks = (Array.isArray(it.tasks) ? it.tasks : []).filter(isObj).map((t) => {
+      let tid = typeof t.id === 'string' && t.id ? t.id : newId('k');
+      while (seenTask.has(tid)) tid = newId('k');
+      seenTask.add(tid);
+      return { id: tid, text: typeof t.text === 'string' ? t.text : '', done: t.done === true };
+    });
 
     // 배치(표시) 필드는 place로 모은다 — 이벤트 본질과 분리 (docs/DIRECTION.md #1).
     // 트랙·걸침(t·sp) + 표시(align·showNote·hd·x·w). flat/place 둘 다 관대하게 받는다.

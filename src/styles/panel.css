@@ -73,6 +73,20 @@ body.panel-open{--panel-w:var(--panel-size)}
 .deps em{font-style:normal;color:var(--text-tertiary);display:block;font-size:11px;margin-top:2px}
 .deps .empty{color:var(--text-tertiary);font-size:12px;padding:var(--u2)}
 
+/* 태스크(순서 없는 할 일) 목록 */
+.muted{color:var(--text-tertiary);font-weight:400;font-size:11px}
+.btn.sm{height:var(--u6);padding:0 var(--u2-5);font-size:12px;margin-top:var(--u2)}
+.tasks{display:flex;flex-direction:column;gap:var(--u1)}
+.tasks .empty{color:var(--text-tertiary);font-size:12px;padding:var(--u1) 0}
+.task{display:flex;gap:var(--u2);align-items:center}
+.task input[type=checkbox]{width:16px;height:16px;flex:none;accent-color:var(--accent);margin:0}
+.task-text{flex:1;height:var(--u7);padding:0 var(--u2);background:var(--bg-input);
+  border:1px solid var(--border-default);border-radius:var(--u1-5);font-size:13px}
+.task.done .task-text{color:var(--text-tertiary);text-decoration:line-through}
+.task-del{flex:none;width:var(--u6);height:var(--u6);border:none;background:none;
+  color:var(--text-tertiary);font-size:16px;line-height:1;cursor:pointer;border-radius:var(--u1)}
+.task-del:hover{background:var(--bg-hover);color:var(--text-primary)}
+
 /* ── 입력 다이얼로그 (Electron에 prompt()가 없어서 직접 만든다) ── */
 .dlg-scrim{position:fixed;inset:0;z-index:120;background:rgba(12,10,9,.32);
   display:flex;align-items:center;justify-content:center;padding:var(--u4)}

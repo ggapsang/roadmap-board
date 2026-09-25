@@ -87,7 +87,7 @@ DB 기본 위치는 `%APPDATA%/wolfpack/wolfpack.db` — 메뉴의 **파일 › 
 
 ```jsonc
 {
-  "version": 10,
+  "version": 13,
   "meta": {
     "start": "2026-09-21", "end": "2027-04-04", "name": "Project Machina 1차년도",
     "display": { "arrowWidth": 7, "arrowHead": 2, "fontScale": 1, "axis": "calendar", "axisDir": "vertical" }
@@ -95,7 +95,7 @@ DB 기본 위치는 `%APPDATA%/wolfpack/wolfpack.db` — 메뉴의 **파일 › 
   "orgs": ["다임리서치", "다임랩스", "에이텍모빌리티", "에이텍오토", "LG에너지솔루션", "공동"],
   "bands": [ { "id": "b1", "from": "2027-01-01", "to": "2027-03-31", "label": "2027 1Q" } ],
   "tracks": [ { "id": "t0", "lab": "요구사항 4", "name": "통합 모니터링 시스템" } ],
-  "relations": [ { "id": "r1", "type": "dep", "from": "e2", "to": "e10" } ], // 이벤트 사이 관계(선행 등)
+  "relations": [ { "id": "r1", "type": "dep", "from": "e2", "to": "e10" } ], // 이벤트 사이 관계(선행 dep · 포함 contain)
   "items": [{
     // ── 이벤트 본질 (어느 보드에서 보든 같아야 하는 것) ──
     "id": "e10",
@@ -107,8 +107,9 @@ DB 기본 위치는 `%APPDATA%/wolfpack/wolfpack.db` — 메뉴의 **파일 › 
     "og": "다임리서치",
     "pg": 20,             // 진척률
     "note": "",
-    "parent": null,       // 상위 일정 id — 있으면 그 카드 안에 들어간다(포함 관계)
-    // 선행 등 이벤트 사이 관계는 item이 아니라 위의 doc.relations에 있다 (관계 일급화)
+    "parent": null,       // 상위 일정 id — 있으면 그 카드 안에 들어간다(포함 관계, 렌더용)
+    "tasks": [ { "id": "k1", "text": "레퍼런스 수집", "done": true } ], // 순서 없는 할 일
+    // 선행·포함 등 이벤트 사이 관계는 item이 아니라 위의 doc.relations에 있다 (관계 일급화)
     // ── 이 보드에서의 배치·표시 (보드마다 다를 수 있는 것) ──
     "place": {
       "t":  "t0",         // 트랙 id
@@ -130,7 +131,7 @@ DB 기본 위치는 `%APPDATA%/wolfpack/wolfpack.db` — 메뉴의 **파일 › 
 PNG와 PDF는 화면에 보이는 부분이 아니라 **트랙 헤더부터 마지막 일정까지 전체**를
 한 장에 담는다. PNG는 2배 해상도, PDF는 보드 크기에 맞춘 단일 페이지다.
 
-SQLite 안에서는 `board` · `track` · `org` · `item` · `dependency` · `revision` 테이블로
+SQLite 안에서는 `board` · `track` · `org` · `item` · `dependency` · `task` · `revision` 테이블로
 정규화돼 있어 조직별·기간별 집계나 선후행 추적을 SQL로 바로 할 수 있다.
 `board` 한 행이 프로젝트 하나이고, 나머지 테이블은 전부 `board_id`로 갈라진다.
 
@@ -159,7 +160,7 @@ SQLite 안에서는 `board` · `track` · `org` · `item` · `dependency` · `re
 - [ ] **P1** 읽기 전용 공유, 인쇄 레이아웃 정리
 - [ ] **P2** 선행 일정 지연 시 영향 경고, 다중 사용자
 - [ ] **P3** 산출물 체계 연계
-- [x] **순서 기반 이벤트 전개 시스템** 본질/배치 분리(`item.place`)·관계 일급화(`doc.relations`)·순서축 초안(구성 › 표시 › 순서 축) — [docs/DIRECTION.md](./docs/DIRECTION.md)
+- [x] **순서 기반 이벤트 전개 시스템** 본질/배치 분리(`item.place`)·관계 일급화(`doc.relations`, 선행+포함)·순서축 초안(구성 › 표시 › 순서 축)·순서 없는 태스크(`item.tasks`) — [docs/DIRECTION.md](./docs/DIRECTION.md)
 
 ## 디자인
 
