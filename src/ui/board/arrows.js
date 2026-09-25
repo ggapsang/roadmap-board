@@ -46,9 +46,23 @@ export function drawArrows(layer, grid, items, display) {
   }
 
   const trackOf = new Map(items.map((i) => [i.id, i.t]));
-  // 상위 일정(컨테이너)은 배경이 비어 있어 가로질러도 글씨를 가리지 않는다.
+  // 상위 일정(컨테이너) 몸통은 배경이 비어 있어 가로질러도 글씨를 가리지 않는다.
   // 장애물로 치면 피할 곳이 없어지므로 제외한다.
   const container = new Set(items.map((i) => i.parent).filter(Boolean));
+
+  // 다만 컨테이너의 '제목 바'는 z:8·불투명이라 그 위를 지나는 화살표를 덮는다.
+  // 제목 바만 장애물로 넣어 화살표가 그 띠를 피해 돌게 한다 (몸통은 그대로 통과).
+  const titleObstacles = [];
+  for (const cont of grid.querySelectorAll('.ev.container')) {
+    const t = cont.querySelector(':scope > .t');
+    if (!t) continue;
+    let x = 0, y = 0;
+    for (let node = t; node && node !== grid; node = node.offsetParent) {
+      x += node.offsetLeft;
+      y += node.offsetTop;
+    }
+    titleObstacles.push({ x, y, w: t.offsetWidth, h: t.offsetHeight });
+  }
 
   for (const item of items) {
     for (const depId of item.dp ?? []) {
@@ -56,7 +70,7 @@ export function drawArrows(layer, grid, items, display) {
       const to = box.get(item.id);
       if (!from || !to) continue;             // 필터로 숨겨진 경우
 
-      const obstacles = [];
+      const obstacles = [...titleObstacles];
       for (const [id, rect] of box) {
         if (id === depId || id === item.id || container.has(id)) continue;
         obstacles.push(rect);

@@ -2,7 +2,7 @@
  * 일정 편집 패널.
  * 제목·상태·트랙·유형·기간·병합폭·진척률·담당·선행일정·비고 (기획안 §5).
  */
-import { shortMD, dayIndex, parseDate } from '../../core/dates.js';
+import { shortMD, dayIndex, parseDate, inclusiveDays } from '../../core/dates.js';
 import { newId, ALIGNS } from '../../core/schema.js';
 import { STATUSES, ITEM_TYPES } from '../../config/index.js';
 import { $, el, clear } from '../dom.js';
@@ -15,6 +15,12 @@ const F = {
 };
 
 const ALIGN_LABELS = { top: '위', middle: '가운데', bottom: '아래' };
+
+/** 여러 줄 제목 입력이 내용에 맞게 높이를 늘리도록 */
+function autogrow(node) {
+  node.style.height = 'auto';
+  node.style.height = node.scrollHeight + 'px';
+}
 
 export class ItemPanel {
   constructor({ store, view, panels, onChange }) {
@@ -58,12 +64,35 @@ export class ItemPanel {
       const item = this.item;
       if (!item) return;
       this.store.commit('제목 수정', () => { item.ti = $(F.title).value; });
+      autogrow($(F.title));
+    });
+    // 제목은 여러 줄을 담는다. 줄바꿈은 Shift+Enter, 그냥 Enter는 편집 종료(줄바꿈 X).
+    $(F.title).addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        $(F.title).blur();
+      }
     });
 
     $('i-shownote').addEventListener('change', (e) => {
       const item = this.item;
       if (!item) return;
       this.store.commit('비고 표시', () => { item.showNote = e.target.checked; });
+    });
+    // 크기 강제 — 켜면 현재 기간 길이(일)로 시작하고 가로·세로를 드래그로 조절한다.
+    // 끄면 강제 높이(hd)와 강제 폭(x/w)을 모두 비워 원래(자동) 크기로 돌아온다.
+    $('i-fixedh').addEventListener('change', (e) => {
+      const item = this.item;
+      if (!item) return;
+      this.store.commit('크기 강제', () => {
+        if (e.target.checked) {
+          item.hd = Math.max(1, inclusiveDays(item.s, item.e));
+        } else {
+          item.hd = null;
+          item.x = null;
+          item.w = null;
+        }
+      });
     });
     $('i-del').addEventListener('click', () => this.remove());
     $('i-dup').addEventListener('click', () => this.duplicate());
@@ -85,6 +114,7 @@ export class ItemPanel {
     for (const o of this.store.orgs) org.append(el('option', { value: o, text: o }));
 
     $(F.title).value = item.ti;
+    autogrow($(F.title));
     track.value = item.t;
     $(F.type).value = item.ty;
     $(F.start).value = item.s;
@@ -99,6 +129,7 @@ export class ItemPanel {
     this.#syncStatus(item);
     this.#syncAlign(item);
     $('i-shownote').checked = item.showNote === true;
+    $('i-fixedh').checked = item.hd != null;
     this.#renderDeps(item);
     this.panels.open('pItem');
     this.onChange?.();
@@ -203,7 +234,7 @@ export class ItemPanel {
     }
   }
 
-  /** 폼 → 문서. 종료일 inclusive, 마일스톤 단일 일자, 병합폭 트랙 경계 (D-3) */
+  /** 폼 → 문서. 종료일 inclusive, 마일스톤도 기간 허용, 병합폭 트랙 경계 (D-3) */
   apply() {
     const item = this.item;
     if (!item) return;
@@ -215,7 +246,7 @@ export class ItemPanel {
       item.s = $(F.start).value || item.s;
       item.e = $(F.end).value || item.s;
       if (item.e < item.s) item.e = item.s;
-      if (item.ty === 'ms') item.e = item.s;
+      // 마일스톤도 기간을 가질 수 있다 — 종료일을 강제로 시작일에 맞추지 않는다.
 
       const ti = this.store.trackIndex(item.t);
       const maxSpan = Math.max(1, this.store.tracks.length - ti);
@@ -246,7 +277,7 @@ export class ItemPanel {
 
   remove() {
     const item = this.item;
-    if (!item) return;
+    if (!item || this.store.readonly) return;
     const title = item.ti || '이름 없는 일정';
     this.store.commit('일정 삭제', (doc) => {
       doc.items = doc.items.filter((x) => x.id !== item.id);

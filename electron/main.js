@@ -193,6 +193,20 @@ async function runSmoke(target) {
   let spanDrag = null;
   let edgeDrag = null;
   let childWidth = null;
+  let underflow = null;
+  let madeCards = null;
+  let titleWrap = null;
+  let msRange = null;
+  let topWidth = null;
+  let reorder = null;
+  let delKey = null;
+  let containerAlign = null;
+  let titleFit = null;
+  let fixedH = null;
+  let trim = null;
+  let monthResize = null;
+  let ctxDelete = null;
+  let dragExtend = null;
   let result;
   try {
     await new Promise((r) => setTimeout(r, 600));
@@ -345,12 +359,54 @@ async function runSmoke(target) {
     })()`), 20000, 'edge-drag');
     console.log('[smoke] edge-drag ' + JSON.stringify(edgeDrag));
 
-    // 트랙 걸침 드래그 — 오른쪽 가장자리를 끌면 칸 단위로 붙는가
+    // 축 밖으로 넘긴 일정 — 시작일을 meta.start(9월)보다 앞선 8월로 보내면
+    // 축이 8월까지 늘어나야 한다 (카드가 축 위로 튀어나가 사라지면 안 된다).
+    underflow = await withTimeout(target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const card = document.querySelector('.col > .ev:not(.ms)');
+      const id = card.dataset.id;
+      const it = () => r.store.item(id);
+      const before = { s: it().s, e: it().e };
+      const originBefore = r.board.origin.getTime();
+      const monthsBefore = [...document.querySelectorAll('.gut-m b')].map((b) => b.textContent);
+
+      r.store.commit('축 밖으로', () => { it().s = '2026-08-10'; });
+      r.board.render();
+      await new Promise((res) => setTimeout(res, 150));
+
+      const originAfter = r.board.origin.getTime();
+      const monthsAfter = [...document.querySelectorAll('.gut-m b')].map((b) => b.textContent);
+      const hasAug = monthsAfter.some((t) => t.startsWith('8월'));
+      const cardTop = Math.round(document.querySelector('[data-id="' + id + '"]').getBoundingClientRect().top);
+
+      return {
+        before, originBefore, originAfter, hasAug,
+        monthsBefore: monthsBefore.length, monthsAfter: monthsAfter.length,
+        extended: originAfter < originBefore, cardTop,
+      };
+    })()`), 20000, 'underflow');
+    console.log('[smoke] underflow ' + JSON.stringify(underflow));
+    if (shotDir()) await capture(target, 'board-underflow');
+
+    // 원복 — 이후 단계(밴드/압축 등)가 원래 범위를 전제로 한다
+    underflow.restored = await target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const cid = document.querySelector('.col > .ev:not(.ms)').dataset.id;
+      r.store.commit('원복', () => { r.store.item(cid).s = ${JSON.stringify(underflow?.before?.s)}; });
+      r.board.render();
+      await new Promise((res) => setTimeout(res, 120));
+      return r.board.origin.getTime() === ${underflow?.originBefore ?? 0};
+    })()`);
+    console.log('[smoke] underflow restored ' + underflow.restored);
+
+    // 트랙 걸침 드래그 — 여러 칸에 걸친 막대(sp≥2)의 오른쪽 가장자리를 끌면 칸 단위로 붙는가.
+    // (sp=1 막대의 오른쪽 가장자리는 폭 조절용이라 걸침 손잡이가 없다 — 아래 top-width 참고)
     spanDrag = await withTimeout(target.webContents.executeJavaScript(`(async () => {
       const r = window.__roadmap;
       const card = document.querySelector('.col > .ev:not(.ms)');
       const id = card.dataset.id;
-      r.store.commit('초기화', () => { r.store.item(id).sp = 1; });
+      r.store.commit('초기화', () => { const it = r.store.item(id); it.sp = 2; it.x = null; it.w = null; });
+      r.board.render();
       await new Promise((res) => setTimeout(res, 150));
       const el = () => document.querySelector('[data-id="' + id + '"]');
       const grip = el().querySelector('.grip-span');
@@ -373,6 +429,41 @@ async function runSmoke(target) {
     })()`), 20000, 'span-drag');
     console.log('[smoke] span-drag ' + JSON.stringify(spanDrag));
 
+    // 가로폭 드래그는 '크기 강제' 모드에서만. 강제 아니면 sp=1 최상위는 걸침 손잡이만.
+    topWidth = await withTimeout(target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const card = document.querySelector('.col > .ev:not(.ms)');
+      const id = card.dataset.id;
+      // 강제 아님 → 폭 손잡이 없고 걸침 손잡이만 있어야 한다
+      r.store.commit('자동', () => { const it = r.store.item(id); it.sp = 1; it.hd = null; it.x = null; it.w = null; });
+      r.board.render();
+      await new Promise((res) => setTimeout(res, 150));
+      const autoHasSpan = !!document.querySelector('[data-id="' + id + '"] .grip-span');
+      const autoHasHe = !!document.querySelector('[data-id="' + id + '"] .grip-he');
+      // 강제 켜기 → 좌우 폭 손잡이 등장
+      r.store.commit('강제', () => { r.store.item(id).hd = 20; });
+      r.board.render();
+      await new Promise((res) => setTimeout(res, 150));
+      const el = () => document.querySelector('[data-id="' + id + '"]');
+      const grip = el().querySelector('.grip-he');
+      if (!grip) return { error: 'grip-he 없음(강제 폭 손잡이)', autoHasSpan, autoHasHe };
+      const before = Math.round(el().getBoundingClientRect().width);
+      const box = grip.getBoundingClientRect();
+      const grid = document.getElementById('grid');
+      const at = (x) => ({ bubbles: true, clientX: x, clientY: box.top + 10, button: 0, pointerId: 1 });
+      grip.dispatchEvent(new PointerEvent('pointerdown', at(box.left + 2)));
+      grid.dispatchEvent(new PointerEvent('pointermove', at(box.left - 90)));   // 왼쪽으로 90px
+      await new Promise((res) => setTimeout(res, 120));
+      grid.dispatchEvent(new PointerEvent('pointerup', at(box.left - 90)));
+      await new Promise((res) => setTimeout(res, 150));
+      const w = r.store.item(id).w;
+      const after = Math.round(el().getBoundingClientRect().width);
+      r.store.commit('원복', () => { const it = r.store.item(id); it.hd = null; it.x = null; it.w = null; it.sp = 2; });
+      r.board.render();
+      return { autoHasSpan, autoHasHe, before, after, w, shrank: after < before, hasW: w != null && w < 1 };
+    })()`), 20000, 'top-width');
+    console.log('[smoke] top-width ' + JSON.stringify(topWidth));
+
     // 트랙을 새로 추가하면 그 트랙에 카드가 들어가는가
     newTrack = await withTimeout(target.webContents.executeJavaScript(`(async () => {
       const r = window.__roadmap;
@@ -389,6 +480,317 @@ async function runSmoke(target) {
       return { before, after, hasColumn, drawn };
     })()`), 20000, 'new-track');
     console.log('[smoke] new-track ' + JSON.stringify(newTrack));
+
+    // 트랙 열 순서 드래그 (엑셀식) — 첫 헤더를 오른쪽으로 끌면 순서가 바뀐다
+    reorder = await withTimeout(target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const before = r.store.tracks.map((t) => t.id);
+      const heads = [...document.querySelectorAll('.th')];
+      const cell = heads[0];
+      const movingId = cell.dataset.t;
+      const r0 = cell.getBoundingClientRect();
+      const target = heads[2].getBoundingClientRect();
+      const at = (x) => ({ bubbles: true, clientX: x, clientY: r0.top + r0.height / 2, button: 0, pointerId: 1 });
+      cell.dispatchEvent(new PointerEvent('pointerdown', at(r0.left + 20)));
+      window.dispatchEvent(new PointerEvent('pointermove', at(target.left + target.width * 0.6)));
+      await new Promise((res) => setTimeout(res, 100));
+      window.dispatchEvent(new PointerEvent('pointerup', at(target.left + target.width * 0.6)));
+      await new Promise((res) => setTimeout(res, 150));
+      const after = r.store.tracks.map((t) => t.id);
+      const newIndex = after.indexOf(movingId);
+      r.store.commit('원복', (doc) => {
+        doc.tracks.sort((a, b) => before.indexOf(a.id) - before.indexOf(b.id));
+      });
+      r.board.render();
+      await new Promise((res) => setTimeout(res, 120));
+      const restored = r.store.tracks.map((t) => t.id).join(',') === before.join(',');
+      return { count: before.length, movingId, newIndex, moved: newIndex > 0, restored };
+    })()`), 20000, 'reorder');
+    console.log('[smoke] reorder ' + JSON.stringify(reorder));
+
+    // 빈 곳 클릭/드래그로 일정 만들기 (구글 캘린더식). 클릭=1주, 드래그=끈 길이.
+    madeCards = await withTimeout(target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const grid = document.getElementById('grid');
+      const S = r.board.scale;
+      const lastId = r.store.tracks[r.store.tracks.length - 1].id;
+      const col = document.querySelector('.col[data-t="' + lastId + '"]');
+      const rect = col.getBoundingClientRect();
+      const x = rect.left + rect.width / 2;
+      const yOf = (d) => rect.top + S.y(d);
+      const incDays = (it) => Math.round((new Date(it.e) - new Date(it.s)) / 86400000) + 1;
+      const ev = (type, y) => new PointerEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0, pointerId: 1 });
+      const countBefore = r.store.items.length;
+
+      // 클릭 — 빈 40일 지점(그 트랙엔 10일 카드뿐이라 비어 있다)
+      col.dispatchEvent(ev('pointerdown', yOf(40)));
+      grid.dispatchEvent(ev('pointerup', yOf(40)));
+      await new Promise((res) => setTimeout(res, 150));
+      const clicked = r.store.items[r.store.items.length - 1];
+      const clickDays = incDays(clicked);
+
+      // 드래그 — 60일에서 80일까지
+      col.dispatchEvent(ev('pointerdown', yOf(60)));
+      grid.dispatchEvent(ev('pointermove', yOf(80)));
+      grid.dispatchEvent(ev('pointerup', yOf(80)));
+      await new Promise((res) => setTimeout(res, 150));
+      const dragged = r.store.items[r.store.items.length - 1];
+      const dragDays = incDays(dragged);
+
+      // 정리 — 만든 두 카드 제거
+      const ids = [clicked.id, dragged.id];
+      r.store.commit('정리', (doc) => { doc.items = doc.items.filter((i) => !ids.includes(i.id)); });
+      await new Promise((res) => setTimeout(res, 120));
+      return { countBefore, added: 2, clickDays, dragDays, restored: r.store.items.length === countBefore };
+    })()`), 20000, 'create');
+    console.log('[smoke] create ' + JSON.stringify(madeCards));
+
+    // 제목 줄바꿈 — 여러 줄 제목이 카드에서 실제로 두 줄로 그려지는가
+    titleWrap = await target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const it = () => r.store.item('e1');
+      const before = it().ti;
+      const oneH = Math.round(document.querySelector('[data-id="e1"] .t').getBoundingClientRect().height);
+      r.store.commit('제목 줄바꿈', () => { it().ti = '라인1\\n라인2'; });
+      r.board.render();
+      await new Promise((res) => setTimeout(res, 120));
+      const t = document.querySelector('[data-id="e1"] .t');
+      const ws = getComputedStyle(t).whiteSpace;
+      const twoH = Math.round(t.getBoundingClientRect().height);
+      const hasNL = t.textContent.includes('\\n');
+      r.store.commit('원복', () => { it().ti = before; });
+      r.board.render();
+      await new Promise((res) => setTimeout(res, 100));
+      return { ws, oneH, twoH, hasNL, grew: twoH > oneH };
+    })()`);
+    console.log('[smoke] title-wrap ' + JSON.stringify(titleWrap));
+
+    // 기간 마일스톤 — 점 마일스톤(e12)에 종료일을 주면 막대(레인 참여)로 바뀐다
+    msRange = await target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const it = () => r.store.item('e12');
+      const beforeE = it().e;
+      const wasPoint = !!document.querySelector('[data-id="e12"].ms.point');
+      const pointH = Math.round(document.querySelector('[data-id="e12"]').getBoundingClientRect().height);
+      r.store.commit('기간 마일스톤', () => { it().e = '2026-10-30'; });
+      r.board.render();
+      await new Promise((res) => setTimeout(res, 150));
+      const node = document.querySelector('[data-id="e12"]');
+      const nowRanged = node.classList.contains('ranged') && !node.classList.contains('point');
+      const rangeH = Math.round(node.getBoundingClientRect().height);
+      return { wasPoint, nowRanged, pointH, rangeH, grew: rangeH > pointH, beforeE };
+    })()`);
+    console.log('[smoke] ms-range ' + JSON.stringify(msRange));
+    if (shotDir()) await capture(target, 'board-msrange');
+    msRange.backPoint = await target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      r.store.commit('원복', () => { r.store.item('e12').e = ${JSON.stringify(msRange?.beforeE)}; });
+      r.board.render();
+      await new Promise((res) => setTimeout(res, 120));
+      return !!document.querySelector('[data-id="e12"].ms.point');
+    })()`);
+    console.log('[smoke] ms-range restored ' + msRange.backPoint);
+
+    // Delete/Backspace 단축키로 선택한 카드 삭제 — 입력 칸에 있을 땐 안 먹는다
+    delKey = await target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const item = r.board.createItem(r.store.tracks[0].id, 5);   // 임시 카드 + 선택
+      await new Promise((res) => setTimeout(res, 120));
+      const id = item.id;
+      const existsBefore = !!r.store.item(id);
+      // 제목 입력 칸에 포커스 → Delete가 무시돼야 한다
+      document.getElementById('i-title').focus();
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+      await new Promise((res) => setTimeout(res, 80));
+      const survivedWhileTyping = !!r.store.item(id);
+      // 입력 칸 밖에서 Backspace(⌫) → 삭제된다
+      document.getElementById('i-title').blur();
+      r.view.selectedItem = id;
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true }));
+      await new Promise((res) => setTimeout(res, 120));
+      const deleted = !r.store.item(id);
+      return { existsBefore, survivedWhileTyping, deleted };
+    })()`);
+    console.log('[smoke] del-key ' + JSON.stringify(delKey));
+
+    // 컨테이너 카드도 글자 세로 정렬(align)을 따르는가 — e10은 nesting 단계부터 컨테이너
+    containerAlign = await target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const before = r.store.item('e10').align;
+      r.store.commit('정렬', () => { r.store.item('e10').align = 'bottom'; });
+      r.board.render();
+      await new Promise((res) => setTimeout(res, 150));
+      const node = document.querySelector('[data-id="e10"]');
+      const jc = getComputedStyle(node).justifyContent;
+      const cBottom = node.classList.contains('c-bottom');
+      const isContainer = node.classList.contains('container');
+      r.store.commit('원복', () => { r.store.item('e10').align = before; });
+      r.board.render();
+      await new Promise((res) => setTimeout(res, 100));
+      return { jc, cBottom, isContainer };
+    })()`);
+    console.log('[smoke] container-align ' + JSON.stringify(containerAlign));
+
+    // 제목이 카드를 넘치면 폰트가 줄어 잘리지 않는가 — 짧은 카드 e33에 긴 제목
+    titleFit = await target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const before = r.store.item('e33').ti;
+      r.store.commit('긴 제목', () => { r.store.item('e33').ti = '진행 계획 공유 및 세부 조율 회의 자료 준비'; });
+      r.board.render();
+      await new Promise((res) => setTimeout(res, 150));
+      const node = document.querySelector('[data-id="e33"]');
+      const t = node.querySelector(':scope > .t');
+      const font1 = parseFloat(getComputedStyle(t).fontSize);
+      const fits = node.scrollHeight <= node.clientHeight + 1
+        && t.scrollHeight <= t.clientHeight + 1 && t.scrollWidth <= t.clientWidth + 1;
+      r.store.commit('원복', () => { r.store.item('e33').ti = before; });
+      r.board.render();
+      return { font1, shrank: font1 < 11, fits };
+    })()`);
+    console.log('[smoke] title-fit ' + JSON.stringify(titleFit));
+
+    // 세로 크기 강제 — hd(일)가 클수록 카드가 높고(결정적), 아래 가장자리를 끌면
+    // 날짜는 그대로 hd만 바뀐다. 위 손잡이(시작일)는 감춘다.
+    fixedH = await withTimeout(target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const id = 'e33';
+      const it = () => r.store.item(id);
+      const before = { s: it().s, e: it().e, hd: it().hd ?? null };
+      const node = () => document.querySelector('[data-id="' + id + '"]');
+      r.store.commit('h15', () => { it().hd = 15; });
+      r.board.render();
+      await new Promise((res) => setTimeout(res, 150));
+      const h15 = Math.round(node().getBoundingClientRect().height);
+      const noTopGrip = !node().querySelector('.grip-top');
+      r.store.commit('h25', () => { it().hd = 25; });
+      r.board.render();
+      await new Promise((res) => setTimeout(res, 150));
+      const h25 = Math.round(node().getBoundingClientRect().height);
+      // 드래그로 hd가 바뀌고 날짜는 그대로인지 (방향·정확한 양은 합성 이벤트라 관대하게)
+      const grip = node().querySelector('.grip');
+      const box = grip.getBoundingClientRect();
+      const grid = document.getElementById('grid');
+      const ppd = r.view.ppd;
+      const at = (y) => ({ bubbles: true, clientX: box.left + box.width / 2, clientY: y, button: 0, pointerId: 1 });
+      grip.dispatchEvent(new PointerEvent('pointerdown', at(box.top + box.height / 2)));
+      grid.dispatchEvent(new PointerEvent('pointermove', at(box.top + box.height / 2 + ppd * 8)));
+      await new Promise((res) => setTimeout(res, 150));
+      grid.dispatchEvent(new PointerEvent('pointerup', at(box.top + box.height / 2 + ppd * 8)));
+      await new Promise((res) => setTimeout(res, 150));
+      const hdAfter = it().hd;
+      const datesUnchanged = it().s === before.s && it().e === before.e;
+      r.store.commit('원복', () => { it().hd = before.hd; });
+      r.board.render();
+      await new Promise((res) => setTimeout(res, 100));
+      return { h15, h25, hdAfter, noTopGrip, datesUnchanged, mapGrew: h25 > h15, dragChanged: hdAfter !== 25 };
+    })()`), 20000, 'fixed-height');
+    console.log('[smoke] fixed-height ' + JSON.stringify(fixedH));
+
+    // 여백 자르기 — 표시 기간을 일정 범위에 맞춰 맨 뒤 빈 구간을 없앤다
+    trim = await target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const s0 = r.store.meta.start, e0 = r.store.meta.end;
+      r.store.commit('범위 확장', (doc) => { doc.meta.end = '2027-12-31'; });
+      r.board.render();
+      await new Promise((res) => setTimeout(res, 120));
+      const maxE = r.store.items.reduce((m, i) => ((i.e || i.s) > m ? (i.e || i.s) : m), '0000-00-00');
+      const beforeEnd = r.store.meta.end;
+      document.getElementById('d-trim').click();
+      await new Promise((res) => setTimeout(res, 150));
+      const afterEnd = r.store.meta.end;
+      r.store.commit('원복', (doc) => { doc.meta.start = s0; doc.meta.end = e0; });
+      r.board.rebuild();
+      await new Promise((res) => setTimeout(res, 120));
+      return { beforeEnd, afterEnd, maxE, trimmed: afterEnd === maxE, shrank: afterEnd < beforeEnd };
+    })()`);
+    console.log('[smoke] trim ' + JSON.stringify(trim));
+
+    // 낱개 월 높이 조절 — 병합 없이 월 칸 아래 가장자리를 끌면 그 달만 압축된다
+    monthResize = await withTimeout(target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const gutM = document.getElementById('gutM');
+      const cell = gutM.querySelector('b:not(.merged)');
+      const handle = cell && cell.querySelector('.band-resize');
+      if (!handle) return { error: '월 손잡이 없음' };
+      const bandsBefore = (r.store.doc.bands ?? []).length;
+      const gridH0 = parseFloat(document.getElementById('grid').style.height);
+      const box = handle.getBoundingClientRect();
+      const at = (y) => ({ bubbles: true, clientX: box.left + box.width / 2, clientY: y, button: 0, pointerId: 1 });
+      handle.dispatchEvent(new PointerEvent('pointerdown', at(box.top + 1)));
+      gutM.dispatchEvent(new PointerEvent('pointermove', at(box.top + 1 - 60)));   // 위로 = 축소
+      await new Promise((res) => setTimeout(res, 150));
+      gutM.dispatchEvent(new PointerEvent('pointerup', at(box.top + 1 - 60)));
+      await new Promise((res) => setTimeout(res, 150));
+      const bands = r.store.doc.bands ?? [];
+      const created = bands[bands.length - 1];
+      const gridH1 = parseFloat(document.getElementById('grid').style.height);
+      const made = bands.length === bandsBefore + 1;
+      if (made) r.store.commit('정리', (doc) => { doc.bands = doc.bands.filter((b) => b.id !== created.id); });
+      r.board.rebuild();
+      await new Promise((res) => setTimeout(res, 120));
+      return { made, scale: created?.scale ?? null, shrank: gridH1 < gridH0 };
+    })()`), 20000, 'month-resize');
+    console.log('[smoke] month-resize ' + JSON.stringify(monthResize));
+
+    // 빈 세로축 날짜 칸 우클릭 → '이 아래 빈 구간 삭제'로 뒤쪽 빈 행을 지운다
+    ctxDelete = await withTimeout(target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const s0 = r.store.meta.start, e0 = r.store.meta.end;
+      r.store.commit('확장', (doc) => { doc.meta.end = '2027-12-31'; });
+      r.board.rebuild();
+      await new Promise((res) => setTimeout(res, 150));
+      const cells = [...document.getElementById('gutM').querySelectorAll('b')];
+      const cell = cells[cells.length - 1];
+      const box = cell.getBoundingClientRect();
+      cell.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: box.left + 5, clientY: box.top + 5 }));
+      await new Promise((res) => setTimeout(res, 80));
+      const menu = document.querySelector('.ctx-menu');
+      const hadMenu = !!menu;
+      const btn = menu && [...menu.querySelectorAll('button')].find((b) => b.textContent.includes('빈 구간 삭제'));
+      const maxE = r.store.items.reduce((m, i) => ((i.e || i.s) > m ? (i.e || i.s) : m), '0000-00-00');
+      if (btn) btn.click();
+      await new Promise((res) => setTimeout(res, 150));
+      const afterEnd = r.store.meta.end;
+      const menuClosed = !document.querySelector('.ctx-menu');
+      r.store.commit('원복', (doc) => { doc.meta.start = s0; doc.meta.end = e0; });
+      r.board.rebuild();
+      await new Promise((res) => setTimeout(res, 120));
+      return { hadMenu, hadBtn: !!btn, afterEnd, maxE, trimmed: afterEnd === maxE, menuClosed };
+    })()`), 20000, 'ctx-delete');
+    console.log('[smoke] ctx-delete ' + JSON.stringify(ctxDelete));
+
+    // 잘라낸 뒤에도 마지막 카드를 아래로 끌면 축이 다시 늘어난다 (빈 구간 복구)
+    dragExtend = await withTimeout(target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const s0 = r.store.meta.start, e0 = r.store.meta.end;
+      let maxEnd = null;
+      for (const it of r.store.items) { const e = it.e || it.s; if (e && (maxEnd === null || e > maxEnd)) maxEnd = e; }
+      r.store.commit('맞춤', (doc) => { doc.meta.end = maxEnd; });   // 일정에 딱 맞춰 자른 상태
+      r.board.rebuild();
+      await new Promise((res) => setTimeout(res, 150));
+      const lastId = r.store.items.reduce((a, b) => ((b.e || b.s) > (a.e || a.s) ? b : a)).id;
+      const el = () => document.querySelector('[data-id="' + lastId + '"]');
+      const beforeE = r.store.item(lastId).e;
+      const beforeH = parseFloat(document.getElementById('grid').style.height);
+      const grip = el().querySelector('.grip');
+      if (!grip) return { error: 'grip 없음' };
+      const box = grip.getBoundingClientRect();
+      const grid = document.getElementById('grid');
+      const ppd = r.view.ppd;
+      const at = (y) => ({ bubbles: true, clientX: box.left + box.width / 2, clientY: y, button: 0, pointerId: 1 });
+      grip.dispatchEvent(new PointerEvent('pointerdown', at(box.top + 2)));
+      grid.dispatchEvent(new PointerEvent('pointermove', at(box.top + 2 + ppd * 30)));   // 30일 아래로
+      await new Promise((res) => setTimeout(res, 150));
+      grid.dispatchEvent(new PointerEvent('pointerup', at(box.top + 2 + ppd * 30)));
+      await new Promise((res) => setTimeout(res, 150));
+      const afterE = r.store.item(lastId).e;
+      const afterH = parseFloat(document.getElementById('grid').style.height);
+      r.store.commit('원복', (doc) => { doc.meta.start = s0; doc.meta.end = e0; const it = doc.items.find((i) => i.id === lastId); if (it) it.e = beforeE; });
+      r.board.rebuild();
+      await new Promise((res) => setTimeout(res, 120));
+      return { beforeE, afterE, extended: afterE > beforeE, grewAxis: afterH > beforeH };
+    })()`), 20000, 'drag-extend');
+    console.log('[smoke] drag-extend ' + JSON.stringify(dragExtend));
 
     // 다크 테마도 찍는다 — 가이드 적용 결과를 눈으로 봐야 한다
     if (shotDir()) {
@@ -555,6 +957,22 @@ async function runSmoke(target) {
     && newTrack?.after === newTrack?.before + 1 && newTrack?.hasColumn === true
     && newTrack?.drawn === true && spanDrag?.sp === 3
     && edgeDrag?.startMoved === true && edgeDrag?.endMoved === true
+    && underflow?.extended === true && underflow?.hasAug === true && underflow?.restored === true
+    && madeCards?.clickDays === 7 && madeCards?.dragDays > 7 && madeCards?.restored === true
+    && titleWrap?.ws === 'pre-line' && titleWrap?.hasNL === true && titleWrap?.grew === true
+    && msRange?.wasPoint === true && msRange?.nowRanged === true && msRange?.grew === true
+    && msRange?.backPoint === true
+    && topWidth?.shrank === true && topWidth?.hasW === true
+    && topWidth?.autoHasSpan === true && topWidth?.autoHasHe === false
+    && reorder?.moved === true && reorder?.restored === true
+    && delKey?.existsBefore === true && delKey?.survivedWhileTyping === true && delKey?.deleted === true
+    && containerAlign?.jc === 'flex-end' && containerAlign?.cBottom === true && containerAlign?.isContainer === true
+    && titleFit?.shrank === true && titleFit?.fits === true
+    && fixedH?.mapGrew === true && fixedH?.noTopGrip === true && fixedH?.datesUnchanged === true && fixedH?.dragChanged === true
+    && trim?.trimmed === true && trim?.shrank === true
+    && monthResize?.made === true && monthResize?.scale < 1 && monthResize?.shrank === true
+    && ctxDelete?.hadMenu === true && ctxDelete?.hadBtn === true && ctxDelete?.trimmed === true && ctxDelete?.menuClosed === true
+    && dragExtend?.extended === true && dragExtend?.grewAxis === true
     && childWidth?.grew === true && childWidth?.reset === null
     && banded?.merged === 1 && banded?.after === banded?.before - 2
     && compressed?.shrank === true && compressed?.cardAfter < compressed?.cardBefore
@@ -690,8 +1108,14 @@ function registerIpc() {
 
     const wc = win.webContents;
     let attached = false;
+    // 개발자 도구가 열려 있으면 CDP 디버거가 이미 붙어 있어 attach가 실패한다.
+    // 잠시 닫았다가 캡처 후 다시 연다 (npm run dev로 켠 경우의 실패를 막는다).
+    const devtoolsWasOpen = wc.isDevToolsOpened();
     try {
-      if (!wc.debugger.isAttached()) { wc.debugger.attach('1.3'); attached = true; }
+      if (devtoolsWasOpen) { wc.closeDevTools(); await new Promise((r) => setTimeout(r, 200)); }
+      // 이전 시도가 남긴 오래된 세션이 있으면 떼고 새로 붙인다
+      try { if (wc.debugger.isAttached()) wc.debugger.detach(); } catch { /* noop */ }
+      wc.debugger.attach('1.3'); attached = true;
       const { data } = await wc.debugger.sendCommand('Page.captureScreenshot', {
         format: 'png',
         captureBeyondViewport: true,
@@ -705,6 +1129,7 @@ function registerIpc() {
       return { ok: false, error: String(err?.message ?? err) };
     } finally {
       if (attached) { try { wc.debugger.detach(); } catch { /* noop */ } }
+      if (devtoolsWasOpen) { try { wc.openDevTools(); } catch { /* noop */ } }
     }
   });
 

@@ -60,6 +60,7 @@ export function attachDrag(grid, {
       endDay: dayIndex(item.e, origin),
       startTrack: trackIndexAt(ev.clientX),
       homeTrack: store.trackIndex(item.t),
+      hd0: item.hd ?? null,
       hostWidth,
       x0: item.x ?? (rect.left - hostLeft) / hostWidth,
       w0: item.w ?? rect.width / hostWidth,
@@ -128,14 +129,14 @@ export function attachDrag(grid, {
     }
 
     const origin = getOrigin();
-    const total = getTotalDays();
 
     store.commit('드래그', () => {
       const item = store.item(drag.id);
       if (!item) return;
       if (drag.mode === 'move') {
         const length = drag.endDay - drag.startDay;
-        const s = Math.max(0, Math.min(total - 1 - length, drag.startDay + dDays));
+        // 아래로는 막지 않는다 — 끌어 내리면 축이 그만큼 늘어난다(잘라낸 빈 구간 복구).
+        const s = Math.max(0, drag.startDay + dDays);
         item.s = dateAt(origin, s);
         item.e = dateAt(origin, s + length);
         const maxTrack = store.tracks.length - item.sp;
@@ -143,12 +144,15 @@ export function attachDrag(grid, {
         item.t = store.tracks[k].id;
       } else if (drag.mode === 'size-top') {
         // 위쪽을 끌면 시작일이 움직인다. 종료일은 그대로.
-        if (item.ty === 'ms') return;
+        // (점 마일스톤은 위·아래 손잡이가 없어 이 분기에 오지 않는다)
         const s = Math.max(0, Math.min(drag.endDay, drag.startDay + dDays));
         item.s = dateAt(origin, s);
+      } else if (drag.hd0 != null) {
+        // 세로 크기 강제 — 날짜는 그대로, 세로 길이(일)만 늘리고 줄인다
+        item.hd = Math.max(1, Math.round(drag.hd0 + dDays));
       } else {
-        item.e = dateAt(origin, Math.max(drag.startDay, Math.min(total - 1, drag.endDay + dDays)));
-        if (item.ty === 'ms') item.e = item.s;
+        // 종료일도 아래로는 막지 않는다 — 끌어 내리면 축이 늘어난다.
+        item.e = dateAt(origin, Math.max(drag.startDay, drag.endDay + dDays));
       }
     });
   });

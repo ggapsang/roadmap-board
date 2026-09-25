@@ -13,16 +13,17 @@ const ALIGN_CSS = { top: 'flex-start', middle: 'center', bottom: 'flex-end' };
 
 /**
  * 좌우 가장자리 손잡이.
- *   최상위 카드 — 오른쪽만. 트랙 걸침을 칸 단위로 늘린다.
- *   자식 카드   — 좌우 모두. 상위 카드 안에서의 가로 위치·폭을 잡는다.
- *                 트랙 걸침이 의미가 없는 자리라 다른 수단이 필요하다.
+ *   막대·자식 — 좌우 모두. 좌우 가장자리를 끌어 가로 위치·폭(x/w)을 잡는다.
+ *               한 칸을 차지한 최상위 막대도 칸 안에서 폭을 줄일 수 있다.
+ *               (트랙 걸침 sp는 편집 패널에서 정한다.)
+ *   최상위 점 마일스톤 — 오른쪽만. 트랙 걸침을 칸 단위로 늘린다(표식이라 폭 개념이 없다).
  */
-function addHorizontalGrips(node, parent) {
-  if (parent) {
-    node.append(el('div.grip-hw', { attrs: { 'aria-hidden': 'true' }, title: '끌어서 왼쪽 가장자리 조절 · 더블클릭하면 자동' }));
-    node.append(el('div.grip-he', { attrs: { 'aria-hidden': 'true' }, title: '끌어서 폭 조절 · 더블클릭하면 자동' }));
-  } else {
+function addHorizontalGrips(node, { span = false } = {}) {
+  if (span) {
     node.append(el('div.grip-span', { attrs: { 'aria-hidden': 'true' }, title: '끌어서 트랙 걸침 조절' }));
+  } else {
+    node.append(el('div.grip-hw', { attrs: { 'aria-hidden': 'true' }, title: '끌어서 왼쪽 가장자리 조절 · 더블클릭하면 자동' }));
+    node.append(el('div.grip-he', { attrs: { 'aria-hidden': 'true' }, title: '끌어서 오른쪽 가장자리 조절 · 더블클릭하면 자동' }));
   }
 }
 
@@ -38,8 +39,12 @@ function addHorizontalGrips(node, parent) {
  *   hasChildren 자식을 품는 카드인가
  */
 export function renderCard(item, ctx) {
-  const { origin, scale, placement, selectedId, match, parent, hasChildren, spanBox } = ctx;
+  const { origin, ppd, scale, placement, selectedId, match, parent, hasChildren, spanBox } = ctx;
   const isMilestone = item.ty === 'ms';
+  // 점 마일스톤(s===e)만 얇은 표식으로 그린다. 기간 마일스톤은 막대로 떨어진다.
+  const msPoint = isMilestone && item.s === item.e;
+  // 크기 강제 모드 — 가로(x/w)·세로(hd)를 드래그로 자유 조절. hd가 그 표식이다.
+  const forced = item.hd != null;
 
   // 자식은 상위 카드 기준으로, 최상위는 보드 기준으로 세로 위치를 잡는다.
   // 접힌 구간이 있으면 눈금이 균일하지 않으므로 TimeScale을 거친다.
@@ -52,7 +57,7 @@ export function renderCard(item, ctx) {
     style: { top: top + 'px' },
   });
   node.classList.add('st-' + item.st);
-  if (isMilestone) node.classList.add('ms');
+  if (isMilestone) node.classList.add('ms', msPoint ? 'point' : 'ranged');
   if (hasChildren) node.classList.add('container');
   if (parent) node.classList.add('child');
   if (item.id === selectedId) node.classList.add('sel');
@@ -66,7 +71,9 @@ export function renderCard(item, ctx) {
    * 가로 위치·폭을 비율(x, w)로 직접 잡을 수 있다. 값이 없으면 겹침 계산이 정한다.
    * 최상위 카드는 트랙 걸침으로 폭을 정하므로 이 비율을 쓰지 않는다.
    */
-  const manual = !!parent && (item.x != null || item.w != null);
+  // 가로 위치·폭을 비율(x/w)로 잡는 경우: 자식은 늘, 최상위는 '크기 강제' 모드일 때만.
+  // 강제가 아닌 최상위는 자동(레인 폭 / sp 걸침)이라 비율을 쓰지 않는다.
+  const manual = (parent || forced) && (item.x != null || item.w != null);
   const left = manual ? (item.x ?? 0) * 100 : (lane * 100) / lanes;
   const width = manual ? (item.w ?? 1 / lanes) * 100 : 100 / lanes;
 
@@ -77,7 +84,8 @@ export function renderCard(item, ctx) {
    * 두 칸 폭과 같지도 않다. 그래서 걸치는 카드만 실제 컬럼 너비로 px를 잡는다.
    */
   const setBox = (node) => {
-    if (spanBox) {
+    // 강제 모드에서는 가로를 비율로 직접 잡으므로 spanBox(px)를 쓰지 않는다.
+    if (spanBox && !forced) {
       node.style.left = `${spanBox.left + 4}px`;
       node.style.width = `${Math.max(24, spanBox.width - 8)}px`;
     } else {
@@ -86,9 +94,9 @@ export function renderCard(item, ctx) {
     }
   };
 
-  if (isMilestone) {
+  if (msPoint) {
     // 상위 일정 안에 든 마일스톤은 형제와 레인을 나눠 갖는다.
-    // 최상위 마일스톤만 트랙 폭을 가로지른다.
+    // 최상위 점 마일스톤만 트랙 폭을 가로지른다.
     const laned = placement.has(item.id);
     if (spanBox) {
       node.style.left = `${spanBox.left + 8}px`;
@@ -105,25 +113,43 @@ export function renderCard(item, ctx) {
       el('span.meta', { text: shortMD(item.s) }),
     );
     node.title = `${item.ti} · ${item.s} · ${item.og}`;
-    addHorizontalGrips(node, parent);
+    // 최상위 점 마일스톤만 트랙 걸침 손잡이. 상위에 든 것은 폭 손잡이.
+    addHorizontalGrips(node, { span: !parent });
     return node;
   }
 
-  const height = Math.max(LAYOUT.minCardHeight, scale.span(item.s, item.e) - LAYOUT.cardGap);
+  // 세로 크기 강제(hd, 일)면 날짜와 무관하게 그 길이로. 아니면 기간대로.
+  const rawH = item.hd != null ? item.hd * ppd : scale.span(item.s, item.e);
+  const height = Math.max(LAYOUT.minCardHeight, rawH - LAYOUT.cardGap);
 
   node.style.height = height + 'px';
   setBox(node);
-  node.style.justifyContent = ALIGN_CSS[item.align] ?? 'center';
 
-  // 컨테이너는 제목을 위에 두고 아래를 자식에게 내준다
-  if (hasChildren) node.style.justifyContent = 'flex-start';
-  else if (height >= LAYOUT.bigCardHeight || item.st === 'hold') node.classList.add('big');
+  // 너무 낮아 제목이 세로로 짤리는 카드. 마일스톤처럼 한 줄 row로 눕힌다.
+  const isShort = !hasChildren && height < LAYOUT.compactCardHeight;
+
+  if (hasChildren) {
+    // 컨테이너 제목도 세로 정렬(align)을 따른다 — 위/가운데/아래.
+    // c-* 클래스로 제목 바 모양(위·아래 붙는 바 / 가운데 칩)을 가른다.
+    const al = item.align ?? 'middle';
+    node.style.justifyContent = ALIGN_CSS[al];
+    node.classList.add('c-' + al);
+  } else if (isShort) {
+    // 제목은 왼쪽에서 넘치면 가로 …로 생략(전체는 title 툴팁), 기한은 오른쪽에.
+    // 세로 정렬(justifyContent)은 row 배치라 건드리지 않는다.
+    node.classList.add('short');
+  } else {
+    node.style.justifyContent = ALIGN_CSS[item.align] ?? 'center';
+    if (height >= LAYOUT.bigCardHeight || item.st === 'hold') node.classList.add('big');
+  }
 
   const meta = el('div.meta', {}, [
     el('span.dt', { text: `${shortMD(item.s)} – ${shortMD(item.e)}` }),
     el('span.tag', { text: item.og }),
   ]);
-  if (height < LAYOUT.metaHideHeight || item.st === 'hold') meta.classList.add('hidden');
+  // 낮은 카드라도 기한(날짜)은 오른쪽에 남긴다(조직 태그는 CSS로 숨김).
+  // 보통 카드는 낮으면 메타를 통째로 숨기고, 보류는 항상 숨긴다.
+  if ((height < LAYOUT.metaHideHeight && !isShort) || item.st === 'hold') meta.classList.add('hidden');
 
   node.append(el('div.t', { text: item.ti }), meta);
 
@@ -134,11 +160,37 @@ export function renderCard(item, ctx) {
     node.append(el('div.pg', {}, [el('i', { style: { width: item.pg + '%' } })]));
   }
 
-  // 위·아래 가장자리 = 기간. 위를 끌면 시작일이, 아래를 끌면 종료일이 움직인다.
-  node.append(el('div.grip-top', { attrs: { 'aria-hidden': 'true' } }));
+  // 위·아래 가장자리. 보통은 위=시작일·아래=종료일. 세로 크기 강제면 아래=높이,
+  // 날짜는 손잡이로 바꾸지 않으므로 위 손잡이(시작일)는 숨긴다.
+  if (item.hd == null) node.append(el('div.grip-top', { attrs: { 'aria-hidden': 'true' } }));
   node.append(el('div.grip', { attrs: { 'aria-hidden': 'true' } }));
-  addHorizontalGrips(node, parent);
+  // 자식·강제 모드 → 좌우 폭 손잡이(x/w). 강제 아닌 최상위 → 트랙 걸침 손잡이.
+  const widthGrips = forced || !!parent;
+  addHorizontalGrips(node, { span: !widthGrips });
   node.title = `${item.ti}\n${item.s} – ${item.e} · ${item.og}${item.pg ? ' · ' + item.pg + '%' : ''}`;
   return node;
+}
+
+/**
+ * 제목이 카드를 넘치면 폰트(와 줄높이)를 줄여 잘리지 않게 한다.
+ * 렌더가 끝나 카드가 DOM에 붙은 뒤(크기 확정) 호출해야 한다.
+ * 세로(감싸는 제목)·가로(한 줄 제목) 넘침 둘 다 본다. 최소 8px까지 줄인다.
+ */
+export function fitTitle(node) {
+  const t = node.querySelector(':scope > .t');
+  if (!t) return;
+  // 제목 자신의 넘침(고정 칸 안 클립)과 카드 전체 넘침(한 줄 배치에서 세로) 둘 다 본다.
+  const overflow = () =>
+    t.scrollHeight > t.clientHeight + 1 || t.scrollWidth > t.clientWidth + 1
+    || node.scrollHeight > node.clientHeight + 1;
+  if (!overflow()) return;
+  let size = parseFloat(getComputedStyle(t).fontSize);
+  const MIN = 8;
+  let guard = 0;
+  while (guard++ < 24 && size > MIN && overflow()) {
+    size = Math.max(MIN, size - 1);
+    t.style.fontSize = `${size}px`;
+    t.style.lineHeight = size <= 11 ? '1.15' : '1.3';
+  }
 }
 

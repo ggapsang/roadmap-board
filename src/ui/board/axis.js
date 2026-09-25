@@ -75,14 +75,14 @@ export function renderAxis({ lines, gutM, gutW, grid, origin, endDate, totalDays
       className: band.bandId ? 'merged' : '',
       title: band.bandId
         ? '아래 가장자리를 끌면 높이를 줄입니다 · 더블클릭 이름 변경 · 우클릭 해제'
-        : '끌어서 여러 달을 하나로 묶습니다',
+        : '아래 가장자리를 끌면 이 달의 높이를 조절합니다 · 끌어서 여러 달을 묶기',
     }, [
       el('u', {}, [
         document.createTextNode(band.label),
         band.sub ? el('em', { text: band.sub }) : null,
       ]),
-      // 묶은 구간만 높이를 접을 수 있다
-      band.bandId ? el('div.band-resize', { title: '끌어서 높이 조절 · 더블클릭하면 원래대로' }) : null,
+      // 아래 가장자리 손잡이 — 묶은 구간이든 낱개 월이든 세로 높이를 조절한다
+      el('div.band-resize', { title: '끌어서 높이 조절 · 더블클릭하면 원래대로' }),
     ]);
     gutM.append(cell);
   }

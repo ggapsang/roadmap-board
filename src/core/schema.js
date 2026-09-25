@@ -14,7 +14,7 @@ import {
   DEFAULT_ORGS, DEFAULT_DISPLAY, DISPLAY_LIMITS,
 } from '../config/index.js';
 
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 /**
  * v0 = P0 시안 문서(version 필드 없음).
@@ -93,6 +93,13 @@ function v5_to_v6(doc) {
   return doc;
 }
 
+function v6_to_v7(doc) {
+  // 카드 세로 크기 강제(hd, 일 단위). 없으면 null = 기간대로 자동.
+  for (const it of doc.items ?? []) it.hd = it.hd ?? null;
+  doc.version = 7;
+  return doc;
+}
+
 const MIGRATIONS = {
   0: v0_to_v1,
   1: v1_to_v2,
@@ -100,6 +107,7 @@ const MIGRATIONS = {
   3: v3_to_v4,
   4: v4_to_v5,
   5: v5_to_v6,
+  6: v6_to_v7,
 };
 
 export const ALIGNS = ['top', 'middle', 'bottom'];
@@ -210,7 +218,7 @@ export function normalize(doc) {
     if (!ISO.test(n.s)) n.s = doc.meta.start;
     if (!ISO.test(n.e)) n.e = n.s;
     if (n.e < n.s) n.e = n.s;                 // 종료는 시작 이상 (D-3, inclusive)
-    if (n.ty === 'ms') n.e = n.s;             // 마일스톤은 단일 일자
+    // 마일스톤도 기간(전시회 등)을 가질 수 있다. e===s면 점, e>s면 기간 마일스톤.
 
     n.pg = clampInt(n.pg, 0, 100, 0);
     // 병합 폭은 트랙 경계를 넘지 못한다
@@ -224,6 +232,8 @@ export function normalize(doc) {
     n.showNote = n.showNote === true;
     n.x = ratio(n.x);
     n.w = n.w == null ? null : Math.min(1, Math.max(0.05, Number(n.w) || 0.05));
+    // 세로 크기 강제(일 단위). 없거나 잘못됐으면 null = 기간대로 자동.
+    n.hd = (typeof n.hd === 'number' && n.hd >= 1) ? Math.round(n.hd) : null;
     return n;
   });
 

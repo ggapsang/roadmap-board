@@ -25,8 +25,11 @@ import { LAYOUT } from '../config/index.js';
  * @returns {number} 최대 레인 수
  */
 function assignLanes(siblings, origin, placement, { includeMilestones = false } = {}) {
+  // 최상위에서 레인 계산에서 빼는 건 '점' 마일스톤(s===e)뿐이다. 기간을 가진
+  // 마일스톤(전시회 등)은 막대처럼 자리를 차지하므로 형제와 레인을 나눈다 —
+  // 안 그러면 트랙 폭을 가로질러 그 기간의 막대들을 덮는다.
   const bars = siblings
-    .filter((i) => includeMilestones || i.ty !== 'ms')
+    .filter((i) => includeMilestones || i.ty !== 'ms' || i.s !== i.e)
     .map((i) => ({ item: i, s: dayIndex(i.s, origin), e: dayIndex(i.e, origin) }))
     .sort((a, b) => a.s - b.s || a.e - b.e);
 

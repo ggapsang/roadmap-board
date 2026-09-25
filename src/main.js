@@ -11,6 +11,7 @@
  * 어느 쪽인지는 createAdapter()가 판단하고, 그 아래 코드는 구분하지 않는다.
  */
 import { STORAGE_KEY, DISPLAY_LIMITS } from './config/index.js';
+import { SEED } from './config/seed.js';
 import { prepare } from './core/schema.js';
 import { createAdapter } from './core/storage.js';
 import { Store } from './core/store.js';
@@ -97,8 +98,9 @@ async function boot() {
         refresh();
       },
       addItem: () => {
-        const origin = new Date(store.meta.start.replace(/-/g, '/'));
-        const day = Math.round((new Date().setHours(0, 0, 0, 0) - origin) / 86400000);
+        // createItem은 board.origin 기준 일 인덱스를 받는다. 축이 meta 밖으로
+        // 늘어났을 수 있으니 meta.start가 아니라 board.origin을 기준으로 잡는다.
+        const day = Math.round((new Date().setHours(0, 0, 0, 0) - board.origin) / 86400000);
         board.createItem(store.tracks[0].id, Math.max(0, day));
       },
     },
@@ -193,7 +195,11 @@ async function boot() {
       e.preventDefault(); setFont(1); return;
     }
     if (e.key === 'Escape') { panels.close(); return; }   // 고정 중이면 닫히지 않는다
-    if (e.key === 'Delete' && view.selectedItem && !typing) itemPanel.remove();
+    // 선택한 카드 삭제 — Delete와 Backspace(노트북·맥의 ⌫) 둘 다. 입력 칸에서는 안 먹는다.
+    if ((e.key === 'Delete' || e.key === 'Backspace') && view.selectedItem && !typing) {
+      e.preventDefault();
+      itemPanel.remove();
+    }
   });
 
   function setFont(scale) {
@@ -215,6 +221,21 @@ async function boot() {
   });
 
   // ── 첫 화면 ─────────────────────────────────────────────
+
+  // 예시(기본) 로드맵을 목록에 한 번 넣어 둔다 — 실제로 쓰는 일정이라 처음부터
+  // 사용자가 만든 프로젝트와 함께 보이게 한다. 이름이 이미 있으면 다시 만들지 않는다.
+  // (스모크 테스트 DB에는 넣지 않는다 — 결정적인 목록을 전제로 하기 때문)
+  if (adapter.createProject && adapter.listProjects) {
+    try {
+      const info = adapter.info ? await adapter.info().catch(() => null) : null;
+      const isSmoke = !!info?.file && /wolfpack-smoke/.test(info.file);
+      const existing = await adapter.listProjects();
+      if (!isSmoke && !existing.some((p) => p.name === SEED.meta.name)) {
+        const { doc: seedDoc } = prepare(structuredClone(SEED));
+        if (seedDoc) await adapter.createProject(seedDoc, SEED.meta.name);
+      }
+    } catch { /* 목록/생성 실패는 조용히 무시 — 앱 실행은 계속 */ }
+  }
 
   await launcher.show({ closable: false });
 

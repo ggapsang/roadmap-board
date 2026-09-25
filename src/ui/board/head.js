@@ -5,7 +5,7 @@ import { el, clear, button, ICONS } from '../dom.js';
  * @param {HTMLElement} head
  * @param {object} ctx {tracks, items, selectedTrack, template, onSelect, onAddTrack}
  */
-export function renderHead(head, { tracks, items, selectedTrack, template, onSelect, onAddTrack, onResize }) {
+export function renderHead(head, { tracks, items, selectedTrack, template, onSelect, onAddTrack, onResize, onReorder }) {
   head.style.gridTemplateColumns = template;
   clear(head);
   head.append(el('div.cnr'), el('div.cnr'));
@@ -19,6 +19,9 @@ export function renderHead(head, { tracks, items, selectedTrack, template, onSel
       tabIndex: 0,
       className: track.id === selectedTrack ? 'th active' : 'th',
       on: {
+        // 헤더를 옆으로 끌면 트랙 순서 변경. 살짝 누르면 클릭(트랙 패널).
+        // 너비 손잡이(.th-resize)는 자기 pointerdown에서 전파를 끊어 여기 안 온다.
+        pointerdown: (ev) => { if (ev.button === 0 && onReorder) onReorder.start(track.id, ev); },
         click: () => onSelect(track.id),
         keydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(track.id); } },
       },

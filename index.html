@@ -88,7 +88,7 @@
       <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
   </header>
   <div class="body2">
-    <div class="fld"><label for="i-title">제목</label><input id="i-title" type="text"></div>
+    <div class="fld"><label for="i-title">제목</label><textarea id="i-title" rows="1" title="줄바꿈은 Shift+Enter"></textarea></div>
     <div class="fld"><label>상태</label><div class="pick" id="i-status"></div></div>
     <div class="two">
       <div class="fld"><label for="i-track">트랙</label><select id="i-track"></select></div>
@@ -109,6 +109,9 @@
     <div class="fld"><label>글자 세로 정렬</label><div class="pick" id="i-align"></div></div>
     <div class="fld">
       <label class="chk"><input id="i-shownote" type="checkbox"> 비고를 카드에 표시</label>
+    </div>
+    <div class="fld">
+      <label class="chk"><input id="i-fixedh" type="checkbox"> 카드 크기 강제 설정 (가로·세로 드래그로 조절)</label>
     </div>
     <div class="fld"><label>선행 일정</label><div class="deps" id="i-deps"></div></div>
     <div class="fld"><label for="i-note">비고</label><textarea id="i-note"></textarea></div>
@@ -180,6 +183,7 @@
       <div class="fld"><label for="d-start">시작</label><input id="d-start" type="date"></div>
       <div class="fld"><label for="d-end">종료</label><input id="d-end" type="date"></div>
     </div>
+    <button class="btn outline wide" id="d-trim" type="button" title="맨 앞·뒤의 빈 구간을 잘라 일정에 맞춘다 (내보내기 여백 줄이기)">일정에 맞춰 여백 자르기</button>
 
     <div class="sect">파일</div>
     <div class="row">

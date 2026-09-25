@@ -21,11 +21,20 @@ async function withExpandedBoard(fn) {
   try {
     const cal = document.querySelector('.cal');
     const rect = cal.getBoundingClientRect();
+    // 맨 뒤 빈 구간을 담지 않도록 마지막 카드 아래까지만 자른다 — 내보내기 여백이
+    // 줄고, 매우 큰 보드에서 캡처가 (이미지 크기 한계로) 실패하는 것도 막는다.
+    let contentBottom = 0;
+    for (const c of cal.querySelectorAll('.ev')) {
+      const b = c.getBoundingClientRect().bottom - rect.top;
+      if (b > contentBottom) contentBottom = b;
+    }
+    const fullH = Math.ceil(cal.scrollHeight);
+    const height = contentBottom > 0 ? Math.min(fullH, Math.ceil(contentBottom + 24)) : fullH;
     return await fn({
       x: rect.left + window.scrollX,
       y: rect.top + window.scrollY,
       width: Math.ceil(cal.scrollWidth),
-      height: Math.ceil(cal.scrollHeight),
+      height,
     });
   } finally {
     body.classList.remove('exporting');

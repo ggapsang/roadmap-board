@@ -16,6 +16,7 @@ export class DataPanel {
     $('d-start').addEventListener('change', () => this.#setRange('start', $('d-start').value));
     $('d-end').addEventListener('change', () => this.#setRange('end', $('d-end').value));
 
+    $('d-trim').addEventListener('click', () => this.#trim());
     $('d-copy').addEventListener('click', () => this.#copy());
     $('d-load').addEventListener('click', () => this.#applyJson());
     $('d-reset').addEventListener('click', () => this.#reset());
@@ -43,6 +44,30 @@ export class DataPanel {
     if (which === 'end' && value <= meta.start) { toast('종료일은 시작일보다 뒤여야 합니다', 'warn'); this.syncRange(); return; }
     this.store.commit('표시 기간', (doc) => { doc.meta[which] = value; });
     this.onReplaced?.();
+  }
+
+  /**
+   * 표시 기간을 실제 일정 범위에 맞춘다 — 맨 앞·뒤의 빈 구간을 없앤다.
+   * 내보내기(PNG) 때 빈 칸이 과도한 문제를 없앤다. ISO 문자열 비교 = 날짜순.
+   */
+  #trim() {
+    const items = this.store.items;
+    if (!items.length) { toast('일정이 없어 자를 수 없습니다', 'warn'); return; }
+    let min = null, max = null;
+    for (const it of items) {
+      if (it.s && (min === null || it.s < min)) min = it.s;
+      const e = it.e || it.s;
+      if (e && (max === null || e > max)) max = e;
+    }
+    if (!min || !max) return;
+    if (min === this.store.meta.start && max === this.store.meta.end) {
+      toast('이미 일정에 맞춰져 있습니다');
+      return;
+    }
+    this.store.commit('여백 자르기', (doc) => { doc.meta.start = min; doc.meta.end = max; });
+    this.syncRange();
+    this.onReplaced?.();
+    toast('일정 범위에 맞춰 여백을 잘랐습니다');
   }
 
   async #copy() {

@@ -24,6 +24,8 @@ body.panel-open{--panel-w:var(--panel-size)}
   width:100%;height:var(--u8);padding:0 var(--u2-5);background:var(--bg-input);
   border:1px solid var(--border-default);border-radius:var(--u1-5);font-size:13px}
 .fld textarea{height:auto;min-height:var(--u10);padding:var(--u2) var(--u2-5);resize:vertical;line-height:20px}
+/* 제목 textarea — 한 줄 높이에서 시작해 내용만큼 자란다 (Shift+Enter로 줄바꿈) */
+.fld textarea#i-title{min-height:var(--u8);overflow:hidden}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:var(--u2)}
 .fld label.chk{display:flex;align-items:center;gap:var(--u2);font-size:13px;
   color:var(--text-primary);font-weight:400;cursor:pointer;margin:0}

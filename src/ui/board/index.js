@@ -20,7 +20,7 @@ import { el, clear } from '../dom.js';
 import { renderHead } from './head.js';
 import { renderAxis, makeTodayLine } from './axis.js';
 import { attachBandEditing } from './bands.js';
-import { renderCard } from './card.js';
+import { renderCard, fitTitle } from './card.js';
 import { createArrowLayer, drawArrows } from './arrows.js';
 import { attachDrag } from './drag.js';
 
@@ -106,9 +106,99 @@ export class Board {
     },
   };
 
-  get origin() { return parseDate(this.store.meta.start); }
-  get endDate() { return parseDate(this.store.meta.end); }
-  get totalDays() { return dayIndex(this.store.meta.end, this.origin); }
+  /**
+   * 트랙 열 순서 드래그 (엑셀식). 헤더를 잡아 옆으로 끌면 트랙 순서가 바뀐다.
+   * #trackResizer와 같은 이유로 window에 리스너를 붙인다 — 드롭 시 재렌더가
+   * 헤더를 통째로 새로 그리기 때문이다. 순서는 드롭할 때 한 번만 커밋한다.
+   * 살짝 눌렀다 떼면(임계값 미만) 드래그가 아니라 클릭 — 트랙 구성 패널을 연다.
+   */
+  #trackReorder = {
+    start: (trackId, ev) => {
+      if (this.store.readonly) return;
+
+      const headers = [...this.head.querySelectorAll('.th')];
+      const cell = headers.find((h) => h.dataset.t === trackId);
+      const fromIndex = this.store.tracks.findIndex((t) => t.id === trackId);
+      if (fromIndex < 0 || !cell) return;
+
+      const startX = ev.clientX;
+      const indicator = el('div.th-drop', { attrs: { 'aria-hidden': 'true' } });
+      let dragging = false;
+      let targetIndex = fromIndex;
+
+      const place = () => {
+        const rects = headers.map((h) => h.getBoundingClientRect());
+        const headLeft = this.head.getBoundingClientRect().left;
+        const x = targetIndex >= rects.length ? rects[rects.length - 1].right : rects[targetIndex].left;
+        indicator.style.left = `${x - headLeft}px`;
+      };
+
+      const move = (e) => {
+        if (!dragging && Math.abs(e.clientX - startX) < 5) return;
+        if (!dragging) {
+          dragging = true;
+          cell.classList.add('dragging');
+          this.head.append(indicator);
+          document.body.classList.add('reordering-col');
+        }
+        e.preventDefault();
+        const rects = headers.map((h) => h.getBoundingClientRect());
+        let idx = rects.findIndex((r) => e.clientX < r.left + r.width / 2);
+        if (idx < 0) idx = rects.length;
+        targetIndex = idx;
+        place();
+      };
+
+      const up = () => {
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        window.removeEventListener('pointercancel', up);
+        indicator.remove();
+        cell.classList.remove('dragging');
+        document.body.classList.remove('reordering-col');
+        if (!dragging) return;                       // 클릭이었다 — onSelect가 처리
+
+        // 끌어낸 자리를 빼고 나면 뒤쪽 인덱스가 하나 당겨진다
+        let to = targetIndex > fromIndex ? targetIndex - 1 : targetIndex;
+        to = Math.max(0, Math.min(this.store.tracks.length - 1, to));
+        if (to !== fromIndex) {
+          this.store.commit('트랙 순서', (doc) => {
+            const [moved] = doc.tracks.splice(fromIndex, 1);
+            doc.tracks.splice(to, 0, moved);
+          });
+        }
+        // 드래그 끝의 click이 트랙 패널을 열지 않도록 한 번 삼킨다
+        this._suppressHeadClick = true;
+        setTimeout(() => { this._suppressHeadClick = false; }, 0);
+      };
+
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+      window.addEventListener('pointercancel', up);
+    },
+  };
+
+  /**
+   * 축 범위 = 선언한 기간(meta) ∪ 모든 일정. 일정을 meta 밖(예: 8월)으로 옮기면
+   * 축 위로 튀어나가 사라지는 게 아니라 축이 그만큼 늘어난다. meta는 "선언한 범위"
+   * 그대로 두고(헤더 표기·데이터 패널·반출용) 실제 축만 일정까지 덮으므로,
+   * 일정을 다시 안으로 넣으면 축도 스스로 원래대로 줄어든다.
+   * ISO 문자열은 사전식 비교가 곧 날짜순이라 그대로 min/max 한다.
+   */
+  get origin() {
+    let min = this.store.meta.start;
+    for (const it of this.store.items) if (it.s && it.s < min) min = it.s;
+    return parseDate(min);
+  }
+  get endDate() {
+    let max = this.store.meta.end;
+    for (const it of this.store.items) {
+      const e = it.e || it.s;
+      if (e && e > max) max = e;
+    }
+    return parseDate(max);
+  }
+  get totalDays() { return dayIndex(this.endDate, this.origin); }
 
   /** 일 인덱스 ↔ 픽셀. 묶어서 접은 구간이 있으면 그만큼 눌린다. */
   #buildScale() {
@@ -138,8 +228,18 @@ export class Board {
     this.#buildScale();
     this.#computeLayout();
     this.#renderHead();
-    if (!this.#columnsMatchTracks()) this.#renderSkeleton();
+    // 축(골격)은 트랙이 바뀔 때만 다시 그린다. 단, 일정을 옮겨 축 범위가 늘거나
+    // 줄면 눈금·월밴드도 다시 그려야 한다 — 안 그러면 카드는 새 범위로 놓이는데
+    // 축은 옛 범위라 서로 어긋난다.
+    if (!this.#columnsMatchTracks() || this.#rangeChanged()) this.#renderSkeleton();
     this.renderCards();
+  }
+
+  /** 마지막으로 축을 그린 범위와 지금 범위가 다른가 */
+  #rangeChanged() {
+    return !this._axis
+      || this._axis.origin !== this.origin.getTime()
+      || this._axis.days !== this.totalDays;
   }
 
   #columnsMatchTracks() {
@@ -163,9 +263,10 @@ export class Board {
       items: this.store.items,
       selectedTrack: this.view.selectedTrack,
       template,
-      onSelect: (id) => this.handlers.openTrack(id),
+      onSelect: (id) => { if (!this._suppressHeadClick) this.handlers.openTrack(id); },
       onAddTrack: () => this.handlers.addTrack(),
       onResize: this.#trackResizer,
+      onReorder: this.#trackReorder,
     });
   }
 
@@ -192,6 +293,9 @@ export class Board {
 
     const now = makeTodayLine(this.origin, this.totalDays, this.scale);
     if (now) this.grid.append(now);
+
+    // 다음 render()에서 범위 변화를 감지하려고 방금 그린 축 범위를 기록한다
+    this._axis = { origin: this.origin.getTime(), days: this.totalDays };
   }
 
   /**
@@ -237,6 +341,9 @@ export class Board {
       host.append(node);
       cardEls.set(item.id, node);
     }
+
+    // 카드가 붙어 크기가 확정된 뒤 제목이 넘치면 폰트를 줄여 잘리지 않게 한다
+    for (const node of cardEls.values()) fitTitle(node);
 
     // 카드가 붙은 뒤에야 offsetLeft/offsetTop이 확정된다
     drawArrows(this.arrowLayer, this.grid, this.store.items, this.store.meta.display);
@@ -302,15 +409,7 @@ export class Board {
       }
     });
 
-    this.grid.addEventListener('dblclick', (ev) => {
-      if (this.view.textSelect) return;
-      if (ev.target.closest('.ev')) return;
-      const col = ev.target.closest('.col');
-      if (!col) return;
-      const rect = col.getBoundingClientRect();
-      const day = Math.max(0, Math.round(this.scale.dayAt(ev.clientY - rect.top)));
-      this.createItem(col.dataset.t, day);
-    });
+    this.#attachCreate();
 
     this.grid.addEventListener('keydown', (ev) => {
       const card = ev.target.closest('.ev');
@@ -321,12 +420,84 @@ export class Board {
     });
   }
 
-  /** 지정 트랙/일자에 기본 길이 일정을 만들고 편집 패널을 연다. */
-  createItem(trackId, startDay) {
+  /**
+   * 빈 곳을 클릭·드래그해 일정을 만든다 (구글 캘린더식).
+   *   클릭   기본 한 칸(1주) 카드
+   *   끌기   끈 길이만큼 카드
+   * 끄는 동안 그 트랙에 미리보기 고스트를 띄운다. 카드 위 포인터다운은
+   * 이동(drag.js)이 가져가므로 여기서는 무시한다.
+   */
+  #attachCreate() {
+    let make = null;
+
+    const dayAt = (col, clientY) =>
+      Math.max(0, Math.round(this.scale.dayAt(clientY - col.getBoundingClientRect().top)));
+
+    // 클릭(안 끈 상태)이면 기본 1주, 끌었으면 끈 범위를 미리보기로 보여 준다
+    const layout = () => {
+      const a = Math.min(make.startDay, make.curDay);
+      const b = make.moved ? Math.max(make.startDay, make.curDay) : a + LAYOUT.newItemDays - 1;
+      const top = this.scale.y(a);
+      const height = this.scale.y(b) + this.scale.dayHeight(b) - top;
+      make.preview.style.top = top + 'px';
+      make.preview.style.height = Math.max(this.scale.dayHeight(a), height) + 'px';
+    };
+
+    this.grid.addEventListener('pointerdown', (ev) => {
+      if (this.store.readonly || ev.button !== 0) return;
+      if (this.view.textSelect) return;
+      if (ev.target.closest('.ev')) return;      // 카드 이동은 drag.js 몫
+      const col = ev.target.closest('.col');
+      if (!col) return;
+      const startDay = dayAt(col, ev.clientY);
+      const preview = el('div.create-preview', { attrs: { 'aria-hidden': 'true' } });
+      col.append(preview);
+      make = { col, trackId: col.dataset.t, startDay, curDay: startDay, moved: false, preview, pointerId: ev.pointerId };
+      layout();
+      this.grid.setPointerCapture(ev.pointerId);
+      ev.preventDefault();
+    });
+
+    this.grid.addEventListener('pointermove', (ev) => {
+      if (!make) return;
+      const day = dayAt(make.col, ev.clientY);
+      if (Math.abs(day - make.startDay) >= 1) make.moved = true;
+      make.curDay = day;
+      layout();
+    });
+
+    const close = () => {
+      const m = make;
+      make = null;
+      m.preview.remove();
+      if (this.grid.hasPointerCapture(m.pointerId)) this.grid.releasePointerCapture(m.pointerId);
+      return m;
+    };
+
+    this.grid.addEventListener('pointerup', () => {
+      if (!make) return;
+      const m = close();
+      if (m.moved) {
+        this.createItem(m.trackId, Math.min(m.startDay, m.curDay), Math.max(m.startDay, m.curDay));
+      } else {
+        this.createItem(m.trackId, m.startDay);   // 클릭 → 기본 1주
+      }
+    });
+    // 취소는 만들지 않고 정리만 한다 (제스처가 끊긴 것)
+    this.grid.addEventListener('pointercancel', () => { if (make) close(); });
+  }
+
+  /**
+   * 지정 트랙/일자에 일정을 만들고 편집 패널을 연다.
+   * endDay를 주면 그 날까지(끌어서 만든 길이), 없으면 기본 한 칸(1주).
+   */
+  createItem(trackId, startDay, endDay = null) {
     const origin = this.origin;
     const total = this.totalDays;
     const start = Math.max(0, Math.min(total - 1, startDay));
-    const end = Math.min(total - 1, start + LAYOUT.newItemDays - 1);
+    const end = endDay == null
+      ? Math.min(total - 1, start + LAYOUT.newItemDays - 1)
+      : Math.min(total - 1, Math.max(start, endDay));
 
     const item = {
       id: newId('e'), t: trackId, sp: 1,

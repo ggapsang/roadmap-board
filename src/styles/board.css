@@ -82,7 +82,7 @@
 
 /* 텍스트 계층: 제목 text-sm/SemiBold, 메타 text-xs/Regular (가이드 §12 / §18) */
 .ev .t{font-size:calc(13px * var(--fs,1));line-height:calc(18px * var(--fs,1));
-  font-weight:600;letter-spacing:-.01em;word-break:keep-all;
+  font-weight:600;letter-spacing:-.01em;word-break:keep-all;white-space:pre-line;
   color:var(--text-primary);overflow:hidden}
 .ev .meta{margin-top:var(--u1);display:flex;align-items:center;gap:var(--u1-5);
   font-size:calc(11px * var(--fs,1));line-height:16px;font-weight:400;
@@ -116,6 +116,13 @@
 .ev.dim{opacity:.28}
 .ev.hit{box-shadow:0 0 0 2px var(--warning-500)}
 
+/* 빈 곳을 끌어 새 일정을 만들 때의 미리보기 고스트 (구글 캘린더식).
+   생성은 CTA 성격이라 Accent를 쓴다. */
+.create-preview{position:absolute;left:var(--u1);right:var(--u1);
+  border:1.5px dashed var(--accent);border-radius:var(--r-card);
+  background:color-mix(in srgb, var(--accent) 12%, transparent);
+  pointer-events:none;z-index:15}
+
 /* 비고를 카드에 함께 보여 줄 때 */
 .ev .card-note{margin-top:var(--u1);font-size:calc(11px * var(--fs,1));line-height:16px;
   color:var(--text-secondary);white-space:pre-wrap;word-break:keep-all;overflow:hidden}
@@ -131,10 +138,19 @@
 .ev.container{overflow:visible;padding-bottom:var(--u2);
   background:var(--surface-group);z-index:auto}
 /* 자식은 날짜 위치대로 들어오므로 상위 제목과 겹칠 수 있다.
-   제목을 위에 붙여 두고 자식보다 위 레이어에 둬서 항상 읽히게 한다. */
-.ev.container>.t{flex:none;width:100%;text-align:center;position:sticky;top:0;z-index:8;
-  padding:var(--u1) var(--u2);margin:calc(var(--u1) * -1) calc(var(--u2) * -1) 0;
-  background:var(--surface-group);border-radius:var(--r-card) var(--r-card) 0 0}
+   배경 + 위 레이어(z:8)로 항상 읽히게 하고, 세로 정렬(c-*)에 따라 모양을 바꾼다. */
+.ev.container>.t{flex:none;text-align:center;z-index:8;
+  padding:var(--u1) var(--u2);background:var(--surface-group)}
+/* 위(기본) — 위에 붙는 제목 바, 스크롤해도 보이게 sticky */
+.ev.container.c-top>.t{width:100%;position:sticky;top:0;
+  margin:calc(var(--u1) * -1) calc(var(--u2) * -1) 0;
+  border-radius:var(--r-card) var(--r-card) 0 0}
+/* 아래 — 아래에 붙는 제목 바 */
+.ev.container.c-bottom>.t{width:100%;position:sticky;bottom:0;
+  margin:0 calc(var(--u2) * -1) calc(var(--u1) * -1);
+  border-radius:0 0 var(--r-card) var(--r-card)}
+/* 가운데 — 가운데 떠 있는 제목. 배경만으로 자식 위에서 읽히게 하고 테두리는 두지 않는다. */
+.ev.container.c-middle>.t{align-self:center;max-width:100%;border-radius:var(--r-card)}
 .ev.container>.meta{display:none}
 .ev.container>.card-note{flex:none}
 /* 그룹 안의 카드는 한 단계 떠 보이게. 그룹 면과 같은 색이면 구분이 사라진다. */
@@ -164,17 +180,33 @@
 .ev.big .meta{justify-content:center}
 .ev.big .t{font-size:calc(14px * var(--fs,1));line-height:calc(20px * var(--fs,1))}
 
-.ev.ms{height:var(--u6);flex-direction:row;align-items:center;gap:var(--u2);padding:0 var(--u2-5);
+/* 낮은 카드 — 제목을 한 줄에 눕혀 세로 짤림을 막는다 (마일스톤과 같은 방식).
+   제목은 왼쪽(넘치면 …로 가로 생략), 기한은 오른쪽. 폰트를 한 단계 줄이고
+   여백을 좁혀 minCardHeight 안에 한 줄이 들어가게 한다. 전체 제목은 title 툴팁에. */
+.ev.short{flex-direction:row;align-items:center;gap:var(--u2);
+  padding-top:var(--u1);padding-bottom:var(--u1)}
+.ev.short>.t{flex:1;min-width:0;font-size:calc(11px * var(--fs,1));
+  line-height:calc(15px * var(--fs,1));position:static;top:auto}
+.ev.short>.meta{margin:0;padding:0;flex:none;flex-wrap:nowrap}
+.ev.short>.meta .tag{display:none}
+
+/* 점(단일 날짜) 마일스톤 — 트랙을 가로지르는 얇은 표식 */
+.ev.ms.point{height:var(--u6);flex-direction:row;align-items:center;gap:var(--u2);padding:0 var(--u2-5);
   background:var(--bg-elevated);border-color:var(--border-subtle);z-index:18}
-.ev.ms::before{display:none}
-.ev.ms .dia{width:7px;height:7px;background:var(--state-plan);transform:rotate(45deg);flex:none}
-.ev.ms.st-run .dia{background:var(--state-run)}
-.ev.ms.st-done .dia{background:var(--state-done)}
-.ev.ms.st-late .dia{background:var(--state-late)}
-.ev.ms.st-plan .dia{background:var(--state-plan)}
-.ev.ms .t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
-.ev.ms .meta{margin:0 0 0 auto;padding:0}
-.ev.ms .meta .tag::before{content:none}
+.ev.ms.point::before{display:none}
+.ev.ms.point .dia{width:7px;height:7px;background:var(--state-plan);transform:rotate(45deg);flex:none}
+.ev.ms.point.st-run .dia{background:var(--state-run)}
+.ev.ms.point.st-done .dia{background:var(--state-done)}
+.ev.ms.point.st-late .dia{background:var(--state-late)}
+.ev.ms.point.st-plan .dia{background:var(--state-plan)}
+.ev.ms.point .t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+.ev.ms.point .meta{margin:0 0 0 auto;padding:0}
+.ev.ms.point .meta .tag::before{content:none}
+
+/* 기간을 가진 마일스톤(전시회 등) — 막대처럼 그리되(레인·높이·손잡이 동일)
+   제목 앞에 작은 ◆를 붙여 마일스톤임을 표시한다. 상태는 좌측 4px가 나타낸다. */
+.ev.ms.ranged>.t::before{content:"";display:inline-block;width:7px;height:7px;
+  margin-right:var(--u1-5);background:var(--text-tertiary);transform:rotate(45deg);vertical-align:middle}
 
 /* 트랙 열 너비 조절 손잡이 — 헤더 오른쪽 가장자리 */
 .th-resize{position:absolute;top:0;bottom:0;right:-4px;width:var(--u2);cursor:ew-resize;z-index:3;
@@ -188,24 +220,40 @@
 body.resizing-col{cursor:ew-resize!important;user-select:none}
 body.resizing-col .th-resize{opacity:1}
 
+/* 세로축 날짜 칸 우클릭 메뉴 — 빈 구간 삭제 등 (떠 있는 계층이라 그림자 허용) */
+.ctx-menu{position:fixed;z-index:100;min-width:180px;display:flex;flex-direction:column;gap:2px;
+  background:var(--surface-card);border:1px solid var(--border-subtle);
+  border-radius:var(--r-panel);box-shadow:var(--shadow-pop);padding:var(--u1)}
+.ctx-menu button{display:block;width:100%;text-align:left;padding:var(--u2) var(--u2-5);
+  background:none;border:none;border-radius:var(--u1);cursor:pointer;
+  font-size:13px;color:var(--text-primary);white-space:nowrap}
+.ctx-menu button:hover{background:var(--surface-card-hover)}
+
+/* 트랙 열 순서 드래그 (엑셀식) — 끄는 헤더는 흐리게, 드롭 위치는 Accent 선으로 */
+body.reordering-col{cursor:grabbing!important;user-select:none}
+.th.dragging{opacity:.4}
+.th-drop{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;
+  background:var(--accent);z-index:40;pointer-events:none}
+
 /* 묶은 구간 높이 조절 — 아래 가장자리를 끌어 접는다 */
 .gut-m b.merged{position:absolute}
 .band-resize{position:absolute;left:0;right:0;bottom:-3px;height:var(--u1-5);cursor:ns-resize;
   display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .12s ease}
-.gut-m b.merged:hover .band-resize,.band-resize.dragging{opacity:1}
+.gut-m b:hover .band-resize,.band-resize.dragging{opacity:1}
 .band-resize::after{content:"";height:2px;width:60%;border-radius:2px;background:var(--accent)}
 @media (prefers-reduced-motion:reduce){.band-resize{transition:none}}
 
-/* 자식 카드의 가로 위치·폭 손잡이 — 상위 카드 안에서만 쓴다.
-   최상위 카드는 트랙 걸침(.grip-span)으로 폭을 정한다. */
-.ev.child>.grip-hw,.ev.child>.grip-he{position:absolute;top:var(--u2);bottom:var(--u2);
+/* 가로 위치·폭 손잡이 — 좌우 가장자리를 끌어 폭을 조절한다.
+   자식 카드는 상위 카드 안에서, 최상위 막대는 트랙 칸 안에서 비율(x/w)로.
+   (트랙 걸침 sp는 편집 패널의 '트랙 걸침' 칸에서 정한다.) */
+.ev>.grip-hw,.ev>.grip-he{position:absolute;top:var(--u2);bottom:var(--u2);
   width:var(--u2);cursor:ew-resize;display:flex;align-items:center;justify-content:center;
   opacity:0;transition:opacity .12s ease;z-index:3}
-.ev.child>.grip-hw{left:0}
-.ev.child>.grip-he{right:0}
-.ev.child:hover>.grip-hw,.ev.child:hover>.grip-he{opacity:.55}
-.ev.child>.grip-hw:hover,.ev.child>.grip-he:hover{opacity:1}
-.ev.child>.grip-hw::after,.ev.child>.grip-he::after{content:"";width:3px;height:20px;
+.ev>.grip-hw{left:0}
+.ev>.grip-he{right:0}
+.ev:hover>.grip-hw,.ev:hover>.grip-he{opacity:.55}
+.ev>.grip-hw:hover,.ev>.grip-he:hover{opacity:1}
+.ev>.grip-hw::after,.ev>.grip-he::after{content:"";width:3px;height:20px;
   border-radius:2px;background:var(--accent)}
-.select-text .ev.child>.grip-hw,.select-text .ev.child>.grip-he{display:none}
-@media (prefers-reduced-motion:reduce){.ev.child>.grip-hw,.ev.child>.grip-he{transition:none}}
+.select-text .ev>.grip-hw,.select-text .ev>.grip-he{display:none}
+@media (prefers-reduced-motion:reduce){.ev>.grip-hw,.ev>.grip-he{transition:none}}
