@@ -5,3 +5,7 @@ dist/
 *.db-shm
 .DS_Store
 Thumbs.db
+
+# 스모크 캡처 · 내보낸 이미지
+/shots/
+/*.png
