@@ -115,11 +115,11 @@ export class ItemPanel {
 
     $(F.title).value = item.ti;
     autogrow($(F.title));
-    track.value = item.t;
+    track.value = item.place.t;
     $(F.type).value = item.ty;
     $(F.start).value = item.s;
     $(F.end).value = item.e;
-    $(F.span).value = item.sp;
+    $(F.span).value = item.place.sp;
     $(F.span).max = String(Math.max(1, this.store.tracks.length));
     $(F.prog).value = item.pg;
     $(F.org).value = item.og;
@@ -168,7 +168,7 @@ export class ItemPanel {
     for (const other of this.store.items) {
       if (other.id === item.id || descendants.has(other.id)) continue;
       if (other.ty === 'ms') continue;                 // 마일스톤은 품을 수 없다
-      if (other.t !== item.t && !item.parent) continue; // 다른 트랙은 후보에서 뺀다
+      if (other.place.t !== item.place.t && !item.parent) continue; // 다른 트랙은 후보에서 뺀다
       const track = this.store.track(other.t)?.name ?? '';
       select.append(el('option', { value: other.id, text: `${other.ti} · ${track}` }));
     }
@@ -202,7 +202,7 @@ export class ItemPanel {
     const origin = parseDate(this.store.meta.start);
     const others = this.store.items
       .filter((x) => x.id !== item.id)
-      .sort((a, b) => order(a.t) - order(b.t) || dayIndex(a.s, origin) - dayIndex(b.s, origin));
+      .sort((a, b) => order(a.place.t) - order(b.place.t) || dayIndex(a.s, origin) - dayIndex(b.s, origin));
 
     if (!others.length) {
       box.append(el('div.empty', { text: '선택할 다른 일정이 없습니다.' }));
@@ -241,16 +241,16 @@ export class ItemPanel {
 
     this.store.commit('일정 편집', () => {
       item.ti = $(F.title).value;
-      item.t = $(F.track).value;
+      item.place.t = $(F.track).value;
       item.ty = $(F.type).value;
       item.s = $(F.start).value || item.s;
       item.e = $(F.end).value || item.s;
       if (item.e < item.s) item.e = item.s;
       // 마일스톤도 기간을 가질 수 있다 — 종료일을 강제로 시작일에 맞추지 않는다.
 
-      const ti = this.store.trackIndex(item.t);
+      const ti = this.store.trackIndex(item.place.t);
       const maxSpan = Math.max(1, this.store.tracks.length - ti);
-      item.sp = Math.min(maxSpan, Math.max(1, Math.round(Number($(F.span).value) || 1)));
+      item.place.sp = Math.min(maxSpan, Math.max(1, Math.round(Number($(F.span).value) || 1)));
 
       item.pg = Math.min(100, Math.max(0, Math.round(Number($(F.prog).value) || 0)));
       item.og = $(F.org).value;
@@ -262,7 +262,7 @@ export class ItemPanel {
         // 담기면 트랙과 가로 배치를 상위에 맞춘다
         if (parent) {
           const host = this.store.item(parent);
-          if (host) { item.t = host.t; item.sp = 1; }
+          if (host) { item.place.t = host.place.t; item.place.sp = 1; }
         }
         item.place.x = null;
         item.place.w = null;
@@ -271,7 +271,7 @@ export class ItemPanel {
 
     // 정규화 결과를 폼에 되돌려 보여 준다
     $(F.end).value = item.e;
-    $(F.span).value = item.sp;
+    $(F.span).value = item.place.sp;
     $(F.prog).value = item.pg;
   }
 

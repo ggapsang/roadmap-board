@@ -138,12 +138,15 @@ export class BoardRepository {
       bands,
       tracks,
       items: rows.map((r) => ({
-        id: r.id, t: r.track_id, sp: r.span,
+        id: r.id,
         s: r.start_date, e: r.end_date,
         ti: r.title, ty: r.type, st: r.status,
         og: r.org, pg: r.progress, note: r.note,
         parent: r.parent_id ?? null,
-        place: { align: r.align, showNote: r.show_note === 1, hd: r.height_days ?? null, x: r.pos_x, w: r.pos_w },
+        place: {
+          t: r.track_id, sp: r.span,
+          align: r.align, showNote: r.show_note === 1, hd: r.height_days ?? null, x: r.pos_x, w: r.pos_w,
+        },
         dp: depMap.get(r.id) ?? [],
       })),
     };
@@ -205,13 +208,15 @@ export class BoardRepository {
       );
 
       doc.items.forEach((it, i) => {
+        // place(정규화된 배치) 또는 flat(정규화 전) 둘 다 받는다.
+        const p = it.place ?? it;
         insItem.run({
-          board: this.boardId, id: it.id, track: it.t, ord: i, span: it.sp ?? 1,
+          board: this.boardId, id: it.id, track: p.t, ord: i, span: p.sp ?? 1,
           s: it.s, e: it.e, title: it.ti ?? '', type: it.ty ?? 'bar',
           status: it.st ?? 'plan', org: it.og ?? '', pg: it.pg ?? 0, note: it.note ?? '',
-          parent: it.parent ?? null, x: it.place?.x ?? null, w: it.place?.w ?? null,
-          hd: it.place?.hd ?? null,
-          align: it.place?.align ?? 'middle', showNote: it.place?.showNote ? 1 : 0,
+          parent: it.parent ?? null, x: p.x ?? null, w: p.w ?? null,
+          hd: p.hd ?? null,
+          align: p.align ?? 'middle', showNote: p.showNote ? 1 : 0,
         });
       });
       // 선행 참조는 모든 item이 들어간 뒤에 (FK 충족)

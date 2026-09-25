@@ -87,7 +87,7 @@ export function computeLayout(tracks, items, origin, isVisible = () => true) {
   // 트랙마다 최상위 일정들로 레인을 나눈다
   const roots = childrenOf.get(null) ?? [];
   for (const track of tracks) {
-    const own = roots.filter((i) => i.t === track.id && isVisible(i));
+    const own = roots.filter((i) => i.place.t === track.id && isVisible(i));
     trackLanes.set(track.id, assignLanes(own, origin, placement));
   }
 

@@ -99,8 +99,8 @@ export class ConfigPanel {
       doc.tracks.splice(to, 0, t);
       // 순서가 바뀌면 병합 폭이 보드 밖으로 나갈 수 있다
       doc.items.forEach((it) => {
-        const ti = doc.tracks.findIndex((x) => x.id === it.t);
-        it.sp = Math.min(it.sp, doc.tracks.length - ti);
+        const ti = doc.tracks.findIndex((x) => x.id === it.place.t);
+        it.place.sp = Math.min(it.place.sp, doc.tracks.length - ti);
       });
     });
     this.render();
@@ -110,20 +110,20 @@ export class ConfigPanel {
     const track = this.store.tracks[index];
     if (this.store.tracks.length === 1) { toast('마지막 트랙은 삭제할 수 없습니다', 'warn'); return; }
 
-    const count = this.store.items.filter((x) => x.t === track.id).length;
+    const count = this.store.items.filter((x) => x.place.t === track.id).length;
     const msg = count
       ? `'${track.name}' 트랙과 일정 ${count}건을 삭제합니다. 계속할까요?`
       : `'${track.name}' 트랙을 삭제합니다. 계속할까요?`;
     if (!confirm(msg)) return;
 
     this.store.commit('트랙 삭제', (doc) => {
-      const removed = new Set(doc.items.filter((x) => x.t === track.id).map((x) => x.id));
-      doc.items = doc.items.filter((x) => x.t !== track.id);
+      const removed = new Set(doc.items.filter((x) => x.place.t === track.id).map((x) => x.id));
+      doc.items = doc.items.filter((x) => x.place.t !== track.id);
       for (const x of doc.items) x.dp = x.dp.filter((d) => !removed.has(d));
       doc.tracks.splice(index, 1);
       doc.items.forEach((it) => {
-        const ti = doc.tracks.findIndex((x) => x.id === it.t);
-        it.sp = Math.min(it.sp, doc.tracks.length - ti);
+        const ti = doc.tracks.findIndex((x) => x.id === it.place.t);
+        it.place.sp = Math.min(it.place.sp, doc.tracks.length - ti);
       });
     });
     this.view.selectedTrack = null;

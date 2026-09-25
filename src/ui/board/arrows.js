@@ -45,7 +45,7 @@ export function drawArrows(layer, grid, items, display) {
     box.set(card.dataset.id, { x, y, w: card.offsetWidth, h: card.offsetHeight });
   }
 
-  const trackOf = new Map(items.map((i) => [i.id, i.t]));
+  const trackOf = new Map(items.map((i) => [i.id, i.place.t]));
   // 상위 일정(컨테이너) 몸통은 배경이 비어 있어 가로질러도 글씨를 가리지 않는다.
   // 장애물로 치면 피할 곳이 없어지므로 제외한다.
   const container = new Set(items.map((i) => i.parent).filter(Boolean));
@@ -76,7 +76,7 @@ export function drawArrows(layer, grid, items, display) {
         obstacles.push(rect);
       }
 
-      const sameTrack = trackOf.get(depId) === item.t;
+      const sameTrack = trackOf.get(depId) === item.place.t;
       const d = blockArrowPath(routeBetween(from, to, sameTrack, bite, obstacles), width, head);
       if (!d) continue;
 

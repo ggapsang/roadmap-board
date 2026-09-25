@@ -11,7 +11,7 @@ export function renderHead(head, { tracks, items, selectedTrack, template, onSel
   head.append(el('div.cnr'), el('div.cnr'));
 
   const counts = new Map();
-  for (const it of items) counts.set(it.t, (counts.get(it.t) ?? 0) + 1);
+  for (const it of items) counts.set(it.place.t, (counts.get(it.place.t) ?? 0) + 1);
 
   for (const track of tracks) {
     const cell = el('div.th', {

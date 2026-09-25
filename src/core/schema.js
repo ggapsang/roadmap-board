@@ -14,7 +14,7 @@ import {
   DEFAULT_ORGS, DEFAULT_DISPLAY, DISPLAY_LIMITS,
 } from '../config/index.js';
 
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 /**
  * v0 = P0 시안 문서(version 필드 없음).
@@ -127,6 +127,17 @@ function v8_to_v9(doc) {
   return doc;
 }
 
+function v9_to_v10(doc) {
+  // 본질/배치 분리 3단계: 트랙·걸침(t·sp)을 place로.
+  for (const it of doc.items ?? []) {
+    const pl = (it.place && typeof it.place === 'object') ? it.place : {};
+    it.place = { ...pl, t: pl.t ?? it.t, sp: pl.sp ?? it.sp ?? 1 };
+    delete it.t; delete it.sp;
+  }
+  doc.version = 10;
+  return doc;
+}
+
 const MIGRATIONS = {
   0: v0_to_v1,
   1: v1_to_v2,
@@ -137,6 +148,7 @@ const MIGRATIONS = {
   6: v6_to_v7,
   7: v7_to_v8,
   8: v8_to_v9,
+  9: v9_to_v10,
 };
 
 export const ALIGNS = ['top', 'middle', 'bottom'];
@@ -233,11 +245,8 @@ export function normalize(doc) {
     seenItem.add(id);
 
     const n = { ...it, id };
+    const pl = isObj(it.place) ? it.place : {};
 
-    if (!trackIndex.has(n.t)) {
-      warnings.push(`'${n.ti || id}'의 트랙(${n.t})을 찾을 수 없어 첫 트랙으로 옮겼습니다.`);
-      n.t = trackIds[0];
-    }
     n.ti = typeof n.ti === 'string' ? n.ti : '';
     n.ty = TYPE_KEYS.includes(n.ty) ? n.ty : DEFAULT_TYPE;
     n.st = STATUS_KEYS.includes(n.st) ? n.st : DEFAULT_STATUS;
@@ -250,21 +259,23 @@ export function normalize(doc) {
     // 마일스톤도 기간(전시회 등)을 가질 수 있다. e===s면 점, e>s면 기간 마일스톤.
 
     n.pg = clampInt(n.pg, 0, 100, 0);
-    // 병합 폭은 트랙 경계를 넘지 못한다
-    const ti = trackIndex.get(n.t);
-    n.sp = clampInt(n.sp, 1, doc.tracks.length - ti, 1);
-
     n.dp = Array.isArray(n.dp) ? n.dp.filter((d) => typeof d === 'string') : [];
-
     n.parent = typeof n.parent === 'string' && n.parent ? n.parent : null;
 
     // 배치(표시) 필드는 place로 모은다 — 이벤트 본질과 분리 (docs/DIRECTION.md #1).
-    // flat으로 오던 것도 관대하게 받아 place로 정규화한다. (Stage 1: align·showNote·hd, Stage 2: x·w)
-    const pl = isObj(it.place) ? it.place : {};
+    // 트랙·걸침(t·sp) + 표시(align·showNote·hd·x·w). flat/place 둘 다 관대하게 받는다.
+    let t = pl.t ?? it.t;
+    if (!trackIndex.has(t)) {
+      warnings.push(`'${n.ti || id}'의 트랙(${t})을 찾을 수 없어 첫 트랙으로 옮겼습니다.`);
+      t = trackIds[0];
+    }
+    const ti = trackIndex.get(t);             // 병합 폭(sp)은 트랙 경계를 넘지 못한다
     const align = pl.align ?? it.align;
     const hd = pl.hd ?? it.hd;
     const w = pl.w ?? it.w;
     n.place = {
+      t,
+      sp: clampInt(pl.sp ?? it.sp, 1, doc.tracks.length - ti, 1),
       align: ALIGNS.includes(align) ? align : 'middle',
       showNote: (pl.showNote ?? it.showNote) === true,
       // 세로 크기 강제(일 단위). 없거나 잘못됐으면 null = 기간대로 자동.
@@ -272,7 +283,7 @@ export function normalize(doc) {
       x: ratio(pl.x ?? it.x),
       w: w == null ? null : Math.min(1, Math.max(0.05, Number(w) || 0.05)),
     };
-    delete n.align; delete n.showNote; delete n.hd; delete n.x; delete n.w;
+    delete n.t; delete n.sp; delete n.align; delete n.showNote; delete n.hd; delete n.x; delete n.w;
     return n;
   });
 
@@ -309,7 +320,7 @@ export function normalize(doc) {
   for (const it of doc.items) {
     if (!it.parent) continue;
     const parent = itemById.get(it.parent);
-    if (parent) { it.t = parent.t; it.sp = 1; }
+    if (parent) { it.place.t = parent.place.t; it.place.sp = 1; }
   }
 
   // ── 선행 참조 정리: 없는 id / 자기 자신 / 중복 제거

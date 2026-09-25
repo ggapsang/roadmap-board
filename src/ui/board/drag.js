@@ -59,7 +59,7 @@ export function attachDrag(grid, {
       startDay: dayIndex(item.s, origin),
       endDay: dayIndex(item.e, origin),
       startTrack: trackIndexAt(ev.clientX),
-      homeTrack: store.trackIndex(item.t),
+      homeTrack: store.trackIndex(item.place.t),
       hd0: item.place?.hd ?? null,
       hostWidth,
       x0: item.place?.x ?? (rect.left - hostLeft) / hostWidth,
@@ -108,11 +108,11 @@ export function attachDrag(grid, {
         pointerTrack - drag.homeTrack + 1,
       ));
       const item0 = store.item(drag.id);
-      if (!drag.moved && item0 && nextSpan === item0.sp) return;
+      if (!drag.moved && item0 && nextSpan === item0.place.sp) return;
       if (!drag.moved) { store.begin('트랙 걸침'); drag.moved = true; }
       store.commit('트랙 걸침', () => {
         const item = store.item(drag.id);
-        if (item) item.sp = nextSpan;
+        if (item) item.place.sp = nextSpan;
       });
       return;
     }
@@ -139,9 +139,9 @@ export function attachDrag(grid, {
         const s = Math.max(0, drag.startDay + dDays);
         item.s = dateAt(origin, s);
         item.e = dateAt(origin, s + length);
-        const maxTrack = store.tracks.length - item.sp;
+        const maxTrack = store.tracks.length - item.place.sp;
         const k = Math.max(0, Math.min(maxTrack, drag.startTrack + dTrack));
-        item.t = store.tracks[k].id;
+        item.place.t = store.tracks[k].id;
       } else if (drag.mode === 'size-top') {
         // 위쪽을 끌면 시작일이 움직인다. 종료일은 그대로.
         // (점 마일스톤은 위·아래 손잡이가 없어 이 분기에 오지 않는다)

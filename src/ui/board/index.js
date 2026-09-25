@@ -328,7 +328,7 @@ export class Board {
 
       const parent = item.parent ? byId.get(item.parent) : null;
       // 상위 카드가 안 그려졌으면(숨김/필터) 자식도 놓을 자리가 없다
-      const host = parent ? cardEls.get(parent.id) : this.columns.get(item.t);
+      const host = parent ? cardEls.get(parent.id) : this.columns.get(item.place.t);
       if (!host) continue;
 
       const node = renderCard(item, {
@@ -362,16 +362,16 @@ export class Board {
    * @returns {{left:number,width:number}|null} 걸치지 않으면 null (퍼센트 배치)
    */
   #spanBox(item, place, colWidth) {
-    const span = Math.max(1, item.sp ?? 1);
+    const span = Math.max(1, item.place.sp ?? 1);
     if (span <= 1) return null;
 
     const tracks = this.store.tracks;
-    const home = tracks.findIndex((t) => t.id === item.t);
+    const home = tracks.findIndex((t) => t.id === item.place.t);
     if (home < 0) return null;
 
     const lanes = Math.max(1, place?.lanes ?? 1);
     const lane = place?.lane ?? 0;
-    const own = colWidth.get(item.t) ?? 0;
+    const own = colWidth.get(item.place.t) ?? 0;
 
     // 자기 트랙에서는 레인 몫만, 넘어가는 트랙은 통째로 차지한다
     let width = own / lanes;
@@ -500,11 +500,11 @@ export class Board {
       : Math.min(total - 1, Math.max(start, endDay));
 
     const item = {
-      id: newId('e'), t: trackId, sp: 1,
+      id: newId('e'),
       s: dateAt(origin, start), e: dateAt(origin, end),
       ti: '새 일정', ty: DEFAULT_TYPE, st: DEFAULT_STATUS,
       og: this.store.orgs[0], pg: 0, dp: [], note: '',
-      place: { align: 'middle', showNote: false, hd: null, x: null, w: null },
+      place: { t: trackId, sp: 1, align: 'middle', showNote: false, hd: null, x: null, w: null },
     };
     this.store.commit('일정 추가', (doc) => { doc.items.push(item); });
     this.handlers.openItem(item.id);

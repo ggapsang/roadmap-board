@@ -311,13 +311,13 @@ async function runSmoke(target) {
       card.click();
       await new Promise((res) => setTimeout(res, 200));
       const input = document.getElementById('i-span');
-      const before = { sp: r.store.item(id).sp, px: Math.round(card.getBoundingClientRect().width) };
+      const before = { sp: r.store.item(id).place.sp, px: Math.round(card.getBoundingClientRect().width) };
       input.value = '3';
       input.dispatchEvent(new Event('change', { bubbles: true }));
       await new Promise((res) => setTimeout(res, 200));
       const el = document.querySelector('[data-id="' + id + '"]');
-      const after = { sp: r.store.item(id).sp, px: Math.round(el.getBoundingClientRect().width) };
-      r.store.commit('원복', () => { r.store.item(id).sp = before.sp; });
+      const after = { sp: r.store.item(id).place.sp, px: Math.round(el.getBoundingClientRect().width) };
+      r.store.commit('원복', () => { r.store.item(id).place.sp = before.sp; });
       document.querySelector('#pItem [data-close]').click();
       return { before, after, label: document.querySelector('label[for="i-span"]')?.textContent };
     })()`), 20000, 'span');
@@ -405,7 +405,7 @@ async function runSmoke(target) {
       const r = window.__roadmap;
       const card = document.querySelector('.col > .ev:not(.ms)');
       const id = card.dataset.id;
-      r.store.commit('초기화', () => { const it = r.store.item(id); it.sp = 2; it.place.x = null; it.place.w = null; });
+      r.store.commit('초기화', () => { const it = r.store.item(id); it.place.sp = 2; it.place.x = null; it.place.w = null; });
       r.board.render();
       await new Promise((res) => setTimeout(res, 150));
       const el = () => document.querySelector('[data-id="' + id + '"]');
@@ -422,9 +422,9 @@ async function runSmoke(target) {
       await new Promise((res) => setTimeout(res, 120));
       grid.dispatchEvent(new PointerEvent('pointerup', at(cols[2].left + cols[2].width / 2)));
       await new Promise((res) => setTimeout(res, 150));
-      const sp = r.store.item(id).sp;
+      const sp = r.store.item(id).place.sp;
       const px = Math.round(el().getBoundingClientRect().width);
-      r.store.commit('원복', () => { r.store.item(id).sp = 2; });
+      r.store.commit('원복', () => { r.store.item(id).place.sp = 2; });
       return { sp, px, colW: Math.round(cols[0].width) };
     })()`), 20000, 'span-drag');
     console.log('[smoke] span-drag ' + JSON.stringify(spanDrag));
@@ -435,7 +435,7 @@ async function runSmoke(target) {
       const card = document.querySelector('.col > .ev:not(.ms)');
       const id = card.dataset.id;
       // 강제 아님 → 폭 손잡이 없고 걸침 손잡이만 있어야 한다
-      r.store.commit('자동', () => { const it = r.store.item(id); it.sp = 1; it.place.hd = null; it.place.x = null; it.place.w = null; });
+      r.store.commit('자동', () => { const it = r.store.item(id); it.place.sp = 1; it.place.hd = null; it.place.x = null; it.place.w = null; });
       r.board.render();
       await new Promise((res) => setTimeout(res, 150));
       const autoHasSpan = !!document.querySelector('[data-id="' + id + '"] .grip-span');
@@ -458,7 +458,7 @@ async function runSmoke(target) {
       await new Promise((res) => setTimeout(res, 150));
       const w = r.store.item(id).place.w;
       const after = Math.round(el().getBoundingClientRect().width);
-      r.store.commit('원복', () => { const it = r.store.item(id); it.place.hd = null; it.place.x = null; it.place.w = null; it.sp = 2; });
+      r.store.commit('원복', () => { const it = r.store.item(id); it.place.hd = null; it.place.x = null; it.place.w = null; it.place.sp = 2; });
       r.board.render();
       return { autoHasSpan, autoHasHe, before, after, w, shrank: after < before, hasW: w != null && w < 1 };
     })()`), 20000, 'top-width');

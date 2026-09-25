@@ -87,7 +87,7 @@ DB 기본 위치는 `%APPDATA%/wolfpack/wolfpack.db` — 메뉴의 **파일 › 
 
 ```jsonc
 {
-  "version": 7,
+  "version": 10,
   "meta": {
     "start": "2026-09-21", "end": "2027-04-04", "name": "Project Machina 1차년도",
     "display": { "arrowWidth": 7, "arrowHead": 2, "fontScale": 1 }
@@ -96,30 +96,35 @@ DB 기본 위치는 `%APPDATA%/wolfpack/wolfpack.db` — 메뉴의 **파일 › 
   "bands": [ { "id": "b1", "from": "2027-01-01", "to": "2027-03-31", "label": "2027 1Q" } ],
   "tracks": [ { "id": "t0", "lab": "요구사항 4", "name": "통합 모니터링 시스템" } ],
   "items": [{
+    // ── 이벤트 본질 (어느 보드에서 보든 같아야 하는 것) ──
     "id": "e10",
-    "t":  "t0",           // 트랙 id
-    "sp": 1,              // 트랙 병합 폭
     "s":  "2026-10-01",   // 시작
     "e":  "2026-10-31",   // 종료 (inclusive)
     "ti": "1년차 과제 제출용 화면 구성",
     "ty": "bar",          // bar | ms(마일스톤: s==e면 시점, s<e면 기간)
-    "parent": null,       // 상위 일정 id — 있으면 그 카드 안에 들어간다
-    "x": null, "w": null, // 상위 카드/칸 안에서의 가로 위치·폭 비율 (null = 자동)
-    "hd": null,           // 크기 강제 시 세로 길이(일). null = 기간(s~e)대로
-    "align": "middle",    // 글자 세로 정렬 top | middle | bottom
-    "showNote": false,    // 비고를 카드에 표시
     "st": "run",          // plan | run | done | late | hold
     "og": "다임리서치",
     "pg": 20,             // 진척률
-    "dp": ["e2"],         // 선행 일정 (표시 전용)
-    "note": ""
+    "note": "",
+    "parent": null,       // 상위 일정 id — 있으면 그 카드 안에 들어간다(포함 관계)
+    "dp": ["e2"],         // 선행 일정 (관계, 표시 전용)
+    // ── 이 보드에서의 배치·표시 (보드마다 다를 수 있는 것) ──
+    "place": {
+      "t":  "t0",         // 트랙 id
+      "sp": 1,            // 트랙 병합 폭
+      "x": null, "w": null, // 칸/상위 카드 안에서의 가로 위치·폭 비율 (null = 자동)
+      "hd": null,         // 크기 강제 시 세로 길이(일). null = 기간(s~e)대로
+      "align": "middle",  // 글자 세로 정렬 top | middle | bottom
+      "showNote": false   // 비고를 카드에 표시
+    }
   }]
 }
 ```
 
-> **본질과 표시.** `item`은 아직 이벤트의 **본질**(`ti·st·og·s·e·pg·note`)과 보드에서의
-> **배치·표시**(`t·sp·x·w·hd·align·showNote`)를 한 객체에 담는다. 보드가 하나라 지금은
-> 괜찮지만, 둘을 나눠 생각하는 것이 다음 방향이다 → [docs/DIRECTION.md](./docs/DIRECTION.md).
+> **본질과 표시를 나눈다.** `item`은 이벤트의 **본질**(어느 보드에서 보든 같아야 하는 것)과
+> 이 보드에서의 **배치·표시**(`place`, 보드마다 다를 수 있는 것)를 나눠 담는다. 지금은 보드가
+> 하나뿐이라 `place`도 하나지만, 이 경계 덕분에 나중에 "같은 이벤트가 여러 보드에" 올라가도
+> 전체를 다시 짜지 않는다 → [docs/DIRECTION.md](./docs/DIRECTION.md) #1.
 
 PNG와 PDF는 화면에 보이는 부분이 아니라 **트랙 헤더부터 마지막 일정까지 전체**를
 한 장에 담는다. PNG는 2배 해상도, PDF는 보드 크기에 맞춘 단일 페이지다.
