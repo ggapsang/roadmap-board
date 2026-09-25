@@ -404,7 +404,7 @@ export class Board {
         ev.stopPropagation();
         this.store.commit('가로 폭 자동', () => {
           const item = this.store.item(card.dataset.id);
-          if (item) { item.x = null; item.w = null; }
+          if (item) { item.place.x = null; item.place.w = null; }
         });
       }
     });
@@ -504,7 +504,7 @@ export class Board {
       s: dateAt(origin, start), e: dateAt(origin, end),
       ti: '새 일정', ty: DEFAULT_TYPE, st: DEFAULT_STATUS,
       og: this.store.orgs[0], pg: 0, dp: [], note: '',
-      place: { align: 'middle', showNote: false, hd: null },
+      place: { align: 'middle', showNote: false, hd: null, x: null, w: null },
     };
     this.store.commit('일정 추가', (doc) => { doc.items.push(item); });
     this.handlers.openItem(item.id);

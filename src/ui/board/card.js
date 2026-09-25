@@ -73,9 +73,9 @@ export function renderCard(item, ctx) {
    */
   // 가로 위치·폭을 비율(x/w)로 잡는 경우: 자식은 늘, 최상위는 '크기 강제' 모드일 때만.
   // 강제가 아닌 최상위는 자동(레인 폭 / sp 걸침)이라 비율을 쓰지 않는다.
-  const manual = (parent || forced) && (item.x != null || item.w != null);
-  const left = manual ? (item.x ?? 0) * 100 : (lane * 100) / lanes;
-  const width = manual ? (item.w ?? 1 / lanes) * 100 : 100 / lanes;
+  const manual = (parent || forced) && (item.place?.x != null || item.place?.w != null);
+  const left = manual ? (item.place.x ?? 0) * 100 : (lane * 100) / lanes;
+  const width = manual ? (item.place.w ?? 1 / lanes) * 100 : 100 / lanes;
 
   /**
    * 여러 트랙에 걸치는 일정은 퍼센트로 잡을 수 없다.

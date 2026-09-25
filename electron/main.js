@@ -405,7 +405,7 @@ async function runSmoke(target) {
       const r = window.__roadmap;
       const card = document.querySelector('.col > .ev:not(.ms)');
       const id = card.dataset.id;
-      r.store.commit('초기화', () => { const it = r.store.item(id); it.sp = 2; it.x = null; it.w = null; });
+      r.store.commit('초기화', () => { const it = r.store.item(id); it.sp = 2; it.place.x = null; it.place.w = null; });
       r.board.render();
       await new Promise((res) => setTimeout(res, 150));
       const el = () => document.querySelector('[data-id="' + id + '"]');
@@ -435,7 +435,7 @@ async function runSmoke(target) {
       const card = document.querySelector('.col > .ev:not(.ms)');
       const id = card.dataset.id;
       // 강제 아님 → 폭 손잡이 없고 걸침 손잡이만 있어야 한다
-      r.store.commit('자동', () => { const it = r.store.item(id); it.sp = 1; it.place.hd = null; it.x = null; it.w = null; });
+      r.store.commit('자동', () => { const it = r.store.item(id); it.sp = 1; it.place.hd = null; it.place.x = null; it.place.w = null; });
       r.board.render();
       await new Promise((res) => setTimeout(res, 150));
       const autoHasSpan = !!document.querySelector('[data-id="' + id + '"] .grip-span');
@@ -456,9 +456,9 @@ async function runSmoke(target) {
       await new Promise((res) => setTimeout(res, 120));
       grid.dispatchEvent(new PointerEvent('pointerup', at(box.left - 90)));
       await new Promise((res) => setTimeout(res, 150));
-      const w = r.store.item(id).w;
+      const w = r.store.item(id).place.w;
       const after = Math.round(el().getBoundingClientRect().width);
-      r.store.commit('원복', () => { const it = r.store.item(id); it.place.hd = null; it.x = null; it.w = null; it.sp = 2; });
+      r.store.commit('원복', () => { const it = r.store.item(id); it.place.hd = null; it.place.x = null; it.place.w = null; it.sp = 2; });
       r.board.render();
       return { autoHasSpan, autoHasHe, before, after, w, shrank: after < before, hasW: w != null && w < 1 };
     })()`), 20000, 'top-width');
@@ -828,14 +828,14 @@ async function runSmoke(target) {
       grid.dispatchEvent(new PointerEvent('pointerup', at(b.left + 62)));
       await new Promise((res) => setTimeout(res, 150));
       const after = Math.round(el().getBoundingClientRect().width);
-      const stored = { x: r.store.item(id).x, w: r.store.item(id).w };
+      const stored = { x: r.store.item(id).place.x, w: r.store.item(id).place.w };
 
       window.__childWidthShot = true;
       await new Promise((res) => setTimeout(res, 50));
       // 더블클릭하면 자동 배치로 복귀
       el().querySelector('.grip-he').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
       await new Promise((res) => setTimeout(res, 150));
-      const reset = r.store.item(id).w;
+      const reset = r.store.item(id).place.w;
 
       return { id, before, after, stored, grew: after > before + 40, reset };
     })()`), 20000, 'child-width');
@@ -844,7 +844,7 @@ async function runSmoke(target) {
     if (shotDir()) {
       await target.webContents.executeJavaScript(`(() => {
         const r = window.__roadmap;
-        r.store.commit('폭 예시', () => { const it = r.store.item('e11'); it.x = 0.02; it.w = 0.62; });
+        r.store.commit('폭 예시', () => { const it = r.store.item('e11'); it.place.x = 0.02; it.place.w = 0.62; });
       })()`);
       await capture(target, 'child-width');
     }

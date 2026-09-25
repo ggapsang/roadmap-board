@@ -89,8 +89,8 @@ export class ItemPanel {
           item.place.hd = Math.max(1, inclusiveDays(item.s, item.e));
         } else {
           item.place.hd = null;
-          item.x = null;
-          item.w = null;
+          item.place.x = null;
+          item.place.w = null;
         }
       });
     });
@@ -264,8 +264,8 @@ export class ItemPanel {
           const host = this.store.item(parent);
           if (host) { item.t = host.t; item.sp = 1; }
         }
-        item.x = null;
-        item.w = null;
+        item.place.x = null;
+        item.place.w = null;
       }
     });
 

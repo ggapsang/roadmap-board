@@ -62,8 +62,8 @@ export function attachDrag(grid, {
       homeTrack: store.trackIndex(item.t),
       hd0: item.place?.hd ?? null,
       hostWidth,
-      x0: item.x ?? (rect.left - hostLeft) / hostWidth,
-      w0: item.w ?? rect.width / hostWidth,
+      x0: item.place?.x ?? (rect.left - hostLeft) / hostWidth,
+      w0: item.place?.w ?? rect.width / hostWidth,
       moved: false,
     };
     card.setPointerCapture(ev.pointerId);
@@ -89,13 +89,13 @@ export function attachDrag(grid, {
         const item = store.item(drag.id);
         if (!item) return;
         if (drag.mode === 'hw-right') {
-          item.x = drag.x0;
-          item.w = Math.min(1 - drag.x0, Math.max(MIN, drag.w0 + ratio));
+          item.place.x = drag.x0;
+          item.place.w = Math.min(1 - drag.x0, Math.max(MIN, drag.w0 + ratio));
         } else {
           const right = drag.x0 + drag.w0;
           const nextX = Math.min(right - MIN, Math.max(0, drag.x0 + ratio));
-          item.x = nextX;
-          item.w = right - nextX;
+          item.place.x = nextX;
+          item.place.w = right - nextX;
         }
       });
       return;

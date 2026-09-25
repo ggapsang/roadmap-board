@@ -14,7 +14,7 @@ import {
   DEFAULT_ORGS, DEFAULT_DISPLAY, DISPLAY_LIMITS,
 } from '../config/index.js';
 
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 /**
  * v0 = P0 시안 문서(version 필드 없음).
@@ -116,6 +116,17 @@ function v7_to_v8(doc) {
   return doc;
 }
 
+function v8_to_v9(doc) {
+  // 본질/배치 분리 2단계: 가로 위치·폭(x·w)을 place로.
+  for (const it of doc.items ?? []) {
+    const pl = (it.place && typeof it.place === 'object') ? it.place : {};
+    it.place = { ...pl, x: pl.x ?? it.x ?? null, w: pl.w ?? it.w ?? null };
+    delete it.x; delete it.w;
+  }
+  doc.version = 9;
+  return doc;
+}
+
 const MIGRATIONS = {
   0: v0_to_v1,
   1: v1_to_v2,
@@ -125,6 +136,7 @@ const MIGRATIONS = {
   5: v5_to_v6,
   6: v6_to_v7,
   7: v7_to_v8,
+  8: v8_to_v9,
 };
 
 export const ALIGNS = ['top', 'middle', 'bottom'];
@@ -245,21 +257,22 @@ export function normalize(doc) {
     n.dp = Array.isArray(n.dp) ? n.dp.filter((d) => typeof d === 'string') : [];
 
     n.parent = typeof n.parent === 'string' && n.parent ? n.parent : null;
-    n.x = ratio(n.x);
-    n.w = n.w == null ? null : Math.min(1, Math.max(0.05, Number(n.w) || 0.05));
 
     // 배치(표시) 필드는 place로 모은다 — 이벤트 본질과 분리 (docs/DIRECTION.md #1).
-    // flat으로 오던 것도 관대하게 받아 place로 정규화한다. (Stage 1: align·showNote·hd)
+    // flat으로 오던 것도 관대하게 받아 place로 정규화한다. (Stage 1: align·showNote·hd, Stage 2: x·w)
     const pl = isObj(it.place) ? it.place : {};
     const align = pl.align ?? it.align;
     const hd = pl.hd ?? it.hd;
+    const w = pl.w ?? it.w;
     n.place = {
       align: ALIGNS.includes(align) ? align : 'middle',
       showNote: (pl.showNote ?? it.showNote) === true,
       // 세로 크기 강제(일 단위). 없거나 잘못됐으면 null = 기간대로 자동.
       hd: (typeof hd === 'number' && hd >= 1) ? Math.round(hd) : null,
+      x: ratio(pl.x ?? it.x),
+      w: w == null ? null : Math.min(1, Math.max(0.05, Number(w) || 0.05)),
     };
-    delete n.align; delete n.showNote; delete n.hd;
+    delete n.align; delete n.showNote; delete n.hd; delete n.x; delete n.w;
     return n;
   });
 

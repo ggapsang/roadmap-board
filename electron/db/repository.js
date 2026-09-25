@@ -143,8 +143,7 @@ export class BoardRepository {
         ti: r.title, ty: r.type, st: r.status,
         og: r.org, pg: r.progress, note: r.note,
         parent: r.parent_id ?? null,
-        x: r.pos_x, w: r.pos_w,
-        place: { align: r.align, showNote: r.show_note === 1, hd: r.height_days ?? null },
+        place: { align: r.align, showNote: r.show_note === 1, hd: r.height_days ?? null, x: r.pos_x, w: r.pos_w },
         dp: depMap.get(r.id) ?? [],
       })),
     };
@@ -210,7 +209,7 @@ export class BoardRepository {
           board: this.boardId, id: it.id, track: it.t, ord: i, span: it.sp ?? 1,
           s: it.s, e: it.e, title: it.ti ?? '', type: it.ty ?? 'bar',
           status: it.st ?? 'plan', org: it.og ?? '', pg: it.pg ?? 0, note: it.note ?? '',
-          parent: it.parent ?? null, x: it.x ?? null, w: it.w ?? null,
+          parent: it.parent ?? null, x: it.place?.x ?? null, w: it.place?.w ?? null,
           hd: it.place?.hd ?? null,
           align: it.place?.align ?? 'middle', showNote: it.place?.showNote ? 1 : 0,
         });
