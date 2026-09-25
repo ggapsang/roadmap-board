@@ -39,7 +39,8 @@ export function attachDrag(grid, {
 
     const origin = getOrigin();
     const cls = ev.target.classList;
-    const mode = cls.contains('grip') ? 'size'
+    const mode = cls.contains('grip-corner') ? 'corner'
+      : cls.contains('grip') ? 'size'
       : cls.contains('grip-top') ? 'size-top'
       : cls.contains('grip-span') ? 'span'
       : cls.contains('grip-hw') ? 'hw-left'
@@ -78,6 +79,26 @@ export function attachDrag(grid, {
     const dDays = Math.round(scale.dayAt(scale.y(drag.startDay) + (ev.clientY - drag.y)) - drag.startDay);
     const pointerTrack = trackIndexAt(ev.clientX);
     const dTrack = pointerTrack - drag.startTrack;
+
+    // 크기 강제 모서리 — 가로(폭 x/w)와 세로(hd, 일)를 한 번의 드래그로 함께.
+    if (drag.mode === 'corner') {
+      const dx = ev.clientX - drag.x;
+      const dy = ev.clientY - drag.y;
+      if (Math.abs(dx) < 2 && Math.abs(dy) < 2 && !drag.moved) return;
+      if (!drag.moved) { store.begin('크기 조절'); drag.moved = true; }
+      const MIN = 0.08;
+      const ratio = dx / drag.hostWidth;
+      store.commit('크기 조절', () => {
+        const item = store.item(drag.id);
+        if (!item) return;
+        // 가로: 왼쪽 가장자리는 두고 오른쪽을 끈다
+        item.place.x = drag.x0;
+        item.place.w = Math.min(1 - drag.x0, Math.max(MIN, drag.w0 + ratio));
+        // 세로: 강제 높이(일)
+        item.place.hd = Math.max(1, Math.round((drag.hd0 ?? 1) + dDays));
+      });
+      return;
+    }
 
     // 상위 카드 안에서의 가로 위치·폭
     if (drag.mode.startsWith('hw')) {

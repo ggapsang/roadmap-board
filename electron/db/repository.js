@@ -158,7 +158,6 @@ export class BoardRepository {
         ti: r.title, ty: r.type, st: r.status,
         og: r.org, pg: r.progress, note: r.note,
         parent: r.parent_id ?? null,
-        alias: r.alias_board ?? null,
         tasks: tasksByItem.get(r.id) ?? [],
         place: {
           t: r.track_id, sp: r.span,
@@ -215,9 +214,9 @@ export class BoardRepository {
       const insItem = this.db.prepare(`
         INSERT INTO item (board_id, id, track_id, ord, span, start_date, end_date,
                           title, type, status, org, progress, note,
-                          parent_id, alias_board, pos_x, pos_w, height_days, align, show_note)
+                          parent_id, pos_x, pos_w, height_days, align, show_note)
         VALUES (@board, @id, @track, @ord, @span, @s, @e, @title, @type, @status, @org, @pg, @note,
-                @parent, @alias, @x, @w, @hd, @align, @showNote)
+                @parent, @x, @w, @hd, @align, @showNote)
       `);
       const insDep = this.db.prepare(
         'INSERT OR IGNORE INTO dependency (board_id, item_id, depends_on) VALUES (?, ?, ?)',
@@ -233,7 +232,7 @@ export class BoardRepository {
           board: this.boardId, id: it.id, track: p.t, ord: i, span: p.sp ?? 1,
           s: it.s, e: it.e, title: it.ti ?? '', type: it.ty ?? 'bar',
           status: it.st ?? 'plan', org: it.og ?? '', pg: it.pg ?? 0, note: it.note ?? '',
-          parent: it.parent ?? null, alias: it.alias ?? null, x: p.x ?? null, w: p.w ?? null,
+          parent: it.parent ?? null, x: p.x ?? null, w: p.w ?? null,
           hd: p.hd ?? null,
           align: p.align ?? 'middle', showNote: p.showNote ? 1 : 0,
         });

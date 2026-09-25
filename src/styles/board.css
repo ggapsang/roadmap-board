@@ -269,3 +269,14 @@ body.reordering-col{cursor:grabbing!important;user-select:none}
   border-radius:2px;background:var(--accent)}
 .select-text .ev>.grip-hw,.select-text .ev>.grip-he{display:none}
 @media (prefers-reduced-motion:reduce){.ev>.grip-hw,.ev>.grip-he{transition:none}}
+
+/* 크기 강제 모서리 손잡이 — 오른쪽-아래. 가로·세로를 한 번에 끈다. 늘 보이게 둔다
+   (가장자리 손잡이처럼 hover에만 뜨면 못 찾는다). PPT 도형 모서리처럼. */
+.ev>.grip-corner{position:absolute;right:0;bottom:0;width:var(--u4);height:var(--u4);
+  cursor:nwse-resize;z-index:6;display:flex;align-items:flex-end;justify-content:flex-end;
+  opacity:.55;transition:opacity .12s ease}
+.ev:hover>.grip-corner{opacity:1}
+.ev>.grip-corner::after{content:"";width:0;height:0;margin:0 2px 2px 0;
+  border-left:7px solid transparent;border-bottom:7px solid var(--accent)}
+.select-text .ev>.grip-corner{display:none}
+@media (prefers-reduced-motion:reduce){.ev>.grip-corner{transition:none}}

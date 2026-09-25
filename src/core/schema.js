@@ -171,9 +171,10 @@ function v12_to_v13(doc) {
 }
 
 function v13_to_v14(doc) {
-  // 보드 별칭 — 한 카드가 다른 보드 하나를 통째로 대신한다(펼치면 그 보드). 없으면 null.
-  // 값은 대상 보드 id다(이벤트 id가 아니다). 여러 보드가 같은 대상을 별칭할 수 있다.
-  for (const it of doc.items ?? []) it.alias = it.alias ?? null;
+  // (철회) 'alias = 카드→보드 포인터'는 개념 오해였다 (refs PDF §3.4·§3.5).
+  // 같은 이벤트가 여러 보드에 나오는 것은 '이벤트를 보드 밖에 두고 보드는 배치만' 갖는
+  // 구조로 다룬다(포인터가 아니다). 잘못 넣은 alias 필드를 걷어낸다.
+  for (const it of doc.items ?? []) delete it.alias;
   doc.version = 14;
   return doc;
 }
@@ -310,9 +311,7 @@ export function normalize(doc) {
     n.dp = Array.isArray(n.dp) ? n.dp.filter((d) => typeof d === 'string') : [];
     n.parent = typeof n.parent === 'string' && n.parent ? n.parent : null;
 
-    // 보드 별칭 — 대상 보드 id(정수)거나 없음(null). 존재 여부는 문서만으로 알 수 없어
-    // (다른 보드라서) 여기선 모양만 본다. 없는 보드를 가리키면 UI가 부드럽게 처리한다.
-    n.alias = Number.isInteger(Number(it.alias)) && Number(it.alias) > 0 ? Number(it.alias) : null;
+    delete n.alias;   // (철회) 잘못된 '카드→보드 포인터' 흔적 제거
 
     // 순서 없는 태스크(액션 아이템). 이벤트 본질이라 place가 아니라 item에 직접 둔다.
     n.tasks = (Array.isArray(it.tasks) ? it.tasks : []).filter(isObj).map((t) => {
@@ -510,7 +509,6 @@ export function reidentify(doc) {
   for (const it of doc.items ?? []) {
     if (it.parent) it.parent = map.get(it.parent) ?? null;
     for (const t of (Array.isArray(it.tasks) ? it.tasks : [])) t.id = fresh('k');
-    // it.alias는 대상 보드 id(이벤트 id가 아님)라 그대로 둔다 — 복제본도 같은 보드를 별칭한다.
   }
   doc.relations = (Array.isArray(doc.relations) ? doc.relations : [])
     .map((r) => ({ ...r, id: fresh('r'), from: map.get(r.from), to: map.get(r.to) }))

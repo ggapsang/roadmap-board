@@ -66,9 +66,6 @@ export class ItemPanel {
     // 표시 토글 아이콘
     $('i-shownote').append(icon(ICONS.note));
     $('i-fixedh').append(icon(ICONS.resize));
-    // 별칭 열기 버튼 — 아이콘 + 글자
-    $('i-aliasopen').append(icon(ICONS.external), el('span', { text: '별칭 보드 열기' }));
-
     // 탭
     for (const tab of $('pItem').querySelectorAll('.ptab')) {
       tab.addEventListener('click', () => this.#showTab(tab.dataset.tab));
@@ -87,14 +84,8 @@ export class ItemPanel {
       isSelected: (id) => (this.item?.parent ?? '') === id,
       onChange: (id) => this.#setParent(id || null),
     });
-    this.aliasList = createFilterList({
-      mode: 'single', placeholder: '보드 검색…', emptyText: '다른 보드가 없습니다.',
-      isSelected: (id) => String(this.item?.alias ?? '') === id,
-      onChange: (id) => this.#setAlias(id ? Number(id) : null),
-    });
     $('i-deps').append(this.depsList.root);
     $('i-parent').append(this.parentList.root);
-    $('i-alias').append(this.aliasList.root);
   }
 
   #bind() {
@@ -133,10 +124,6 @@ export class ItemPanel {
       $('i-fixedh').setAttribute('aria-pressed', String(next));
     });
 
-    $('i-aliasopen').addEventListener('click', () => {
-      const item = this.item;
-      if (item?.alias != null) this.openProject?.(item.alias);
-    });
     $('i-taskadd').addEventListener('click', () => this.#addTask());
     $('i-del').addEventListener('click', () => this.remove());
     $('i-dup').addEventListener('click', () => this.duplicate());
@@ -184,9 +171,7 @@ export class ItemPanel {
 
     this.#renderDeps(item);
     this.#renderParents(item);
-    this.#renderAlias(item);
     this.#renderTasks(item);
-    this.#syncAliasOpen(item);
 
     this.#showTab('attr');
     this.panels.open('pItem');
@@ -279,43 +264,6 @@ export class ItemPanel {
     };
     walk(id);
     return out;
-  }
-
-  /** 보드 별칭 후보 — 이 보드를 뺀 다른 프로젝트 + '없음'. listProjects는 비동기. */
-  async #renderAlias(item) {
-    const base = [{ id: '', label: '— 없음 (보통 카드) —' }];
-    if (!this.adapter?.listProjects) { this.aliasList.render(base); return; }
-    let projects = [];
-    try { projects = await this.adapter.listProjects(); } catch { projects = []; }
-    if (this.item?.id !== item.id) return;                 // 그새 다른 카드로 넘어갔다
-    const currentId = this.adapter.projectId;
-    for (const p of projects) {
-      if (p.id === currentId) continue;                    // 자기 보드는 별칭할 수 없다
-      base.push({ id: String(p.id), label: p.name, sub: `일정 ${p.items ?? 0}` });
-    }
-    if (item.alias != null && !projects.some((p) => p.id === item.alias)) {
-      base.push({ id: String(item.alias), label: `보드 #${item.alias}`, sub: '없음' });
-    }
-    this.aliasList.render(base);
-  }
-
-  #setAlias(aliasId) {
-    const item = this.item;
-    if (!item) return;
-    // 대상 보드 이름(옵션 라벨)으로 빈 제목을 채운다
-    const opt = this.aliasList.root.querySelector(`.fl-opt[data-id="${aliasId ?? ''}"] .fl-label`);
-    const name = opt ? opt.childNodes[0]?.textContent ?? '' : '';
-    this.store.commit('보드 별칭', () => {
-      item.alias = aliasId;
-      if (aliasId != null && !item.ti && name) item.ti = name;
-    });
-    $(F.title).value = item.ti;
-    autogrow($(F.title));
-    this.#syncAliasOpen(item);
-  }
-
-  #syncAliasOpen(item) {
-    $('i-aliasopen').hidden = item.alias == null;
   }
 
   // ── 태스크 ──────────────────────────────────────────────

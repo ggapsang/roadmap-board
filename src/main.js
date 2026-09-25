@@ -60,7 +60,6 @@ async function boot() {
       openItem: (id) => itemPanel.open(id),
       openTrack: (id) => configPanel.open(id),
       addTrack: () => configPanel.add(),
-      openAlias: (boardId) => openProject(boardId),
     },
   });
 

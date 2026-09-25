@@ -193,7 +193,7 @@ async function runSmoke(target) {
   let containCheck = null;
   let taskCheck = null;
   let idCheck = null;
-  let aliasCheck = null;
+  let cornerCheck = null;
   let trackResize = null;
   let spanEdit = null;
   let newTrack = null;
@@ -408,30 +408,6 @@ async function runSmoke(target) {
       };
     })()`);
     console.log('[smoke] id ' + JSON.stringify(idCheck));
-
-    // 보드 별칭 — 카드 포털 표식·정규화(정수/null)·재식별 보존 (DIRECTION #3·#7)
-    aliasCheck = await target.webContents.executeJavaScript(`(async () => {
-      const { prepare, reidentify } = await import('./src/core/schema.js');
-      const r = window.__roadmap;
-      const it = r.store.items[0];
-      const id = it.id;
-      r.store.commit('smoke-alias', () => { it.alias = 777; });
-      await new Promise((res) => setTimeout(res, 60));
-      const card = document.querySelector('.ev[data-id="' + id + '"]');
-      const hasPortal = !!(card && card.querySelector('.portal'));
-      const norm = prepare(structuredClone(r.store.doc)).doc.items.find((x) => x.id === id);
-      const bad = structuredClone(r.store.doc);
-      bad.items.find((x) => x.id === id).alias = 'nope';
-      const badNorm = prepare(bad).doc.items.find((x) => x.id === id);
-      const re = reidentify(structuredClone(r.store.doc));
-      return {
-        hasPortal,
-        kept: norm.alias === 777,
-        coerced: badNorm.alias === null,
-        reKept: re.items[0].alias === 777,
-      };
-    })()`);
-    console.log('[smoke] alias ' + JSON.stringify(aliasCheck));
 
     // 트랙 열 너비 드래그 — 재렌더로 손잡이가 사라져도 이어져야 한다
     trackResize = await withTimeout(target.webContents.executeJavaScript(`(async () => {
@@ -849,6 +825,35 @@ async function runSmoke(target) {
     })()`), 20000, 'fixed-height');
     console.log('[smoke] fixed-height ' + JSON.stringify(fixedH));
 
+    // 크기 강제 모서리 — 오른쪽-아래 모서리를 대각선으로 끌면 가로(w)·세로(hd)가 함께 바뀐다
+    cornerCheck = await withTimeout(target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const card = document.querySelector('.col > .ev:not(.ms)');
+      const id = card.dataset.id;
+      r.store.commit('강제', () => { const it = r.store.item(id); it.place.sp = 1; it.place.hd = 20; it.place.x = null; it.place.w = null; });
+      r.board.render();
+      await new Promise((res) => setTimeout(res, 150));
+      const el = () => document.querySelector('[data-id="' + id + '"]');
+      const grip = el().querySelector('.grip-corner');
+      if (!grip) return { error: 'grip-corner 없음' };
+      const before = { w: r.store.item(id).place.w, hd: r.store.item(id).place.hd };
+      const box = grip.getBoundingClientRect();
+      const grid = document.getElementById('grid');
+      const ppd = r.view.ppd;
+      const cx = box.left + box.width / 2, cy = box.top + box.height / 2;
+      const at = (x, y) => ({ bubbles: true, clientX: x, clientY: y, button: 0, pointerId: 1 });
+      grip.dispatchEvent(new PointerEvent('pointerdown', at(cx, cy)));
+      grid.dispatchEvent(new PointerEvent('pointermove', at(cx - 60, cy + ppd * 6)));   // 왼쪽·아래로
+      await new Promise((res) => setTimeout(res, 120));
+      grid.dispatchEvent(new PointerEvent('pointerup', at(cx - 60, cy + ppd * 6)));
+      await new Promise((res) => setTimeout(res, 120));
+      const after = { w: r.store.item(id).place.w, hd: r.store.item(id).place.hd };
+      r.store.commit('원복', () => { const it = r.store.item(id); it.place.hd = null; it.place.x = null; it.place.w = null; it.place.sp = 2; });
+      r.board.render();
+      return { before, after, widthChanged: after.w != null && after.w !== before.w, heightChanged: after.hd !== before.hd };
+    })()`), 20000, 'corner');
+    console.log('[smoke] corner ' + JSON.stringify(cornerCheck));
+
     // 여백 자르기 — 표시 기간을 일정 범위에 맞춰 맨 뒤 빈 구간을 없앤다
     trim = await target.webContents.executeJavaScript(`(async () => {
       const r = window.__roadmap;
@@ -1121,7 +1126,6 @@ async function runSmoke(target) {
     && taskCheck?.count === 2 && taskCheck?.doneKept === true && taskCheck?.uniqueIds === true && taskCheck?.chip === true
     && idCheck?.n > 0 && idCheck?.allNew === true && idCheck?.unique === true
     && idCheck?.relOk === true && idCheck?.parentOk === true && idCheck?.relKept === true
-    && aliasCheck?.hasPortal === true && aliasCheck?.kept === true && aliasCheck?.coerced === true && aliasCheck?.reKept === true
     && layout?.panelOpen === true && layout?.shrunk > 280 && layout?.selectable === 'text'
     && trackResize?.grew === true && trackResize?.reset === null
     && spanEdit?.after?.sp === 3 && spanEdit?.after?.px > spanEdit?.before?.px
@@ -1140,6 +1144,7 @@ async function runSmoke(target) {
     && containerAlign?.jc === 'flex-end' && containerAlign?.cBottom === true && containerAlign?.isContainer === true
     && titleFit?.shrank === true && titleFit?.fits === true
     && fixedH?.mapGrew === true && fixedH?.noTopGrip === true && fixedH?.datesUnchanged === true && fixedH?.dragChanged === true
+    && cornerCheck?.widthChanged === true && cornerCheck?.heightChanged === true
     && trim?.trimmed === true && trim?.shrank === true
     && monthResize?.made === true && monthResize?.scale < 1 && monthResize?.shrank === true
     && ctxDelete?.hadMenu === true && ctxDelete?.hadBtn === true && ctxDelete?.trimmed === true && ctxDelete?.menuClosed === true

@@ -7,7 +7,7 @@
  */
 import { dayIndex, shortMD } from '../../core/dates.js';
 import { LAYOUT } from '../../config/index.js';
-import { el, icon, ICONS } from '../dom.js';
+import { el } from '../dom.js';
 
 const ALIGN_CSS = { top: 'flex-start', middle: 'center', bottom: 'flex-end' };
 
@@ -159,11 +159,6 @@ export function renderCard(item, ctx) {
 
   node.append(el('div.t', { text: item.ti }), meta);
 
-  // 별칭 카드는 대상 보드로 들어가는 포털 표식을 단다. 클릭은 board가 가로채 연다.
-  if (item.alias != null) {
-    node.append(el('span.portal', { title: '별칭 보드 열기' }, [icon(ICONS.external)]));
-  }
-
   if (item.place?.showNote && item.note) {
     node.append(el('div.card-note', { text: item.note }));
   }
@@ -178,6 +173,10 @@ export function renderCard(item, ctx) {
   // 자식·강제 모드 → 좌우 폭 손잡이(x/w). 강제 아닌 최상위 → 트랙 걸침 손잡이.
   const widthGrips = forced || !!parent;
   addHorizontalGrips(node, { span: !widthGrips });
+  // 크기 강제 최상위 카드는 오른쪽-아래 모서리를 끌어 가로·세로를 한 번에 조절한다.
+  if (forced && !parent) {
+    node.append(el('div.grip-corner', { attrs: { 'aria-hidden': 'true' }, title: '끌어서 가로·세로 크기 조절' }));
+  }
   node.title = `${item.ti}\n${item.s} – ${item.e} · ${item.og}${item.pg ? ' · ' + item.pg + '%' : ''}`;
   return node;
 }

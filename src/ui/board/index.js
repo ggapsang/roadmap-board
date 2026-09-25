@@ -446,13 +446,7 @@ export class Board {
       // 열면 재렌더가 일어나 카드가 새로 그려지고 긁어 둔 선택이 날아간다.
       if (this.view.textSelect) return;
       const card = ev.target.closest('.ev');
-      if (!card) return;
-      // 별칭 포털을 누르면 편집이 아니라 대상 보드로 진입한다.
-      if (ev.target.closest('.portal')) {
-        const item = this.store.item(card.dataset.id);
-        if (item?.alias != null) { this.handlers.openAlias?.(item.alias); return; }
-      }
-      this.handlers.openItem(card.dataset.id);
+      if (card) this.handlers.openItem(card.dataset.id);
     });
 
     // 자식 카드의 가로 폭 손잡이를 더블클릭하면 자동 배치로 되돌린다
