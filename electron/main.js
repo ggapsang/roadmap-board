@@ -190,6 +190,7 @@ async function runSmoke(target) {
   let relCheck = null;
   let orderCheck = null;
   let orderMode = null;
+  let containCheck = null;
   let trackResize = null;
   let spanEdit = null;
   let newTrack = null;
@@ -332,6 +333,20 @@ async function runSmoke(target) {
       return document.querySelector('.gut-m b u em')?.textContent !== '순서';
     })()`);
     console.log('[smoke] order-mode ' + JSON.stringify(orderMode));
+
+    // 포함(contain)도 관계로 노출되는가 — 정규화 후 doc.relations에 contain이 생긴다
+    containCheck = await target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const { prepare } = await import('./src/core/schema.js');
+      const { doc } = prepare(structuredClone(r.store.doc));
+      const contains = (doc.relations ?? []).filter((x) => x.type === 'contain');
+      return {
+        count: contains.length,
+        hasE10: contains.some((x) => x.from === 'e10'),
+        allValid: contains.every((x) => x.from && x.to && x.id),
+      };
+    })()`);
+    console.log('[smoke] contain ' + JSON.stringify(containCheck));
 
     // 트랙 열 너비 드래그 — 재렌더로 손잡이가 사라져도 이어져야 한다
     trackResize = await withTimeout(target.webContents.executeJavaScript(`(async () => {
@@ -1017,6 +1032,7 @@ async function runSmoke(target) {
     && relCheck?.allDep === true && relCheck?.added === true && relCheck?.removed === true
     && orderCheck?.topoOk === true && orderCheck?.edges > 0 && orderCheck?.maxRank > 0
     && orderMode?.hasOrderAxis === true && orderMode?.ordered === true && orderMode?.cards > 0 && orderMode?.back === true
+    && containCheck?.count > 0 && containCheck?.hasE10 === true && containCheck?.allValid === true
     && layout?.panelOpen === true && layout?.shrunk > 280 && layout?.selectable === 'text'
     && trackResize?.grew === true && trackResize?.reset === null
     && spanEdit?.after?.sp === 3 && spanEdit?.after?.px > spanEdit?.before?.px

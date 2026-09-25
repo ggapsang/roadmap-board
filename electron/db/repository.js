@@ -127,6 +127,10 @@ export class BoardRepository {
 
     // 선행(dependency) 테이블 = 'dep' 종류의 관계. from=선행(depends_on), to=후행(item_id).
     const relations = deps.map((d) => ({ id: `r_${d.item_id}_${d.depends_on}`, type: 'dep', from: d.depends_on, to: d.item_id }));
+    // 포함(contain)은 item.parent_id에서 노출한다 (렌더는 item.parent를 그대로 쓴다).
+    for (const r of rows) {
+      if (r.parent_id) relations.push({ id: `c_${r.id}`, type: 'contain', from: r.parent_id, to: r.id });
+    }
 
     return {
       version: board.doc_version,

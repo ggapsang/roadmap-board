@@ -15,7 +15,7 @@ import {
   RELATION_TYPES, RELATION_KEYS, AXIS_KINDS, AXIS_DIRS,
 } from '../config/index.js';
 
-export const SCHEMA_VERSION = 11;
+export const SCHEMA_VERSION = 12;
 
 /**
  * v0 = P0 시안 문서(version 필드 없음).
@@ -151,6 +151,17 @@ function v10_to_v11(doc) {
   return doc;
 }
 
+function v11_to_v12(doc) {
+  // 포함(contain)도 관계로 노출한다. item.parent는 렌더용으로 유지(정규화가 다시 만든다).
+  const rels = Array.isArray(doc.relations) ? doc.relations.slice() : [];
+  for (const it of doc.items ?? []) {
+    if (typeof it.parent === 'string' && it.parent) rels.push({ type: 'contain', from: it.parent, to: it.id });
+  }
+  doc.relations = rels;
+  doc.version = 12;
+  return doc;
+}
+
 const MIGRATIONS = {
   0: v0_to_v1,
   1: v1_to_v2,
@@ -163,6 +174,7 @@ const MIGRATIONS = {
   8: v8_to_v9,
   9: v9_to_v10,
   10: v10_to_v11,
+  11: v11_to_v12,
 };
 
 export const ALIGNS = ['top', 'middle', 'bottom'];
@@ -359,9 +371,12 @@ export function normalize(doc) {
 function normalizeRelations(doc, itemIds) {
   const acyclic = new Set(RELATION_TYPES.filter((r) => r.acyclic).map((r) => r.key));
   const src = [];
-  if (Array.isArray(doc.relations)) for (const r of doc.relations) if (isObj(r)) src.push(r);
+  // 관계는 doc.relations에서 받는다. 단 포함(contain)은 item.parent가 authoritative라
+  // 입력의 contain은 버리고 item.parent에서 다시 만든다(중복·불일치 방지).
+  if (Array.isArray(doc.relations)) for (const r of doc.relations) if (isObj(r) && r.type !== 'contain') src.push(r);
   for (const it of doc.items) {
     for (const d of (Array.isArray(it.dp) ? it.dp : [])) src.push({ type: 'dep', from: d, to: it.id });
+    if (typeof it.parent === 'string' && it.parent) src.push({ type: 'contain', from: it.parent, to: it.id });
   }
 
   const adj = new Map();                          // `${type}|${node}` -> Set(다음 노드)

@@ -56,6 +56,7 @@ export const DEFAULT_TYPE = 'bar';
  */
 export const RELATION_TYPES = [
   { key: 'dep', label: '선행', acyclic: true },
+  { key: 'contain', label: '포함', acyclic: true },   // 상위 일정 안에 든 카드. 지금은 item.parent가 렌더용 사본.
   // { key: 'cause', label: '원인', acyclic: true },
   // { key: 'join',  label: '합류' },
   // { key: 'ref',   label: '참조' },

@@ -47,10 +47,11 @@ WOLFPACK은 **순서 기반 이벤트 전개 시스템**의 첫 활용 예다.
 - **남은 방향**: 아직 `place`가 하나(보드 하나)다. 두 번째 보드가 오면 `item.place` → `placements[boardId]`로 확장(지역 변경). 나아가 이벤트 본질을 보드-독립 테이블로 빼는 것(#3)과 이어진다.
 - **규칙**: 새 필드는 §6 기준으로 본질/배치를 정하고, 배치성이면 `place`에 넣는다.
 
-### 2. 관계를 이벤트와 동등한 일급 객체로 ✅ (선행 완료)
+### 2. 관계를 이벤트와 동등한 일급 객체로 ✅ (선행·포함 완료)
 - **근거**: §3.6·§6.3·§6.7.
-- **한 일**: `item.dp`(선행)를 문서 레벨 `doc.relations: [{id, type, from, to}]`로 승격했다. 종류(`type`)는 `config.RELATION_TYPES`로 확장(코드에 안 박음). `schema`(v10_to_v11 + normalizeRelations)가 종류 허용·끝점 존재·자기순환·중복·**순환 금지 종류의 사이클 차단**(#5·#7)을 한 곳에서 검증한다. `arrows`·item 패널·삭제·복제·`repository`(dependency 테이블 ↔ 'dep' 관계) 모두 relations를 쓴다.
-- **남은 방향**: `parent`(포함)도 관계다 → 아직 flat 필드다(레이아웃에 깊어 다음 단계). 다른 종류(합류·원인·참조)는 config에 자리만 있고 UI 미구현. 여러 종류가 실제로 생기면 DB에 `relation(type)` 테이블로 일반화.
+- **한 일**: `item.dp`(선행)·`item.parent`(포함)를 문서 레벨 `doc.relations: [{id, type, from, to}]`로 노출했다. 종류(`type`)는 `config.RELATION_TYPES`(dep·contain·…)로 확장(코드에 안 박음). `schema`의 `normalizeRelations`가 종류 허용·끝점 존재·자기순환·중복·**순환 금지 종류의 사이클 차단**(#5·#7)을 한 곳에서 검증. `dep`은 arrows·패널·삭제·복제·`repository`(dependency 테이블)가 직접 쓴다.
+- **포함(contain) 방식**: `item.parent`가 레이아웃에 깊어(childrenOf·중첩 렌더) **렌더러는 `item.parent`를 그대로 두고**, contain 관계는 정규화·로드 시 `item.parent`/`parent_id`에서 만들어 `doc.relations`에 노출한다(회귀 0, 이식·검증은 관계로). 완전 이관(childrenOf를 관계에서)은 다중 소속(§3.2)이 필요해질 때.
+- **남은 방향**: 다른 종류(합류·원인·참조)는 config에 자리만. 여러 종류가 실제로 생기면 DB에 `relation(type)` 테이블로 일반화.
 
 ### 3. 이벤트에 보드-독립 식별자
 - **근거**: §6.2.
