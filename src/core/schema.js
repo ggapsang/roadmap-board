@@ -12,7 +12,7 @@
 import {
   STATUS_KEYS, DEFAULT_STATUS, TYPE_KEYS, DEFAULT_TYPE,
   DEFAULT_ORGS, DEFAULT_DISPLAY, DISPLAY_LIMITS,
-  RELATION_TYPES, RELATION_KEYS,
+  RELATION_TYPES, RELATION_KEYS, AXIS_KINDS, AXIS_DIRS,
 } from '../config/index.js';
 
 export const SCHEMA_VERSION = 11;
@@ -219,6 +219,9 @@ export function normalize(doc) {
     const n = Number(display[key]);
     display[key] = Number.isFinite(n) ? Math.min(lim.max, Math.max(lim.min, n)) : DEFAULT_DISPLAY[key];
   }
+  // 축 눈금 종류·방향 (표시 선택 — DIRECTION #4)
+  display.axis = AXIS_KINDS.includes(display.axis) ? display.axis : 'calendar';
+  display.axisDir = AXIS_DIRS.includes(display.axisDir) ? display.axisDir : 'vertical';
   doc.meta.display = display;
 
   // ── 담당 조직

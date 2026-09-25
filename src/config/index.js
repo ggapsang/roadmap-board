@@ -112,7 +112,19 @@ export const DEFAULT_DISPLAY = {
   arrowBite: 0,
   /** 카드 글자 배율 */
   fontScale: 1.0,
+  /**
+   * 세로축 눈금 종류 (docs/DIRECTION.md #4). 축은 본래 '순서'이고 달력은 그 위에
+   * 얹는 선택적 눈금이다. 'calendar'=날짜 눈금, 'order'=순서만.
+   * 지금은 'calendar'만 구현 — 'order'는 자리만 잡아 둔다.
+   */
+  axis: 'calendar',
+  /** 축 방향 — 'vertical'(세로) | 'horizontal'(가로). 지금은 vertical만 구현. */
+  axisDir: 'vertical',
 };
+
+/** 눈금 종류 · 축 방향 허용값 (표시 선택이지 데이터가 아니다) */
+export const AXIS_KINDS = ['calendar', 'order'];
+export const AXIS_DIRS = ['vertical', 'horizontal'];
 
 export const DISPLAY_LIMITS = {
   arrowWidth: { min: 1, max: 24, step: 1 },

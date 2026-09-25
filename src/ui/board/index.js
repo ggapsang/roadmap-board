@@ -200,7 +200,12 @@ export class Board {
   }
   get totalDays() { return dayIndex(this.endDate, this.origin); }
 
-  /** 일 인덱스 ↔ 픽셀. 묶어서 접은 구간이 있으면 그만큼 눌린다. */
+  /**
+   * 스케일 = 일 인덱스 ↔ 픽셀. 묶어서 접은 구간이 있으면 그만큼 눌린다.
+   * 지금은 '달력 스케일'(TimeScale)만 구현한다. meta.display.axis === 'order'가 되면
+   * 여기서 순서 스케일이 끼어든다 — 스케일은 yOf/span/dayAt/height 인터페이스만 맞추면 된다
+   * (docs/DIRECTION.md #4). 그래서 Board 나머지 코드는 '달력'을 몰라도 된다.
+   */
   #buildScale() {
     this.scale = new TimeScale(this.origin, this.totalDays, this.view.ppd, this.store.doc.bands ?? []);
     return this.scale;

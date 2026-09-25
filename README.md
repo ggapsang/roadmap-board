@@ -90,7 +90,7 @@ DB 기본 위치는 `%APPDATA%/wolfpack/wolfpack.db` — 메뉴의 **파일 › 
   "version": 10,
   "meta": {
     "start": "2026-09-21", "end": "2027-04-04", "name": "Project Machina 1차년도",
-    "display": { "arrowWidth": 7, "arrowHead": 2, "fontScale": 1 }
+    "display": { "arrowWidth": 7, "arrowHead": 2, "fontScale": 1, "axis": "calendar", "axisDir": "vertical" }
   },
   "orgs": ["다임리서치", "다임랩스", "에이텍모빌리티", "에이텍오토", "LG에너지솔루션", "공동"],
   "bands": [ { "id": "b1", "from": "2027-01-01", "to": "2027-03-31", "label": "2027 1Q" } ],
