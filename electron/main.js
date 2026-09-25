@@ -192,6 +192,7 @@ async function runSmoke(target) {
   let orderMode = null;
   let containCheck = null;
   let taskCheck = null;
+  let idCheck = null;
   let trackResize = null;
   let spanEdit = null;
   let newTrack = null;
@@ -376,6 +377,26 @@ async function runSmoke(target) {
       };
     })()`);
     console.log('[smoke] task ' + JSON.stringify(taskCheck));
+
+    // 보드-독립 재식별 — 복제본은 새 id, 참조(부모·관계) 정합 유지 (DIRECTION #3)
+    idCheck = await target.webContents.executeJavaScript(`(async () => {
+      const { reidentify } = await import('./src/core/schema.js');
+      const r = window.__roadmap;
+      const before = structuredClone(r.store.doc);
+      const beforeIds = new Set(before.items.map((i) => i.id));
+      const after = reidentify(structuredClone(before));
+      const afterIds = after.items.map((i) => i.id);
+      const set = new Set(afterIds);
+      return {
+        n: afterIds.length,
+        allNew: afterIds.every((id) => !beforeIds.has(id)),
+        unique: set.size === afterIds.length,
+        relOk: (after.relations ?? []).every((x) => set.has(x.from) && set.has(x.to)),
+        parentOk: after.items.every((i) => !i.parent || set.has(i.parent)),
+        relKept: (after.relations ?? []).length === (before.relations ?? []).length,
+      };
+    })()`);
+    console.log('[smoke] id ' + JSON.stringify(idCheck));
 
     // 트랙 열 너비 드래그 — 재렌더로 손잡이가 사라져도 이어져야 한다
     trackResize = await withTimeout(target.webContents.executeJavaScript(`(async () => {
@@ -1063,6 +1084,8 @@ async function runSmoke(target) {
     && orderMode?.hasOrderAxis === true && orderMode?.ordered === true && orderMode?.cards > 0 && orderMode?.back === true
     && containCheck?.count > 0 && containCheck?.hasE10 === true && containCheck?.allValid === true
     && taskCheck?.count === 2 && taskCheck?.doneKept === true && taskCheck?.uniqueIds === true && taskCheck?.chip === true
+    && idCheck?.n > 0 && idCheck?.allNew === true && idCheck?.unique === true
+    && idCheck?.relOk === true && idCheck?.parentOk === true && idCheck?.relKept === true
     && layout?.panelOpen === true && layout?.shrunk > 280 && layout?.selectable === 'text'
     && trackResize?.grew === true && trackResize?.reset === null
     && spanEdit?.after?.sp === 3 && spanEdit?.after?.px > spanEdit?.before?.px

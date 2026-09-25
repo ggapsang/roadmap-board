@@ -473,3 +473,33 @@ export function prepare(raw) {
 export function newId(prefix) {
   return prefix + Date.now().toString(36) + Math.floor(Math.random() * 1e3).toString(36);
 }
+
+/**
+ * 보드-독립 재식별 (docs/DIRECTION.md #3).
+ *
+ * 문서의 모든 이벤트에 **새 id**를 주고 참조(상위 일정·관계·태스크)를 함께 옮긴다.
+ * 프로젝트 복제·반입으로 같은 id가 여러 보드에 흩어지면, 나중에 "같은 이벤트가 여러
+ * 보드에" 올라갈 때 서로 다른 이벤트가 같은 키를 갖는 충돌이 생긴다. 복제본은 별개
+ * 이벤트이므로 여기서 새 식별을 부여해 그 충돌을 원천에서 막는다.
+ *
+ * 입력(정규화된 문서 모양)을 변형하고 그대로 돌려준다.
+ */
+export function reidentify(doc) {
+  const map = new Map();                       // 옛 id → 새 id
+  const used = new Set();
+  const fresh = (pfx) => { let x; do { x = newId(pfx); } while (used.has(x)); used.add(x); return x; };
+
+  for (const it of doc.items ?? []) {
+    const nu = fresh('e');
+    map.set(it.id, nu);
+    it.id = nu;
+  }
+  for (const it of doc.items ?? []) {
+    if (it.parent) it.parent = map.get(it.parent) ?? null;
+    for (const t of (Array.isArray(it.tasks) ? it.tasks : [])) t.id = fresh('k');
+  }
+  doc.relations = (Array.isArray(doc.relations) ? doc.relations : [])
+    .map((r) => ({ ...r, id: fresh('r'), from: map.get(r.from), to: map.get(r.to) }))
+    .filter((r) => r.from && r.to);            // 끝점을 못 옮긴 관계는 버린다
+  return doc;
+}

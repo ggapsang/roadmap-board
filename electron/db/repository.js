@@ -6,6 +6,7 @@
  * 트랜잭션 한 번이면 끝나고, 부분 갱신 로직을 두는 것보다 정합성이 확실하다.
  * 규모가 커지면 이 함수 안만 바꾸면 된다.
  */
+import { reidentify } from '../../src/core/schema.js';
 
 /** 리비전을 남기는 최소 간격(분). 타이핑 한 글자마다 스냅샷이 쌓이는 걸 막는다. */
 const REVISION_INTERVAL_MIN = 5;
@@ -82,6 +83,8 @@ export class BoardRepository {
     let doc;
     try { doc = this.load(); } finally { this.boardId = previous; }
     if (!doc) throw new Error('복제할 프로젝트를 찾을 수 없습니다.');
+    // 복제본은 별개 이벤트다 — 새 id를 부여해 보드를 넘는 식별 충돌을 막는다 (#3).
+    reidentify(doc);
     return this.createProject(doc, name);
   }
 
