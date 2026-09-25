@@ -13,7 +13,7 @@
 import { dayIndex, dateAt } from '../../core/dates.js';
 
 export function attachDrag(grid, {
-  store, view, getOrigin, getTotalDays, getScale, onDragEnd,
+  store, view, getOrigin, getTotalDays, getScale, getOrderMode, onDragEnd,
 }) {
   let drag = null;
 
@@ -30,6 +30,7 @@ export function attachDrag(grid, {
 
   grid.addEventListener('pointerdown', (ev) => {
     if (store.readonly || ev.button !== 0) return;
+    if (getOrderMode?.()) return;     // 순서 모드(초안)에선 날짜 드래그 비활성
     if (view.textSelect) return;      // 텍스트 선택 모드에서는 이동하지 않는다
     const card = ev.target.closest('.ev');
     if (!card) return;

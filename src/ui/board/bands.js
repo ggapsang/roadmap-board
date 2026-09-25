@@ -11,7 +11,7 @@ import { el } from '../dom.js';
 import { askText } from '../dialog.js';
 import { toast } from '../toast.js';
 
-export function attachBandEditing(gutM, { store, getOrigin, getScale, onChange }) {
+export function attachBandEditing(gutM, { store, getOrigin, getScale, getOrderMode, onChange }) {
   let drag = null;
   let resizing = null;
 
@@ -19,6 +19,7 @@ export function attachBandEditing(gutM, { store, getOrigin, getScale, onChange }
 
   gutM.addEventListener('pointerdown', (ev) => {
     if (store.readonly || ev.button !== 0) return;
+    if (getOrderMode?.()) return;     // 순서 모드(초안)에선 달력 칸 묶기·접기 비활성
 
     // 아래 가장자리를 잡으면 높이 조절. 묶은 구간이든 낱개 월이든 된다 —
     // 낱개 월은 그 달만 1개월짜리 구간으로 만들어 스케일을 건다(병합 없이 축소/확대).
@@ -130,6 +131,7 @@ export function attachBandEditing(gutM, { store, getOrigin, getScale, onChange }
 
   // 이름 바꾸기 / 높이 원래대로
   gutM.addEventListener('dblclick', async (ev) => {
+    if (getOrderMode?.()) return;
     const cell = cellAt(ev.target);
     const id = cell?.dataset.band;
     if (!id) return;
@@ -156,6 +158,7 @@ export function attachBandEditing(gutM, { store, getOrigin, getScale, onChange }
 
   // 우클릭 메뉴 — 빈 구간(세로축 날짜 칸) 삭제 / 접기, 묶은 구간 해제
   gutM.addEventListener('contextmenu', (ev) => {
+    if (getOrderMode?.()) return;
     const cell = cellAt(ev.target);
     if (!cell) return;
     ev.preventDefault();

@@ -14,6 +14,7 @@
 import { parseDate, dayIndex, dateAt } from '../../core/dates.js';
 import { TimeScale } from '../../core/timescale.js';
 import { computeLayout, gridTemplate } from '../../core/layout.js';
+import { computeOrder, orderLayout, OrderScale } from '../../core/order.js';
 import { newId } from '../../core/schema.js';
 import { LAYOUT, DEFAULT_STATUS, DEFAULT_TYPE } from '../../config/index.js';
 import { el, clear } from '../dom.js';
@@ -45,6 +46,7 @@ export class Board {
       store,
       getOrigin: () => this.origin,
       getScale: () => this.scale,
+      getOrderMode: () => this.orderMode,
       onChange: () => this.rebuild(),
     });
     attachDrag(grid, {
@@ -52,6 +54,7 @@ export class Board {
       getOrigin: () => this.origin,
       getTotalDays: () => this.totalDays,
       getScale: () => this.scale,
+      getOrderMode: () => this.orderMode,
       onDragEnd: (id) => this.handlers.openItem(id),
     });
   }
@@ -200,6 +203,11 @@ export class Board {
   }
   get totalDays() { return dayIndex(this.endDate, this.origin); }
 
+  /** 순서 모드 — 축이 달력이 아니라 rank(선행 순서). DIRECTION #4-c (초안). */
+  get orderMode() { return this.store.meta.display?.axis === 'order'; }
+  /** 순서 모드의 한 rank 행 높이(px). 확대 배율을 그대로 쓴다. */
+  get rowH() { return this.view.weekHeight; }
+
   /**
    * 스케일 = 일 인덱스 ↔ 픽셀. 묶어서 접은 구간이 있으면 그만큼 눌린다.
    * 지금은 '달력 스케일'(TimeScale)만 구현한다. meta.display.axis === 'order'가 되면
@@ -207,7 +215,12 @@ export class Board {
    * (docs/DIRECTION.md #4). 그래서 Board 나머지 코드는 '달력'을 몰라도 된다.
    */
   #buildScale() {
-    this.scale = new TimeScale(this.origin, this.totalDays, this.view.ppd, this.store.doc.bands ?? []);
+    if (this.orderMode) {
+      this._rank = computeOrder(this.store.items, this.store.relations);
+      this.scale = new OrderScale(this._rank, this.rowH);
+    } else {
+      this.scale = new TimeScale(this.origin, this.totalDays, this.view.ppd, this.store.doc.bands ?? []);
+    }
     return this.scale;
   }
 
@@ -242,9 +255,9 @@ export class Board {
 
   /** 마지막으로 축을 그린 범위와 지금 범위가 다른가 */
   #rangeChanged() {
-    return !this._axis
-      || this._axis.origin !== this.origin.getTime()
-      || this._axis.days !== this.totalDays;
+    if (!this._axis || this._axis.order !== this.orderMode) return true;
+    if (this.orderMode) return this._axis.days !== (this._rank?.size ?? 0);
+    return this._axis.origin !== this.origin.getTime() || this._axis.days !== this.totalDays;
   }
 
   #columnsMatchTracks() {
@@ -255,6 +268,14 @@ export class Board {
   }
 
   #computeLayout() {
+    if (this.orderMode) {
+      // 순서 모드: 세로는 rank(스케일), 가로는 같은 트랙·같은 rank끼리만 레인 분할.
+      const placement = orderLayout(
+        this.store.tracks, this.store.items, this._rank ?? new Map(), (i) => this.view.isVisible(i),
+      );
+      this._layout = { placement, trackLanes: new Map(), childrenOf: new Map(), depthOf: new Map() };
+      return;
+    }
     this._layout = computeLayout(
       this.store.tracks, this.store.items, this.origin, (i) => this.view.isVisible(i),
     );
@@ -277,13 +298,17 @@ export class Board {
 
   /** 시간축 + 트랙 컬럼 + 오늘선 + 화살표 레이어 */
   #renderSkeleton() {
-    renderAxis({
-      lines: this.lines, gutM: this.gutM, gutW: this.gutW, grid: this.grid,
-      origin: this.origin, endDate: this.endDate,
-      totalDays: this.totalDays, ppd: this.view.ppd,
-      bands: this.store.doc.bands ?? [],
-      scale: this.scale,
-    });
+    if (this.orderMode) {
+      this.#renderOrderAxis();
+    } else {
+      renderAxis({
+        lines: this.lines, gutM: this.gutM, gutW: this.gutW, grid: this.grid,
+        origin: this.origin, endDate: this.endDate,
+        totalDays: this.totalDays, ppd: this.view.ppd,
+        bands: this.store.doc.bands ?? [],
+        scale: this.scale,
+      });
+    }
 
     for (const node of this.grid.querySelectorAll('.col,.pad,.now,.arrows')) node.remove();
     this.columns.clear();
@@ -296,11 +321,33 @@ export class Board {
     this.grid.append(el('div.pad'));
     this.grid.append(this.arrowLayer);
 
-    const now = makeTodayLine(this.origin, this.totalDays, this.scale);
-    if (now) this.grid.append(now);
+    if (!this.orderMode) {
+      const now = makeTodayLine(this.origin, this.totalDays, this.scale);
+      if (now) this.grid.append(now);
+    }
 
-    // 다음 render()에서 범위 변화를 감지하려고 방금 그린 축 범위를 기록한다
-    this._axis = { origin: this.origin.getTime(), days: this.totalDays };
+    // 다음 render()에서 범위/모드 변화를 감지하려고 방금 그린 축을 기록한다
+    this._axis = {
+      order: this.orderMode,
+      origin: this.orderMode ? 0 : this.origin.getTime(),
+      days: this.orderMode ? (this._rank?.size ?? 0) : this.totalDays,
+    };
+  }
+
+  /** 순서 모드 축 — 왼쪽 칸에 rank 순번을 표시한다 (달력·오늘선 없음). DIRECTION #4-c 초안. */
+  #renderOrderAxis() {
+    clear(this.lines); clear(this.gutM); clear(this.gutW);
+    this.grid.style.height = this.scale.height + 'px';
+    let max = 0;
+    for (const v of (this._rank ?? new Map()).values()) max = Math.max(max, v);
+    for (let r = 0; r <= max; r++) {
+      const y = r * this.rowH;
+      this.lines.append(el('i', { className: 'm', style: { top: `${y}px` } }));
+      this.gutM.append(el('b', {
+        style: { top: `${y}px`, height: `${this.rowH}px` },
+        dataset: { from: String(r), to: String(r + 1), band: '' },
+      }, [el('u', {}, [document.createTextNode(String(r + 1)), el('em', { text: '순서' })])]));
+    }
   }
 
   /**
@@ -331,7 +378,8 @@ export class Board {
     for (const item of ordered) {
       if (!this.view.isVisible(item)) continue;
 
-      const parent = item.parent ? byId.get(item.parent) : null;
+      // 순서 모드(초안)는 중첩을 펼쳐(flatten) 모두 트랙의 한 카드로 다룬다.
+      const parent = this.orderMode ? null : (item.parent ? byId.get(item.parent) : null);
       // 상위 카드가 안 그려졌으면(숨김/필터) 자식도 놓을 자리가 없다
       const host = parent ? cardEls.get(parent.id) : this.columns.get(item.place.t);
       if (!host) continue;
@@ -340,8 +388,8 @@ export class Board {
         ...ctx,
         match: this.view.matches(item),
         parent,
-        hasChildren: (childrenOf.get(item.id) ?? []).length > 0,
-        spanBox: parent ? null : this.#spanBox(item, placement.get(item.id), colWidth),
+        hasChildren: !this.orderMode && (childrenOf.get(item.id) ?? []).length > 0,
+        spanBox: (parent || this.orderMode) ? null : this.#spanBox(item, placement.get(item.id), colWidth),
       });
       host.append(node);
       cardEls.set(item.id, node);
@@ -450,6 +498,7 @@ export class Board {
 
     this.grid.addEventListener('pointerdown', (ev) => {
       if (this.store.readonly || ev.button !== 0) return;
+      if (this.orderMode) return;                // 순서 모드(초안)에선 날짜 생성 비활성
       if (this.view.textSelect) return;
       if (ev.target.closest('.ev')) return;      // 카드 이동은 drag.js 몫
       const col = ev.target.closest('.col');

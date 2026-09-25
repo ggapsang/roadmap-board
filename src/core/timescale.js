@@ -71,6 +71,12 @@ export class TimeScale {
   /** 'YYYY-MM-DD' → 픽셀 */
   yOf(iso) { return this.y(dayIndex(iso, this.origin)); }
 
+  // ── 스케일 인터페이스 (달력이든 순서든 카드는 이것만 쓴다, DIRECTION #4) ──
+  /** 이벤트의 top(px). 달력에선 시작일 위치. */
+  topOf(item) { return this.yOf(item.s); }
+  /** 이벤트의 높이(px). 달력에선 기간. */
+  heightOf(item) { return this.span(item.s, item.e); }
+
   /** 두 날짜 사이의 픽셀 높이 (종료일 inclusive) */
   span(fromIso, toIso) {
     return Math.max(0, this.yOf(toIso) + this.dayHeight(dayIndex(toIso, this.origin)) - this.yOf(fromIso));

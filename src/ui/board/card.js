@@ -47,9 +47,9 @@ export function renderCard(item, ctx) {
   const forced = item.place?.hd != null;
 
   // 자식은 상위 카드 기준으로, 최상위는 보드 기준으로 세로 위치를 잡는다.
-  // 접힌 구간이 있으면 눈금이 균일하지 않으므로 TimeScale을 거친다.
-  const base = parent ? scale.yOf(parent.s) : 0;
-  const top = scale.yOf(item.s) - base;
+  // 위치·높이는 스케일에 맡긴다 — 달력이면 날짜로, 순서면 rank로 (스케일이 안다).
+  const base = parent ? scale.topOf(parent) : 0;
+  const top = scale.topOf(item) - base;
 
   const node = el('div.ev', {
     dataset: { id: item.id },
@@ -119,7 +119,7 @@ export function renderCard(item, ctx) {
   }
 
   // 세로 크기 강제(hd, 일)면 날짜와 무관하게 그 길이로. 아니면 기간대로.
-  const rawH = forced ? item.place.hd * ppd : scale.span(item.s, item.e);
+  const rawH = forced ? item.place.hd * ppd : scale.heightOf(item);
   const height = Math.max(LAYOUT.minCardHeight, rawH - LAYOUT.cardGap);
 
   node.style.height = height + 'px';

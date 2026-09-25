@@ -159,7 +159,7 @@ SQLite 안에서는 `board` · `track` · `org` · `item` · `dependency` · `re
 - [ ] **P1** 읽기 전용 공유, 인쇄 레이아웃 정리
 - [ ] **P2** 선행 일정 지연 시 영향 경고, 다중 사용자
 - [ ] **P3** 산출물 체계 연계
-- [ ] **순서 기반 이벤트 전개 시스템** 본질/배치 분리, 관계 일급화, 순서축(달력 선택) — [docs/DIRECTION.md](./docs/DIRECTION.md)
+- [x] **순서 기반 이벤트 전개 시스템** 본질/배치 분리(`item.place`)·관계 일급화(`doc.relations`)·순서축 초안(구성 › 표시 › 순서 축) — [docs/DIRECTION.md](./docs/DIRECTION.md)
 
 ## 디자인
 

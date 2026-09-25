@@ -189,6 +189,7 @@ async function runSmoke(target) {
   let nested = null;
   let relCheck = null;
   let orderCheck = null;
+  let orderMode = null;
   let trackResize = null;
   let spanEdit = null;
   let newTrack = null;
@@ -306,6 +307,31 @@ async function runSmoke(target) {
       return { size: rank.size, edges, topoOk, maxRank };
     })()`);
     console.log('[smoke] order ' + JSON.stringify(orderCheck));
+
+    // 순서 렌더 모드(초안) — axis='order'면 rank로 세로 배치, 선행 from이 to보다 위
+    orderMode = await withTimeout(target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      r.store.commit('축 순서', (doc) => { doc.meta.display.axis = 'order'; });
+      r.board.render();
+      await new Promise((res) => setTimeout(res, 200));
+      const topOf = (id) => { const el = document.querySelector('[data-id="' + id + '"]'); return el ? Math.round(el.getBoundingClientRect().top) : null; };
+      const rel = r.store.relations.find((x) => x.type === 'dep' && document.querySelector('[data-id="' + x.from + '"]') && document.querySelector('[data-id="' + x.to + '"]'));
+      const ordered = rel ? topOf(rel.from) < topOf(rel.to) : false;
+      const em = document.querySelector('.gut-m b u em');
+      const hasOrderAxis = !!em && em.textContent === '순서';
+      const cards = document.querySelectorAll('.col > .ev').length;
+      return { cards, ordered, hasOrderAxis };
+    })()`), 20000, 'order-mode');
+    if (shotDir()) await capture(target, 'board-order');
+    // 되돌리기 — 이후 단계는 달력 모드를 전제로 한다
+    orderMode.back = await target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      r.store.commit('축 달력', (doc) => { doc.meta.display.axis = 'calendar'; });
+      r.board.render();
+      await new Promise((res) => setTimeout(res, 200));
+      return document.querySelector('.gut-m b u em')?.textContent !== '순서';
+    })()`);
+    console.log('[smoke] order-mode ' + JSON.stringify(orderMode));
 
     // 트랙 열 너비 드래그 — 재렌더로 손잡이가 사라져도 이어져야 한다
     trackResize = await withTimeout(target.webContents.executeJavaScript(`(async () => {
@@ -990,6 +1016,7 @@ async function runSmoke(target) {
   const ok = !result.error && !opened?.error && !renamed?.error
     && relCheck?.allDep === true && relCheck?.added === true && relCheck?.removed === true
     && orderCheck?.topoOk === true && orderCheck?.edges > 0 && orderCheck?.maxRank > 0
+    && orderMode?.hasOrderAxis === true && orderMode?.ordered === true && orderMode?.cards > 0 && orderMode?.back === true
     && layout?.panelOpen === true && layout?.shrunk > 280 && layout?.selectable === 'text'
     && trackResize?.grew === true && trackResize?.reset === null
     && spanEdit?.after?.sp === 3 && spanEdit?.after?.px > spanEdit?.before?.px

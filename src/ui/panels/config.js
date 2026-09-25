@@ -42,6 +42,13 @@ export class ConfigPanel {
       });
     }
     this._displayFields = fields;
+
+    // 순서 축 토글 (초안) — 켜면 날짜가 아니라 선행 순서(rank)로 배치한다.
+    $('v-order').addEventListener('change', (e) => {
+      this.store.commit('축 모드', (doc) => {
+        doc.meta.display.axis = e.target.checked ? 'order' : 'calendar';
+      });
+    });
   }
 
   #renderDisplay() {
@@ -50,6 +57,7 @@ export class ConfigPanel {
       $(id).value = display[key];
       $(`${id}-out`).textContent = format(display[key]);
     }
+    $('v-order').checked = display.axis === 'order';
   }
 
   open(trackId = null) {
