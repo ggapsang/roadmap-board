@@ -210,16 +210,19 @@ export class ItemPanel {
     }
 
     for (const other of others) {
-      const trackName = this.store.track(other.t)?.name ?? '';
+      const trackName = this.store.track(other.place.t)?.name ?? '';
+      const dep = (r) => r.type === 'dep' && r.from === other.id && r.to === item.id;
       const cb = el('input', {
         type: 'checkbox',
-        checked: item.dp.includes(other.id),
+        checked: this.store.relations.some(dep),
         on: {
           change: (e) => {
-            this.store.commit('선행 일정 변경', () => {
-              item.dp = e.target.checked
-                ? [...new Set([...item.dp, other.id])]
-                : item.dp.filter((d) => d !== other.id);
+            this.store.commit('선행 일정 변경', (doc) => {
+              if (e.target.checked) {
+                if (!doc.relations.some(dep)) doc.relations.push({ id: newId('r'), type: 'dep', from: other.id, to: item.id });
+              } else {
+                doc.relations = doc.relations.filter((r) => !dep(r));
+              }
             });
           },
         },
@@ -281,7 +284,7 @@ export class ItemPanel {
     const title = item.ti || '이름 없는 일정';
     this.store.commit('일정 삭제', (doc) => {
       doc.items = doc.items.filter((x) => x.id !== item.id);
-      for (const x of doc.items) x.dp = x.dp.filter((d) => d !== item.id);
+      doc.relations = (doc.relations ?? []).filter((r) => r.from !== item.id && r.to !== item.id);
     });
     this.panels.close();
     toast(`'${title}'을(를) 삭제했습니다`);
@@ -291,7 +294,12 @@ export class ItemPanel {
     const item = this.item;
     if (!item) return;
     const copy = { ...structuredClone(item), id: newId('e'), ti: item.ti + ' (복사)' };
-    this.store.commit('일정 복제', (doc) => { doc.items.push(copy); });
+    this.store.commit('일정 복제', (doc) => {
+      doc.items.push(copy);
+      // 원본으로 들어오던 선행 관계를 복제본에도 그대로 (같은 선행을 가진 새 일정)
+      const incoming = (doc.relations ?? []).filter((r) => r.to === item.id);
+      for (const r of incoming) doc.relations.push({ id: newId('r'), type: r.type, from: r.from, to: copy.id });
+    });
     this.open(copy.id);
   }
 }

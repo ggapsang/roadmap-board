@@ -24,7 +24,7 @@ export function createArrowLayer() {
  * @param {object[]} items
  * @param {{arrowWidth:number, arrowHead:number}} display
  */
-export function drawArrows(layer, grid, items, display) {
+export function drawArrows(layer, grid, items, relations, display) {
   const group = layer.querySelector('g');
   if (!group) return;
   group.replaceChildren();
@@ -64,34 +64,35 @@ export function drawArrows(layer, grid, items, display) {
     titleObstacles.push({ x, y, w: t.offsetWidth, h: t.offsetHeight });
   }
 
-  for (const item of items) {
-    for (const depId of item.dp ?? []) {
-      const from = box.get(depId);
-      const to = box.get(item.id);
-      if (!from || !to) continue;             // 필터로 숨겨진 경우
+  // 화살표는 '선행(dep)' 관계만 그린다 (from=선행 → to=후행).
+  for (const rel of relations) {
+    if (rel.type !== 'dep') continue;
+    const from = box.get(rel.from);
+    const to = box.get(rel.to);
+    if (!from || !to) continue;             // 필터로 숨겨진 경우
 
-      const obstacles = [...titleObstacles];
-      for (const [id, rect] of box) {
-        if (id === depId || id === item.id || container.has(id)) continue;
-        obstacles.push(rect);
-      }
-
-      const sameTrack = trackOf.get(depId) === item.place.t;
-      const d = blockArrowPath(routeBetween(from, to, sameTrack, bite, obstacles), width, head);
-      if (!d) continue;
-
-      const path = document.createElementNS(NS, 'path');
-      path.setAttribute('d', d);
-      path.setAttribute('class', 'arrow');
-      path.append(makeTitle(depId, item, items));
-      group.append(path);
+    const obstacles = [...titleObstacles];
+    for (const [id, rect] of box) {
+      if (id === rel.from || id === rel.to || container.has(id)) continue;
+      obstacles.push(rect);
     }
+
+    const sameTrack = trackOf.get(rel.from) === trackOf.get(rel.to);
+    const d = blockArrowPath(routeBetween(from, to, sameTrack, bite, obstacles), width, head);
+    if (!d) continue;
+
+    const path = document.createElementNS(NS, 'path');
+    path.setAttribute('d', d);
+    path.setAttribute('class', 'arrow');
+    path.append(makeTitle(rel.from, rel.to, items));
+    group.append(path);
   }
 }
 
-function makeTitle(depId, item, items) {
+function makeTitle(fromId, toId, items) {
   const title = document.createElementNS(NS, 'title');
-  const dep = items.find((i) => i.id === depId);
-  title.textContent = `${dep?.ti ?? depId} → ${item.ti}`;
+  const from = items.find((i) => i.id === fromId);
+  const to = items.find((i) => i.id === toId);
+  title.textContent = `${from?.ti ?? fromId} → ${to?.ti ?? toId}`;
   return title;
 }

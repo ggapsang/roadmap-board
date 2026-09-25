@@ -346,7 +346,7 @@ export class Board {
     for (const node of cardEls.values()) fitTitle(node);
 
     // 카드가 붙은 뒤에야 offsetLeft/offsetTop이 확정된다
-    drawArrows(this.arrowLayer, this.grid, this.store.items, this.store.meta.display);
+    drawArrows(this.arrowLayer, this.grid, this.store.items, this.store.relations, this.store.meta.display);
   }
 
   /** 각 트랙 컬럼의 실제 너비(px) */
@@ -382,7 +382,7 @@ export class Board {
   }
 
   redrawArrows() {
-    drawArrows(this.arrowLayer, this.grid, this.store.items, this.store.meta.display);
+    drawArrows(this.arrowLayer, this.grid, this.store.items, this.store.relations, this.store.meta.display);
   }
 
   // ── 입력 ────────────────────────────────────────────────

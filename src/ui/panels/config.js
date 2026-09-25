@@ -119,7 +119,7 @@ export class ConfigPanel {
     this.store.commit('트랙 삭제', (doc) => {
       const removed = new Set(doc.items.filter((x) => x.place.t === track.id).map((x) => x.id));
       doc.items = doc.items.filter((x) => x.place.t !== track.id);
-      for (const x of doc.items) x.dp = x.dp.filter((d) => !removed.has(d));
+      doc.relations = (doc.relations ?? []).filter((r) => !removed.has(r.from) && !removed.has(r.to));
       doc.tracks.splice(index, 1);
       doc.items.forEach((it) => {
         const ti = doc.tracks.findIndex((x) => x.id === it.place.t);

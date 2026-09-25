@@ -125,11 +125,8 @@ export class BoardRepository {
       'SELECT item_id, depends_on FROM dependency WHERE board_id = ?',
     ).all(this.boardId);
 
-    const depMap = new Map();
-    for (const d of deps) {
-      if (!depMap.has(d.item_id)) depMap.set(d.item_id, []);
-      depMap.get(d.item_id).push(d.depends_on);
-    }
+    // 선행(dependency) 테이블 = 'dep' 종류의 관계. from=선행(depends_on), to=후행(item_id).
+    const relations = deps.map((d) => ({ id: `r_${d.item_id}_${d.depends_on}`, type: 'dep', from: d.depends_on, to: d.item_id }));
 
     return {
       version: board.doc_version,
@@ -137,6 +134,7 @@ export class BoardRepository {
       orgs,
       bands,
       tracks,
+      relations,
       items: rows.map((r) => ({
         id: r.id,
         s: r.start_date, e: r.end_date,
@@ -147,7 +145,6 @@ export class BoardRepository {
           t: r.track_id, sp: r.span,
           align: r.align, showNote: r.show_note === 1, hd: r.height_days ?? null, x: r.pos_x, w: r.pos_w,
         },
-        dp: depMap.get(r.id) ?? [],
       })),
     };
   }
@@ -219,9 +216,16 @@ export class BoardRepository {
           align: p.align ?? 'middle', showNote: p.showNote ? 1 : 0,
         });
       });
-      // 선행 참조는 모든 item이 들어간 뒤에 (FK 충족)
-      for (const it of doc.items) {
-        for (const dep of it.dp ?? []) insDep.run(this.boardId, it.id, dep);
+      // 선행 관계는 모든 item이 들어간 뒤에 (FK 충족). relations의 'dep' 종류를 저장.
+      // 정규화 전 문서(item.dp만 있는 경우)도 관대하게 받는다.
+      if (Array.isArray(doc.relations)) {
+        for (const rel of doc.relations) {
+          if (rel.type === 'dep') insDep.run(this.boardId, rel.to, rel.from);
+        }
+      } else {
+        for (const it of doc.items) {
+          for (const dep of it.dp ?? []) insDep.run(this.boardId, it.id, dep);
+        }
       }
 
       this.#maybeRevision(doc, label);

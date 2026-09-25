@@ -12,9 +12,10 @@
 import {
   STATUS_KEYS, DEFAULT_STATUS, TYPE_KEYS, DEFAULT_TYPE,
   DEFAULT_ORGS, DEFAULT_DISPLAY, DISPLAY_LIMITS,
+  RELATION_TYPES, RELATION_KEYS,
 } from '../config/index.js';
 
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 
 /**
  * v0 = P0 시안 문서(version 필드 없음).
@@ -138,6 +139,18 @@ function v9_to_v10(doc) {
   return doc;
 }
 
+function v10_to_v11(doc) {
+  // 관계 일급화: item.dp(선행)를 doc.relations로 모은다 (id/검증은 normalize가).
+  const rels = Array.isArray(doc.relations) ? doc.relations.slice() : [];
+  for (const it of doc.items ?? []) {
+    for (const d of (Array.isArray(it.dp) ? it.dp : [])) rels.push({ type: 'dep', from: d, to: it.id });
+    delete it.dp;
+  }
+  doc.relations = rels;
+  doc.version = 11;
+  return doc;
+}
+
 const MIGRATIONS = {
   0: v0_to_v1,
   1: v1_to_v2,
@@ -149,6 +162,7 @@ const MIGRATIONS = {
   7: v7_to_v8,
   8: v8_to_v9,
   9: v9_to_v10,
+  10: v10_to_v11,
 };
 
 export const ALIGNS = ['top', 'middle', 'bottom'];
@@ -323,16 +337,60 @@ export function normalize(doc) {
     if (parent) { it.place.t = parent.place.t; it.place.sp = 1; }
   }
 
-  // ── 선행 참조 정리: 없는 id / 자기 자신 / 중복 제거
+  // ── 관계(relations)를 일급 객체로 정리 (docs/DIRECTION.md #2·#5·#7)
+  // doc.relations와 옛 item.dp(선행)를 함께 받아 종류·끝점·순환을 검증한다.
   const itemIds = new Set(doc.items.map((i) => i.id));
-  for (const it of doc.items) {
-    const before = it.dp.length;
-    it.dp = [...new Set(it.dp)].filter((d) => d !== it.id && itemIds.has(d));
-    if (it.dp.length !== before) warnings.push(`'${it.ti || it.id}'의 끊어진 선행 일정 참조를 정리했습니다.`);
+  const relBefore = (Array.isArray(doc.relations) ? doc.relations.length : 0)
+    + doc.items.reduce((s, it) => s + (Array.isArray(it.dp) ? it.dp.length : 0), 0);
+  doc.relations = normalizeRelations(doc, itemIds);
+  for (const it of doc.items) delete it.dp;      // 선행은 이제 item이 아니라 relations에
+  if (doc.relations.length < relBefore) {
+    warnings.push('끊어지거나 순환하는 관계를 정리했습니다.');
   }
 
   doc.version = SCHEMA_VERSION;
   return { doc, warnings };
+}
+
+/** 관계 목록 정규화 — 종류 허용, 끝점 존재, 자기순환 금지, 중복 제거, 순환 금지 종류는 사이클 차단. */
+function normalizeRelations(doc, itemIds) {
+  const acyclic = new Set(RELATION_TYPES.filter((r) => r.acyclic).map((r) => r.key));
+  const src = [];
+  if (Array.isArray(doc.relations)) for (const r of doc.relations) if (isObj(r)) src.push(r);
+  for (const it of doc.items) {
+    for (const d of (Array.isArray(it.dp) ? it.dp : [])) src.push({ type: 'dep', from: d, to: it.id });
+  }
+
+  const adj = new Map();                          // `${type}|${node}` -> Set(다음 노드)
+  const reaches = (type, s, t) => {               // s에서 t로 가는 경로가 이미 있나 (같은 종류)
+    const stack = [s]; const vis = new Set();
+    while (stack.length) {
+      const node = stack.pop();
+      if (node === t) return true;
+      if (vis.has(node)) continue;
+      vis.add(node);
+      for (const m of (adj.get(`${type}|${node}`) ?? [])) stack.push(m);
+    }
+    return false;
+  };
+
+  const seen = new Set();
+  const out = [];
+  for (const r of src) {
+    const type = RELATION_KEYS.includes(r.type) ? r.type : 'dep';
+    const { from, to } = r;
+    if (typeof from !== 'string' || typeof to !== 'string') continue;
+    if (from === to || !itemIds.has(from) || !itemIds.has(to)) continue;
+    const key = `${type}|${from}|${to}`;
+    if (seen.has(key)) continue;
+    if (acyclic.has(type) && reaches(type, to, from)) continue;   // from→to가 순환을 만들면 버린다
+    seen.add(key);
+    out.push({ id: typeof r.id === 'string' && r.id ? r.id : newId('r'), type, from, to });
+    const ak = `${type}|${from}`;
+    if (!adj.has(ak)) adj.set(ak, new Set());
+    adj.get(ak).add(to);
+  }
+  return out;
 }
 
 /** 0~1 비율. 비어 있으면 null (= 자동 배치) */

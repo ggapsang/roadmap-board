@@ -49,6 +49,20 @@ export const ITEM_TYPES = [
 export const TYPE_KEYS = ITEM_TYPES.map((t) => t.key);
 export const DEFAULT_TYPE = 'bar';
 
+/**
+ * 관계(이벤트 사이) 종류. 코드에 박지 않고 여기서 늘린다 (docs/DIRECTION.md #2·#7).
+ *   acyclic  선행·원인처럼 순환이 생기면 안 되는 관계인가 (DAG)
+ * 지금 UI가 만드는 것은 'dep'(선행) 하나. 나머지는 자리만 잡아 둔다.
+ */
+export const RELATION_TYPES = [
+  { key: 'dep', label: '선행', acyclic: true },
+  // { key: 'cause', label: '원인', acyclic: true },
+  // { key: 'join',  label: '합류' },
+  // { key: 'ref',   label: '참조' },
+];
+export const RELATION_KEYS = RELATION_TYPES.map((r) => r.key);
+export const DEFAULT_RELATION = 'dep';
+
 /** 행 높이(1주) 프리셋. px/일 = weekHeight / 7 */
 export const ZOOM_LEVELS = [
   { weekHeight: 40, label: '축소' },

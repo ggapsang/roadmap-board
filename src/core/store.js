@@ -34,6 +34,7 @@ export class Store extends Emitter {
   get tracks() { return this.#doc.tracks; }
   get orgs() { return this.#doc.orgs; }
   get items() { return this.#doc.items; }
+  get relations() { return this.#doc.relations ?? []; }
   get meta() { return this.#doc.meta; }
 
   item(id) { return this.#doc.items.find((i) => i.id === id) ?? null; }
