@@ -23,8 +23,8 @@ function autogrow(node) {
 }
 
 export class ItemPanel {
-  constructor({ store, view, panels, onChange }) {
-    Object.assign(this, { store, view, panels, onChange });
+  constructor({ store, view, panels, adapter, openProject, onChange }) {
+    Object.assign(this, { store, view, panels, adapter, openProject, onChange });
     this.#buildStatic();
     this.#bind();
   }
@@ -95,6 +95,28 @@ export class ItemPanel {
       });
     });
     $('i-taskadd').addEventListener('click', () => this.#addTask());
+
+    // 보드 별칭 — 이 카드가 대신하는 다른 보드. 비우면 보통 카드.
+    $('i-alias').addEventListener('change', (e) => {
+      const item = this.item;
+      if (!item) return;
+      const val = e.target.value ? Number(e.target.value) : null;
+      const opt = e.target.selectedOptions[0];
+      this.store.commit('보드 별칭', () => {
+        item.alias = val;
+        // 제목이 비어 있으면 대상 보드 이름을 채운다 — 카드가 그 보드를 대신하니까.
+        if (val != null && !item.ti && opt) item.ti = opt.textContent.replace(/ ⧉$/, '');
+      });
+      $(F.title).value = item.ti;
+      autogrow($(F.title));
+      this.#syncAliasOpen(item);
+    });
+    $('i-aliasopen').addEventListener('click', () => {
+      const item = this.item;
+      if (!item || item.alias == null) return;
+      this.openProject?.(item.alias);
+    });
+
     $('i-del').addEventListener('click', () => this.remove());
     $('i-dup').addEventListener('click', () => this.duplicate());
   }
@@ -127,6 +149,7 @@ export class ItemPanel {
     $(F.note).value = item.note ?? '';
 
     this.#renderParents(item);
+    this.#renderAlias(item);
     this.#syncStatus(item);
     this.#syncAlign(item);
     $('i-shownote').checked = item.place?.showNote === true;
@@ -175,6 +198,36 @@ export class ItemPanel {
       select.append(el('option', { value: other.id, text: `${other.ti} · ${track}` }));
     }
     select.value = item.parent ?? '';
+  }
+
+  /**
+   * 보드 별칭 후보 — 이 보드를 뺀 다른 프로젝트들. 대상이 목록에 없으면(삭제됨)
+   * 값은 그대로 보여 준다. listProjects는 비동기라 열린 카드가 바뀌면 버린다.
+   */
+  async #renderAlias(item) {
+    const select = $('i-alias');
+    clear(select);
+    select.append(el('option', { value: '', text: '— 없음 (보통 카드) —' }));
+    if (!this.adapter?.listProjects) { this.#syncAliasOpen(item); return; }
+
+    let projects = [];
+    try { projects = await this.adapter.listProjects(); } catch { projects = []; }
+    if (this.item?.id !== item.id) return;                 // 그새 다른 카드로 넘어갔다
+
+    const currentId = this.adapter.projectId;
+    for (const p of projects) {
+      if (p.id === currentId) continue;                    // 자기 보드는 별칭할 수 없다(무한 펼침)
+      select.append(el('option', { value: String(p.id), text: p.name }));
+    }
+    if (item.alias != null && !projects.some((p) => p.id === item.alias)) {
+      select.append(el('option', { value: String(item.alias), text: `보드 #${item.alias} (없음)` }));
+    }
+    select.value = item.alias != null ? String(item.alias) : '';
+    this.#syncAliasOpen(item);
+  }
+
+  #syncAliasOpen(item) {
+    $('i-aliasopen').hidden = item.alias == null;
   }
 
   #descendantsOf(id) {

@@ -94,6 +94,15 @@
 .ev.short>.meta .tasks-chip{display:none}
 .ev .meta.hidden{display:none}
 
+/* 별칭(포털) 카드 — 다른 보드를 대신한다. 약한 파선으로 "무언가를 가리킨다"를 표시하고,
+   오른쪽 위 ⧉ 표식을 눌러 그 보드로 들어간다(accent는 이동 신호라 허용). */
+.ev.alias{outline:1px dashed var(--accent-soft);outline-offset:-2px}
+.ev .portal{position:absolute;top:var(--u1);right:var(--u1);
+  width:18px;height:18px;display:flex;align-items:center;justify-content:center;
+  font-size:12px;line-height:1;color:var(--accent);cursor:pointer;border-radius:var(--u1);
+  background:var(--bg-elevated);border:1px solid var(--border-subtle)}
+.ev .portal:hover{background:var(--accent-soft)}
+
 .ev .pg{position:absolute;left:4px;right:0;bottom:0;height:2px;background:var(--border-subtle)}
 .ev .pg i{display:block;height:100%;background:var(--text-tertiary)}
 /* 위·아래 가장자리 = 기간. 위는 시작일, 아래는 종료일. */

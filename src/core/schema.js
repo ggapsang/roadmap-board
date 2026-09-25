@@ -15,7 +15,7 @@ import {
   RELATION_TYPES, RELATION_KEYS, AXIS_KINDS, AXIS_DIRS,
 } from '../config/index.js';
 
-export const SCHEMA_VERSION = 13;
+export const SCHEMA_VERSION = 14;
 
 /**
  * v0 = P0 시안 문서(version 필드 없음).
@@ -170,6 +170,14 @@ function v12_to_v13(doc) {
   return doc;
 }
 
+function v13_to_v14(doc) {
+  // 보드 별칭 — 한 카드가 다른 보드 하나를 통째로 대신한다(펼치면 그 보드). 없으면 null.
+  // 값은 대상 보드 id다(이벤트 id가 아니다). 여러 보드가 같은 대상을 별칭할 수 있다.
+  for (const it of doc.items ?? []) it.alias = it.alias ?? null;
+  doc.version = 14;
+  return doc;
+}
+
 const MIGRATIONS = {
   0: v0_to_v1,
   1: v1_to_v2,
@@ -184,6 +192,7 @@ const MIGRATIONS = {
   10: v10_to_v11,
   11: v11_to_v12,
   12: v12_to_v13,
+  13: v13_to_v14,
 };
 
 export const ALIGNS = ['top', 'middle', 'bottom'];
@@ -300,6 +309,10 @@ export function normalize(doc) {
     n.pg = clampInt(n.pg, 0, 100, 0);
     n.dp = Array.isArray(n.dp) ? n.dp.filter((d) => typeof d === 'string') : [];
     n.parent = typeof n.parent === 'string' && n.parent ? n.parent : null;
+
+    // 보드 별칭 — 대상 보드 id(정수)거나 없음(null). 존재 여부는 문서만으로 알 수 없어
+    // (다른 보드라서) 여기선 모양만 본다. 없는 보드를 가리키면 UI가 부드럽게 처리한다.
+    n.alias = Number.isInteger(Number(it.alias)) && Number(it.alias) > 0 ? Number(it.alias) : null;
 
     // 순서 없는 태스크(액션 아이템). 이벤트 본질이라 place가 아니라 item에 직접 둔다.
     n.tasks = (Array.isArray(it.tasks) ? it.tasks : []).filter(isObj).map((t) => {
@@ -497,6 +510,7 @@ export function reidentify(doc) {
   for (const it of doc.items ?? []) {
     if (it.parent) it.parent = map.get(it.parent) ?? null;
     for (const t of (Array.isArray(it.tasks) ? it.tasks : [])) t.id = fresh('k');
+    // it.alias는 대상 보드 id(이벤트 id가 아님)라 그대로 둔다 — 복제본도 같은 보드를 별칭한다.
   }
   doc.relations = (Array.isArray(doc.relations) ? doc.relations : [])
     .map((r) => ({ ...r, id: fresh('r'), from: map.get(r.from), to: map.get(r.to) }))

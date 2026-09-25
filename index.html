@@ -106,6 +106,13 @@
       <b>트랙 걸침</b>은 이 일정이 차지할 트랙 칸 수입니다. 2로 하면 오른쪽 트랙까지 걸칩니다.</p>
     <div class="fld"><label for="i-org">담당</label><select id="i-org"></select></div>
     <div class="fld"><label for="i-parent">상위 일정</label><select id="i-parent"></select></div>
+    <div class="fld">
+      <label for="i-alias">보드 별칭 <span class="muted">이 카드가 대신하는 다른 보드</span></label>
+      <div class="alias-row">
+        <select id="i-alias"></select>
+        <button class="btn outline sm" id="i-aliasopen" type="button" hidden>열기 ⧉</button>
+      </div>
+    </div>
     <div class="fld"><label>글자 세로 정렬</label><div class="pick" id="i-align"></div></div>
     <div class="fld">
       <label class="chk"><input id="i-shownote" type="checkbox"> 비고를 카드에 표시</label>

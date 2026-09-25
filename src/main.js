@@ -60,10 +60,11 @@ async function boot() {
       openItem: (id) => itemPanel.open(id),
       openTrack: (id) => configPanel.open(id),
       addTrack: () => configPanel.add(),
+      openAlias: (boardId) => openProject(boardId),
     },
   });
 
-  const itemPanel = new ItemPanel({ store, view, panels });
+  const itemPanel = new ItemPanel({ store, view, panels, adapter, openProject });
   const configPanel = new ConfigPanel({ store, view, panels });
   const dataPanel = new DataPanel({
     store, view, panels, adapter,

@@ -60,6 +60,7 @@ export function renderCard(item, ctx) {
   if (isMilestone) node.classList.add('ms', msPoint ? 'point' : 'ranged');
   if (hasChildren) node.classList.add('container');
   if (parent) node.classList.add('child');
+  if (item.alias != null) node.classList.add('alias');    // 다른 보드를 대신하는 포털 카드
   if (item.id === selectedId) node.classList.add('sel');
   if (match === true) node.classList.add('hit');
   if (match === false) node.classList.add('dim');
@@ -157,6 +158,11 @@ export function renderCard(item, ctx) {
   if ((height < LAYOUT.metaHideHeight && !isShort) || item.st === 'hold') meta.classList.add('hidden');
 
   node.append(el('div.t', { text: item.ti }), meta);
+
+  // 별칭 카드는 대상 보드로 들어가는 포털 표식을 단다. 클릭은 board가 가로채 연다.
+  if (item.alias != null) {
+    node.append(el('span.portal', { text: '⧉', title: '별칭 보드 열기' }));
+  }
 
   if (item.place?.showNote && item.note) {
     node.append(el('div.card-note', { text: item.note }));

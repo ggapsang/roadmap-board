@@ -193,6 +193,7 @@ async function runSmoke(target) {
   let containCheck = null;
   let taskCheck = null;
   let idCheck = null;
+  let aliasCheck = null;
   let trackResize = null;
   let spanEdit = null;
   let newTrack = null;
@@ -397,6 +398,30 @@ async function runSmoke(target) {
       };
     })()`);
     console.log('[smoke] id ' + JSON.stringify(idCheck));
+
+    // 보드 별칭 — 카드 포털 표식·정규화(정수/null)·재식별 보존 (DIRECTION #3·#7)
+    aliasCheck = await target.webContents.executeJavaScript(`(async () => {
+      const { prepare, reidentify } = await import('./src/core/schema.js');
+      const r = window.__roadmap;
+      const it = r.store.items[0];
+      const id = it.id;
+      r.store.commit('smoke-alias', () => { it.alias = 777; });
+      await new Promise((res) => setTimeout(res, 60));
+      const card = document.querySelector('.ev[data-id="' + id + '"]');
+      const hasPortal = !!(card && card.querySelector('.portal'));
+      const norm = prepare(structuredClone(r.store.doc)).doc.items.find((x) => x.id === id);
+      const bad = structuredClone(r.store.doc);
+      bad.items.find((x) => x.id === id).alias = 'nope';
+      const badNorm = prepare(bad).doc.items.find((x) => x.id === id);
+      const re = reidentify(structuredClone(r.store.doc));
+      return {
+        hasPortal,
+        kept: norm.alias === 777,
+        coerced: badNorm.alias === null,
+        reKept: re.items[0].alias === 777,
+      };
+    })()`);
+    console.log('[smoke] alias ' + JSON.stringify(aliasCheck));
 
     // 트랙 열 너비 드래그 — 재렌더로 손잡이가 사라져도 이어져야 한다
     trackResize = await withTimeout(target.webContents.executeJavaScript(`(async () => {
@@ -1086,6 +1111,7 @@ async function runSmoke(target) {
     && taskCheck?.count === 2 && taskCheck?.doneKept === true && taskCheck?.uniqueIds === true && taskCheck?.chip === true
     && idCheck?.n > 0 && idCheck?.allNew === true && idCheck?.unique === true
     && idCheck?.relOk === true && idCheck?.parentOk === true && idCheck?.relKept === true
+    && aliasCheck?.hasPortal === true && aliasCheck?.kept === true && aliasCheck?.coerced === true && aliasCheck?.reKept === true
     && layout?.panelOpen === true && layout?.shrunk > 280 && layout?.selectable === 'text'
     && trackResize?.grew === true && trackResize?.reset === null
     && spanEdit?.after?.sp === 3 && spanEdit?.after?.px > spanEdit?.before?.px

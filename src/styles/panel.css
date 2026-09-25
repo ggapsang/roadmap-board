@@ -87,6 +87,11 @@ body.panel-open{--panel-w:var(--panel-size)}
   color:var(--text-tertiary);font-size:16px;line-height:1;cursor:pointer;border-radius:var(--u1)}
 .task-del:hover{background:var(--bg-hover);color:var(--text-primary)}
 
+/* 보드 별칭 — 선택 + 열기 버튼 나란히 */
+.alias-row{display:flex;gap:var(--u2);align-items:center}
+.alias-row select{flex:1;min-width:0}
+.alias-row .btn.sm{margin-top:0;white-space:nowrap;flex:none}
+
 /* ── 입력 다이얼로그 (Electron에 prompt()가 없어서 직접 만든다) ── */
 .dlg-scrim{position:fixed;inset:0;z-index:120;background:rgba(12,10,9,.32);
   display:flex;align-items:center;justify-content:center;padding:var(--u4)}
