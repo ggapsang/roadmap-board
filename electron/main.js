@@ -857,7 +857,8 @@ async function runSmoke(target) {
     })()`), 20000, 'fixed-height');
     console.log('[smoke] fixed-height ' + JSON.stringify(fixedH));
 
-    // 크기 강제 — 오른쪽-아래 모서리는 가로·세로 함께, 위 가장자리는 위로 늘림(바닥 고정)
+    // 크기 강제 — 가장자리 손잡이로 네 방향. 오른쪽=가로(w), 아래=세로(hd),
+    // 위=위로 늘림(바닥 고정). 모서리 박스 없이 가장자리만으로 조절한다.
     cornerCheck = await withTimeout(target.webContents.executeJavaScript(`(async () => {
       const r = window.__roadmap;
       const card = document.querySelector('.col > .ev:not(.ms)');
@@ -870,39 +871,33 @@ async function runSmoke(target) {
       const grid = document.getElementById('grid');
       const ppd = r.view.ppd;
       const at = (x, y) => ({ bubbles: true, clientX: x, clientY: y, button: 0, pointerId: 1 });
-      // 1) 오른쪽-아래 모서리 → 가로(w)·세로(hd) 함께
-      const br = el().querySelector('.grip-corner[data-corner="br"]');
-      if (!br) return { error: 'br 모서리 없음' };
-      const b0 = { w: it().place.w, hd: it().place.hd };
-      let box = br.getBoundingClientRect();
-      let cx = box.left + box.width / 2, cy = box.top + box.height / 2;
-      br.dispatchEvent(new PointerEvent('pointerdown', at(cx, cy)));
-      grid.dispatchEvent(new PointerEvent('pointermove', at(cx + 60, cy + ppd * 6)));   // 오른쪽·아래
+      const drag = (grip, tx, ty) => {
+        const box = grip.getBoundingClientRect();
+        const cx = box.left + box.width / 2, cy = box.top + box.height / 2;
+        grip.dispatchEvent(new PointerEvent('pointerdown', at(cx, cy)));
+        grid.dispatchEvent(new PointerEvent('pointermove', at(cx + tx, cy + ty)));
+        grid.dispatchEvent(new PointerEvent('pointerup', at(cx + tx, cy + ty)));
+      };
+      // 오른쪽 가장자리 → 가로(w)
+      const w0 = it().place.w;
+      drag(el().querySelector('.grip-he'), -80, 0);
       await new Promise((res) => setTimeout(res, 120));
-      grid.dispatchEvent(new PointerEvent('pointerup', at(cx + 60, cy + ppd * 6)));
-      await new Promise((res) => setTimeout(res, 100));
-      const mid = { w: it().place.w, hd: it().place.hd };
-      // 2) 위 가장자리 → 위로 늘림. 시작일이 앞당겨지고 hd가 커지되 바닥(s+hd)은 그대로
+      const widthChanged = it().place.w != null && it().place.w !== w0;
+      // 아래 가장자리 → 세로(hd)
+      const hdMid = it().place.hd;
+      drag(el().querySelector('.grip'), 0, ppd * 6);
+      await new Promise((res) => setTimeout(res, 120));
+      const heightChanged = it().place.hd !== hdMid;
+      // 위 가장자리 → 위로 늘림(시작일 당겨지고 hd 커짐, 바닥 고정)
       const s0 = it().s, hd0 = it().place.hd;
-      const gt = el().querySelector('.grip-top');
-      if (!gt) return { error: 'grip-top 없음(강제 위 손잡이)' };
-      box = gt.getBoundingClientRect();
-      cx = box.left + box.width / 2; cy = box.top + box.height / 2;
-      gt.dispatchEvent(new PointerEvent('pointerdown', at(cx, cy)));
-      grid.dispatchEvent(new PointerEvent('pointermove', at(cx, cy - ppd * 5)));   // 위로
+      drag(el().querySelector('.grip-top'), 0, -ppd * 5);
       await new Promise((res) => setTimeout(res, 120));
-      grid.dispatchEvent(new PointerEvent('pointerup', at(cx, cy - ppd * 5)));
-      await new Promise((res) => setTimeout(res, 100));
       const topGrew = it().place.hd > hd0 && it().s < s0;
       r.store.commit('원복', () => { it().place.hd = null; it().place.x = null; it().place.w = null; it().place.sp = 2; });
       r.board.render();
-      return {
-        widthChanged: mid.w != null && mid.w !== b0.w,
-        heightChanged: mid.hd !== b0.hd,
-        topGrew,
-      };
+      return { widthChanged, heightChanged, topGrew };
     })()`), 20000, 'corner');
-    console.log('[smoke] corner ' + JSON.stringify(cornerCheck));
+    console.log('[smoke] resize4 ' + JSON.stringify(cornerCheck));
 
     // 여백 자르기 — 표시 기간을 일정 범위에 맞춰 맨 뒤 빈 구간을 없앤다
     trim = await target.webContents.executeJavaScript(`(async () => {

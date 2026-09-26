@@ -39,8 +39,7 @@ export function attachDrag(grid, {
 
     const origin = getOrigin();
     const cls = ev.target.classList;
-    const mode = cls.contains('grip-corner') ? 'corner'
-      : cls.contains('grip') ? 'size'
+    const mode = cls.contains('grip') ? 'size'
       : cls.contains('grip-top') ? 'size-top'
       : cls.contains('grip-span') ? 'span'
       : cls.contains('grip-hw') ? 'hw-left'
@@ -56,7 +55,6 @@ export function attachDrag(grid, {
     drag = {
       id: item.id,
       mode,
-      corner: ev.target?.dataset?.corner ?? null,   // tl|tr|bl|br (크기 강제 모서리)
       x: ev.clientX,
       y: ev.clientY,
       startDay: dayIndex(item.s, origin),
@@ -80,43 +78,6 @@ export function attachDrag(grid, {
     const dDays = Math.round(scale.dayAt(scale.y(drag.startDay) + (ev.clientY - drag.y)) - drag.startDay);
     const pointerTrack = trackIndexAt(ev.clientX);
     const dTrack = pointerTrack - drag.startTrack;
-
-    // 크기 강제 모서리 — 어느 모서리를 잡았는지(tl/tr/bl/br)에 따라 가로 한 변 +
-    // 세로 한 변을 함께 옮긴다. 반대 변은 고정. PPT 도형 모서리처럼 자유 리사이즈.
-    if (drag.mode === 'corner') {
-      const dx = ev.clientX - drag.x;
-      const dy = ev.clientY - drag.y;
-      if (Math.abs(dx) < 2 && Math.abs(dy) < 2 && !drag.moved) return;
-      if (!drag.moved) { store.begin('크기 조절'); drag.moved = true; }
-      const MIN = 0.08;
-      const ratio = dx / drag.hostWidth;
-      const c = drag.corner || 'br';
-      const origin = getOrigin();
-      store.commit('크기 조절', () => {
-        const item = store.item(drag.id);
-        if (!item) return;
-        // 가로: 오른쪽 모서리면 오른쪽 변을, 왼쪽 모서리면 왼쪽 변을 옮긴다 (반대 변 고정)
-        if (c.includes('r')) {
-          item.place.x = drag.x0;
-          item.place.w = Math.min(1 - drag.x0, Math.max(MIN, drag.w0 + ratio));
-        } else {
-          const right = drag.x0 + drag.w0;
-          const nextX = Math.min(right - MIN, Math.max(0, drag.x0 + ratio));
-          item.place.x = nextX;
-          item.place.w = right - nextX;
-        }
-        // 세로: 아래 모서리면 바닥(hd)을, 위 모서리면 위(시작일 s + hd 보정)를 옮긴다
-        if (c.includes('b')) {
-          item.place.hd = Math.max(1, Math.round((drag.hd0 ?? 1) + dDays));
-        } else {
-          const bottom = drag.startDay + (drag.hd0 ?? 1);
-          const newS = Math.max(0, Math.min(bottom - 1, drag.startDay + dDays));
-          item.s = dateAt(origin, newS);
-          item.place.hd = Math.max(1, bottom - newS);
-        }
-      });
-      return;
-    }
 
     // 상위 카드 안에서의 가로 위치·폭
     if (drag.mode.startsWith('hw')) {

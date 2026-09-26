@@ -173,14 +173,6 @@ export function renderCard(item, ctx) {
   // 자식·강제 모드 → 좌우 폭 손잡이(x/w). 강제 아닌 최상위 → 트랙 걸침 손잡이.
   const widthGrips = forced || !!parent;
   addHorizontalGrips(node, { span: !widthGrips });
-  // 크기 강제 최상위 카드는 네 모서리로 가로·세로를 자유롭게 조절한다 (PPT 도형식).
-  if (forced && !parent) {
-    for (const c of ['tl', 'tr', 'bl', 'br']) {
-      node.append(el('div.grip-corner', {
-        dataset: { corner: c }, attrs: { 'aria-hidden': 'true' }, title: '끌어서 크기 조절',
-      }));
-    }
-  }
   node.title = `${item.ti}\n${item.s} – ${item.e} · ${item.og}${item.pg ? ' · ' + item.pg + '%' : ''}`;
   return node;
 }

@@ -283,15 +283,3 @@ body.reordering-col{cursor:grabbing!important;user-select:none}
 .select-text .ev>.grip-hw,.select-text .ev>.grip-he{display:none}
 @media (prefers-reduced-motion:reduce){.ev>.grip-hw,.ev>.grip-he{transition:none}}
 
-/* 크기 강제 네 모서리 손잡이 — 가로·세로를 함께 끈다. 늘 보이게 둔다
-   (가장자리 손잡이처럼 hover에만 뜨면 못 찾는다). PPT 도형 모서리처럼. */
-.ev>.grip-corner{position:absolute;width:var(--u4);height:var(--u4);z-index:6;
-  display:flex;align-items:center;justify-content:center;opacity:.6;transition:opacity .12s ease}
-.ev:hover>.grip-corner{opacity:1}
-.ev>.grip-corner[data-corner="tl"]{left:0;top:0;cursor:nwse-resize}
-.ev>.grip-corner[data-corner="br"]{right:0;bottom:0;cursor:nwse-resize}
-.ev>.grip-corner[data-corner="tr"]{right:0;top:0;cursor:nesw-resize}
-.ev>.grip-corner[data-corner="bl"]{left:0;bottom:0;cursor:nesw-resize}
-.ev>.grip-corner::after{content:"";width:7px;height:7px;background:var(--accent);border-radius:1px}
-.select-text .ev>.grip-corner{display:none}
-@media (prefers-reduced-motion:reduce){.ev>.grip-corner{transition:none}}
