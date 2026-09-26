@@ -961,7 +961,7 @@ async function runSmoke(target) {
     })()`);
     console.log('[smoke] same-card ' + JSON.stringify(sameCheck));
 
-    // 동일·조합 멀티선택 — 1개 고르면 same(동일), 2개+면 combine(조합). 실제 패널을 조작한다.
+    // 조합 피커 — 고른 수와 무관하게 항상 combine(조합)만 만든다. same(동일)은 절대 안 생긴다.
     combineCheck = await target.webContents.executeJavaScript(`(async () => {
       const run = (async () => {
         const r = window.__roadmap;
@@ -978,11 +978,11 @@ async function runSmoke(target) {
         const cntComb = () => r.store.relations.filter((x) => x.type === 'combine' && x.from === id).length;
         const opts = () => [...document.querySelectorAll('#i-same .fl-opt')];
         opts()[0].click(); await sleep(150);
-        const one = { same: cntSame(), combine: cntComb() };
+        const one = { same: cntSame(), combine: cntComb() };   // 하나 골라도 동일 아님 → combine 1
         opts()[1].click(); await sleep(150);
-        const two = { same: cntSame(), combine: cntComb() };
+        const two = { same: cntSame(), combine: cntComb() };   // 둘이면 combine 2
         const sel = opts().filter((o) => o.getAttribute('aria-selected') === 'true');
-        sel[sel.length - 1].click(); await sleep(150);   // 하나 해제 → 다시 동일
+        sel[sel.length - 1].click(); await sleep(150);          // 하나 해제 → combine 1 (동일로 안 바뀜)
         const backToOne = { same: cntSame(), combine: cntComb() };
         document.querySelector('#pItem [data-close]').click();
         r.store.commit('smoke 원복', (doc) => {
@@ -1546,9 +1546,9 @@ async function runSmoke(target) {
     && sameCheck?.count > 0 && sameCheck?.hasBoard === true && sameCheck?.hasCard === true
     && sameCheck?.hasTrack === true && sameCheck?.hasBoardIds === true && sameCheck?.pickerOpts > 0
     && sameCheck?.ownTrackExcluded === true
-    && combineCheck?.one?.same === 1 && combineCheck?.one?.combine === 0
+    && combineCheck?.one?.same === 0 && combineCheck?.one?.combine === 1
     && combineCheck?.two?.same === 0 && combineCheck?.two?.combine === 2
-    && combineCheck?.backToOne?.same === 1 && combineCheck?.backToOne?.combine === 0
+    && combineCheck?.backToOne?.same === 0 && combineCheck?.backToOne?.combine === 1
     && xition?.promoted?.isCard === true && xition?.promoted?.notTask === true
     && xition?.backTask === true && xition?.stillCard === false
     && progressCheck?.eachHasKids === true && progressCheck?.collapsedHidden === true

@@ -85,11 +85,11 @@ export class ItemPanel {
       isSelected: (id) => this.item?.parent === id,
       onChange: (id, next) => this.#setParent(next ? id : null),
     });
-    // 동일·조합 = 이 이벤트를 다른 이벤트와 잇는다. 보드를 넘어 모든 카드·트랙·프로젝트가 후보.
-    //   1개 고르면 → 같은 이벤트(동일). 본질을 공유하고, 이 보드 이름은 별칭으로 유지.
-    //   2개 이상 → 이 이벤트가 그것들의 합(조합, §3.7). 각각을 품는다.
+    // 조합 = 이 이벤트가 '어떤 이벤트들의 합'인가. 서로 다른 이벤트를 부품으로 고른다(합성물←부품).
+    // 동일(같은 이벤트)은 여기서 만들지 않는다 — 같은 이벤트를 여러 보드에 두면 자동이다.
+    // 개수로 뜻이 바뀌지 않는다: 하나를 고르든 여럿을 고르든 '조합(구성원)'이다.
     this.sameList = createFilterList({
-      mode: 'multi', placeholder: '다른 보드의 카드·트랙·프로젝트 검색…', emptyText: '이을 이벤트가 없습니다.',
+      mode: 'multi', placeholder: '구성원으로 넣을 이벤트 검색…', emptyText: '고를 이벤트가 없습니다.',
       isSelected: (id) => this.#linkedTargets().has(id),
       onChange: (id, next) => this.#toggleSame(id, next),
     });
@@ -369,14 +369,13 @@ export class ItemPanel {
     return out;
   }
 
-  /** 이 이벤트가 same·combine로 이어 둔 대상 id 집합. 선택 상태의 진실. */
+  /** 이 이벤트가 조합(combine)으로 품은 구성원 id 집합. 피커 선택 상태의 진실. */
   #linkedTargets() {
     const id = this.item?.id;
     const set = new Set();
     if (!id) return set;
     for (const r of this.store.relations) {
-      if (r.type === 'same' && (r.from === id || r.to === id)) set.add(r.from === id ? r.to : r.from);
-      else if (r.type === 'combine' && r.from === id) set.add(r.to);
+      if (r.type === 'combine' && r.from === id) set.add(r.to);
     }
     return set;
   }
@@ -389,29 +388,20 @@ export class ItemPanel {
   }
 
   /**
-   * 매핑은 **관계만** 만든다 — 본질(제목·기간 등)은 절대 건드리지 않는다.
-   * 남의 이벤트 이름을 이 카드에 덮어쓰던 옛 동작이 데이터를 망가뜨렸다.
-   *   1개 → 같은 이벤트(same 관계).  2개+ → 그것들의 합(combine 관계).  0개 → 연결 없음.
-   * 각 카드는 자기 제목을 그대로 지킨다. 이 보드에서 다른 이름으로 부르고 싶으면 별칭을 쓴다.
+   * 조합만 만든다 — 이 이벤트가 고른 이벤트들의 '합'임을 combine 관계로 기록한다. 개수와
+   * 무관(하나든 여럿이든 조합). 본질(제목 등)은 절대 안 건드린다. 서로 다른 두 이벤트를
+   * '동일'로 선언하지 않는다(그건 모순) — 동일은 같은 이벤트를 여러 보드에 두면 자동이다.
    */
   #applyLinks(targets) {
     const item = this.item;
     if (!item) return;
     const id = item.id;
-    this.store.commit('동일·조합', (doc) => {
-      doc.relations = (doc.relations ?? []).filter((r) => {
-        if (r.type === 'same' && (r.from === id || r.to === id)) return false;
-        if (r.type === 'combine' && r.from === id) return false;
-        return true;
-      });
-      if (targets.length === 1) {
-        doc.relations.push({ id: newId('r'), type: 'same', from: id, to: targets[0] });
-      } else if (targets.length >= 2) {
-        for (const t of targets) doc.relations.push({ id: newId('r'), type: 'combine', from: id, to: t });
-      }
+    this.store.commit('조합', (doc) => {
+      doc.relations = (doc.relations ?? []).filter((r) => !(r.type === 'combine' && r.from === id));
+      for (const t of targets) doc.relations.push({ id: newId('r'), type: 'combine', from: id, to: t });
     });
     this.#renderSame(item);
-    if (this.item) this.#renderChildren(this.item);   // 동일·조합 모두 '구성'에 반영
+    if (this.item) this.#renderChildren(this.item);
   }
 
   /** 제목으로 검색하면 뜨는 "같은 카드로 연결" 후보(모든 보드). 평상시엔 숨김. */
@@ -659,17 +649,14 @@ export class ItemPanel {
     if (!own.length && !parts.length) box.append(el('div.empty', { text: '구성이 없습니다.' }));
   }
 
-  /** 이 이벤트가 매핑한 대상들 — 동일(same, 대칭)과 조합(combine). {id, kind}. */
+  /** 이 이벤트가 조합(combine)으로 품은 구성원들. {id, kind:'조합'}. */
   #mappedParts(item) {
     const id = item?.id;
     if (!id) return [];
     const out = [];
     const seen = new Set();
     for (const r of this.store.relations) {
-      let pid = null; let kind = null;
-      if (r.type === 'same' && (r.from === id || r.to === id)) { pid = r.from === id ? r.to : r.from; kind = '동일'; }
-      else if (r.type === 'combine' && r.from === id) { pid = r.to; kind = '조합'; }
-      if (pid && !seen.has(pid)) { seen.add(pid); out.push({ id: pid, kind }); }
+      if (r.type === 'combine' && r.from === id && !seen.has(r.to)) { seen.add(r.to); out.push({ id: r.to, kind: '조합' }); }
     }
     return out;
   }
