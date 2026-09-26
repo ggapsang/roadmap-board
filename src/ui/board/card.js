@@ -60,7 +60,6 @@ export function renderCard(item, ctx) {
   if (isMilestone) node.classList.add('ms', msPoint ? 'point' : 'ranged');
   if (hasChildren) node.classList.add('container');
   if (parent) node.classList.add('child');
-  if (item.alias != null) node.classList.add('alias');    // 다른 보드를 대신하는 포털 카드
   if (item.id === selectedId) node.classList.add('sel');
   if (match === true) node.classList.add('hit');
   if (match === false) node.classList.add('dim');
@@ -125,10 +124,10 @@ export function renderCard(item, ctx) {
     }
     node.append(
       el('span.dia'),
-      el('span.t', { text: item.alias || item.ti }),
+      el('span.t', { text: item.ti }),
       el('span.meta', { text: shortMD(item.s) }),
     );
-    node.title = `${item.alias || item.ti} · ${item.s} · ${item.og}`;
+    node.title = `${item.ti} · ${item.s} · ${item.og}`;
     // 최상위 점 마일스톤만 트랙 걸침 손잡이. 상위에 든 것은 폭 손잡이. 사본(echo)은 손잡이 없음.
     if (!echo) addHorizontalGrips(node, { span: !parent });
     return node;
@@ -172,8 +171,7 @@ export function renderCard(item, ctx) {
   // 보통 카드는 낮으면 메타를 통째로 숨기고, 보류는 항상 숨긴다.
   if ((height < LAYOUT.metaHideHeight && !isShort) || item.st === 'hold') meta.classList.add('hidden');
 
-  // 별칭이 있으면 이 보드에선 그 이름으로 보인다(§3.5). 같은 이벤트라도 맥락별 이름.
-  const label = item.alias || item.ti;
+  const label = item.ti;
   node.append(el('div.t', { text: label }), meta);
 
   if (item.place?.showNote && item.note) {
@@ -193,7 +191,7 @@ export function renderCard(item, ctx) {
     const widthGrips = forced || !!parent;
     addHorizontalGrips(node, { span: !widthGrips });
   }
-  node.title = `${label}${item.alias ? ` (${item.ti})` : ''}\n${item.s} – ${item.e} · ${item.og}${item.pg ? ' · ' + item.pg + '%' : ''}`;
+  node.title = `${label}\n${item.s} – ${item.e} · ${item.og}${item.pg ? ' · ' + item.pg + '%' : ''}`;
   return node;
 }
 

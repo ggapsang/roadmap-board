@@ -961,41 +961,52 @@ async function runSmoke(target) {
     })()`);
     console.log('[smoke] same-card ' + JSON.stringify(sameCheck));
 
-    // 조합 피커 — 고른 수와 무관하게 항상 combine(조합)만 만든다. same(동일)은 절대 안 생긴다.
+    // 매핑 — 동일(same)과 조합(combine)은 별개 관계다. 동일 목록은 same만, 조합 목록은 combine만
+    // 만든다. 자기 자신은 동일 목록 맨 위에 항상 체크로 보이고 토글되지 않는다. 조합한 대상은
+    // 동일 후보에서 사라진다(모순 방지 — 같은 쌍이 동일이면서 조합일 수 없다).
     combineCheck = await target.webContents.executeJavaScript(`(async () => {
       const run = (async () => {
         const r = window.__roadmap;
         const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
         const id = r.store.items[0].id;
         const snapRel = JSON.parse(JSON.stringify(r.store.relations));
-        const it0 = r.store.items[0];
-        const snap = { ti: it0.ti, s: it0.s, e: it0.e, ty: it0.ty, st: it0.st, og: it0.og, pg: it0.pg, note: it0.note, alias: it0.alias ?? null };
         document.querySelector('[data-id="' + id + '"]').click();
         await sleep(350);
         document.querySelector('#pItem .ptab[data-tab="rel"]').click();
         await sleep(80);
         const cntSame = () => r.store.relations.filter((x) => x.type === 'same' && (x.from === id || x.to === id)).length;
         const cntComb = () => r.store.relations.filter((x) => x.type === 'combine' && x.from === id).length;
-        const opts = () => [...document.querySelectorAll('#i-same .fl-opt')].filter((o) => o.dataset.id !== id);
-        opts()[0].click(); await sleep(150);
-        const one = { same: cntSame(), combine: cntComb() };   // 신선한 1개 = 동일(same)
-        opts()[1].click(); await sleep(150);
-        const two = { same: cntSame(), combine: cntComb() };   // 2개 = 조합(combine 2)
-        const sel = opts().filter((o) => o.getAttribute('aria-selected') === 'true');
-        sel[sel.length - 1].click(); await sleep(150);          // 조합 부품 하나 해제 → 남은 것도 조합 부품이라 combine 유지(동일 아님)
-        const backToOne = { same: cntSame(), combine: cntComb() };
+        // 자기 자신 — 동일 목록에 있고 체크되어 있으며, 눌러도 관계가 안 생긴다(항상 동일).
+        const selfOpt = document.querySelector('#i-same .fl-opt[data-id="' + id + '"]');
+        const selfShown = !!selfOpt;
+        const selfChecked = !!selfOpt && selfOpt.getAttribute('aria-selected') === 'true';
+        if (selfOpt) selfOpt.click(); await sleep(120);
+        const selfNoToggle = cntSame() === 0;
+        // 동일 후보 하나 클릭 → same 1, combine 0.
+        const sameCand = [...document.querySelectorAll('#i-same .fl-opt')].filter((o) => o.dataset.id !== id);
+        sameCand[0].click(); await sleep(150);
+        const afterSame = { same: cntSame(), combine: cntComb() };
+        // 조합 후보 하나 클릭 → combine 1, same 그대로 1 (둘은 독립).
+        const combCand = [...document.querySelectorAll('#i-combine .fl-opt')].filter((o) => o.dataset.id !== id);
+        const combId = combCand[0] ? combCand[0].dataset.id : null;
+        if (combCand[0]) combCand[0].click(); await sleep(150);
+        const afterComb = { same: cntSame(), combine: cntComb() };
+        // 조합한 대상은 동일 후보 목록에서 빠진다(모순 방지).
+        const combExcludedFromSame = combId
+          ? ![...document.querySelectorAll('#i-same .fl-opt')].some((o) => o.dataset.id === combId)
+          : false;
+        // 동일 해제 → same 0, combine 그대로 1.
+        const stillSame = [...document.querySelectorAll('#i-same .fl-opt')].filter((o) => o.dataset.id !== id && o.getAttribute('aria-selected') === 'true');
+        if (stillSame[0]) stillSame[0].click(); await sleep(150);
+        const afterUnsame = { same: cntSame(), combine: cntComb() };
         document.querySelector('#pItem [data-close]').click();
-        r.store.commit('smoke 원복', (doc) => {
-          doc.relations = snapRel;
-          const it = doc.items.find((x) => x.id === id) || doc.items[0];
-          Object.assign(it, snap);
-        });
-        return { one, two, backToOne };
+        r.store.commit('smoke 원복', (doc) => { doc.relations = snapRel; });
+        return { selfShown, selfChecked, selfNoToggle, afterSame, afterComb, combExcludedFromSame, afterUnsame };
       })();
       const guard = new Promise((res) => setTimeout(() => res({ error: 'timeout' }), 8000));
       return Promise.race([run.catch((e) => ({ error: String(e) })), guard]);
     })()`);
-    console.log('[smoke] combine-map ' + JSON.stringify(combineCheck));
+    console.log('[smoke] map-split ' + JSON.stringify(combineCheck));
 
     // 태스크↔하위카드 전환 — id를 유지한 채 순서축 위/아래로 (규칙 5). 진행도 탭 버튼을 누른다.
     xition = await target.webContents.executeJavaScript(`(async () => {
@@ -1546,9 +1557,11 @@ async function runSmoke(target) {
     && sameCheck?.count > 0 && sameCheck?.hasBoard === true && sameCheck?.hasCard === true
     && sameCheck?.hasTrack === true && sameCheck?.hasBoardIds === true && sameCheck?.pickerOpts > 0
     && sameCheck?.ownTrackExcluded === true
-    && combineCheck?.one?.same === 1 && combineCheck?.one?.combine === 0
-    && combineCheck?.two?.same === 0 && combineCheck?.two?.combine === 2
-    && combineCheck?.backToOne?.same === 0 && combineCheck?.backToOne?.combine === 1
+    && combineCheck?.selfShown === true && combineCheck?.selfChecked === true && combineCheck?.selfNoToggle === true
+    && combineCheck?.afterSame?.same === 1 && combineCheck?.afterSame?.combine === 0
+    && combineCheck?.afterComb?.same === 1 && combineCheck?.afterComb?.combine === 1
+    && combineCheck?.combExcludedFromSame === true
+    && combineCheck?.afterUnsame?.same === 0 && combineCheck?.afterUnsame?.combine === 1
     && xition?.promoted?.isCard === true && xition?.promoted?.notTask === true
     && xition?.backTask === true && xition?.stillCard === false
     && progressCheck?.eachHasKids === true && progressCheck?.collapsedHidden === true

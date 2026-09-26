@@ -458,6 +458,40 @@ function normalizeRelations(doc, itemIds) {
     return false;
   };
 
+  // 모순 방지 1 — 같은 두 이벤트가 '동일'이면서 '조합'일 수 없다. 조합(다른 이벤트들을 합친
+  // 것)이 더 구체적인 주장이라 조합을 남기고 동일을 버린다. combinePairs는 정렬된 끝점 키.
+  const pairKey = (a, b) => [a, b].sort().join('|');
+  const combinePairs = new Set();
+  for (const r of src) {
+    if (isObj(r) && r.type === 'combine' && typeof r.from === 'string' && typeof r.to === 'string' && r.from !== r.to) {
+      combinePairs.add(pairKey(r.from, r.to));
+    }
+  }
+
+  // 모순 방지 2 — 포함(contain) 관계로 조상↔자손인 두 이벤트는 '동일'일 수 없다(상위 일정과
+  // 그 안의 카드가 '같은 이벤트'라는 건 구조상 모순). contain 그래프를 미리 쌓아 두고, same
+  // 관계의 두 끝이 서로 조상/자손이면 버린다. (UI는 후보에서 미리 빼지만, 옛 데이터엔 남아
+  // 있을 수 있어 로드 때 스스로 정리한다.)
+  const containAdj = new Map();
+  for (const r of src) {
+    if (isObj(r) && r.type === 'contain' && typeof r.from === 'string' && typeof r.to === 'string') {
+      if (!containAdj.has(r.from)) containAdj.set(r.from, new Set());
+      containAdj.get(r.from).add(r.to);
+    }
+  }
+  const containReaches = (s, t) => {
+    const stack = [s]; const vis = new Set();
+    while (stack.length) {
+      const node = stack.pop();
+      if (node === t) return true;
+      if (vis.has(node)) continue;
+      vis.add(node);
+      for (const m of (containAdj.get(node) ?? [])) stack.push(m);
+    }
+    return false;
+  };
+  const containRelated = (a, b) => containReaches(a, b) || containReaches(b, a);
+
   const seen = new Set();
   const out = [];
   for (const r of src) {
@@ -465,6 +499,10 @@ function normalizeRelations(doc, itemIds) {
     const { from, to } = r;
     if (typeof from !== 'string' || typeof to !== 'string') continue;
     if (from === to) continue;
+    // 동일인데 같은 쌍이 조합으로도 걸려 있으면 버린다(조합 우선).
+    if (type === 'same' && combinePairs.has(pairKey(from, to))) continue;
+    // 동일인데 두 끝이 포함(상하위) 관계면 버린다(조상↔자손은 다른 이벤트).
+    if (type === 'same' && containRelated(from, to)) continue;
     const inHere = crossBoard.has(type)
       ? (itemIds.has(from) || itemIds.has(to))   // 한쪽만 이 보드여도 OK
       : (itemIds.has(from) && itemIds.has(to));  // 선행·포함은 양끝 다 이 보드
@@ -587,18 +625,7 @@ export function sameGroupOf(relations, id) {
   }
   return out;   // 자기 자신은 포함하지 않는다
 }
-
-/**
- * 같은 이벤트로 묶인 카드들끼리 본질(제목·상태·기간·유형·담당·진척·비고)을 맞춘다.
- * 별칭(alias)은 카드별 표시명이라 맞추지 않는다(§3.5). 태스크는 링크(고유 id) 특성상 제외.
- */
-export function propagateSame(doc, sourceId) {
-  const src = doc.items.find((i) => i.id === sourceId);
-  if (!src) return;
-  const group = sameGroupOf(doc.relations, sourceId);
-  for (const it of doc.items) {
-    if (!group.has(it.id)) continue;
-    it.ti = src.ti; it.s = src.s; it.e = src.e; it.ty = src.ty;
-    it.st = src.st; it.og = src.og; it.pg = src.pg; it.note = src.note;
-  }
-}
+// 동일(same)은 '서로 같은 이벤트'라는 관계일 뿐, 본질을 서로 덮어쓰지 않는다. 각 이벤트는
+// 자기 이름·상태·기간을 그대로 지킨다(§3.4·§3.5). 예전엔 same로 묶인 카드끼리 제목을 맞추는
+// propagateSame가 있었으나, 사용자가 지은 이름을 덮어써 데이터를 망가뜨려 제거했다. 같은
+// '이벤트 자체'(동일 id)를 여러 보드에 둔 경우의 본질 공유는 tabs.js syncFromActive가 맡는다.

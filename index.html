@@ -115,13 +115,6 @@
           <div class="title-drop" id="i-title-drop" hidden></div>
         </div>
       </div>
-      <div class="fld">
-        <label for="i-aliasname">별칭 <span class="muted">이 보드에서 부를 다른 이름 (비우면 제목대로)</span></label>
-        <div class="alias-row">
-          <input id="i-aliasname" type="text" placeholder="(없음)">
-          <button class="btn outline sm" id="i-alias-fromname" type="button" title="현재 제목을 별칭으로 넣는다">제목을 별칭으로</button>
-        </div>
-      </div>
       <div class="fld"><label>상태</label><div class="pick" id="i-status"></div></div>
       <div class="two">
         <div class="fld"><label for="i-type">유형</label><select id="i-type"></select></div>
@@ -138,11 +131,15 @@
       <div class="fld"><label for="i-note">비고</label><textarea id="i-note"></textarea></div>
     </section>
 
-    <!-- 매핑 — 이 이벤트를 다른 이벤트와 잇는다: 동일·조합·포함·선행 (보드를 넘나든다) -->
+    <!-- 매핑 — 동일(같은 이벤트)·조합(이 이벤트를 이루는 합)·상위(포함)·선행. 보드를 넘나든다. -->
     <section class="ptab-panel" data-panel="rel" hidden>
       <div class="fld">
-        <label>동일 · 조합 <span class="muted">1개=같은 이벤트 · 2개+=그 합 · 구조상 다른 이벤트(조합 부품·트랙·상하위)는 후보에서 빠집니다</span></label>
+        <label>동일 <span class="muted">이 이벤트와 '같은 것'인 이벤트들 · 자기 자신은 항상 포함</span></label>
         <div id="i-same"></div>
+      </div>
+      <div class="fld">
+        <label>조합 <span class="muted">이 이벤트를 이루는 구성원(다른 이벤트들의 합) · 상세에 펼쳐 보입니다</span></label>
+        <div id="i-combine"></div>
       </div>
       <div class="fld">
         <label>상위 일정 <span class="muted">이 카드를 품는 일정 (포함) · 하나</span></label>
