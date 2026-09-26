@@ -89,7 +89,8 @@ export class ItemPanel {
     // (조합 부품·트랙·상하위)은 후보에서 빠지고 동일이 될 수 없다 — 모순 방지.
     this.sameList = createFilterList({
       mode: 'multi', placeholder: '다른 보드의 카드·트랙·프로젝트 검색…', emptyText: '이을 이벤트가 없습니다.',
-      isSelected: (id) => this.#linkedTargets().has(id),
+      // 자기 자신은 늘 '동일'로 체크(정체성). 나머지는 이어 둔 대상.
+      isSelected: (id) => id === this.item?.id || this.#linkedTargets().has(id),
       onChange: (id, next) => this.#toggleSame(id, next),
     });
     $('i-deps').append(this.depsList.root);
@@ -343,14 +344,25 @@ export class ItemPanel {
         sub: `${kindLabel[ev.kind] || ''}${ev.boardNames ? ' · ' + ev.boardNames : ''}`,
       });
     };
-    // 지금 이어진 대상은 무조건 먼저, 보이게 — 그래야 확인하고 풀 수 있다(#2).
+    // 이 카드의 정체(자기 이벤트)를 맨 위에 '동일'로 체크해 보여 준다 — 다른 보드에도 이 이벤트로
+    // 있음을 확인시킨다(자기 자신은 당연히 동일). 별칭이 아니라 실제 이벤트 제목으로 낸다.
+    const selfEv = byId.get(item.id);
+    if (selfEv) {
+      this._sameOptions.set(item.id, selfEv);
+      options.push({
+        id: item.id, label: selfEv.title || '(제목 없음)',
+        sub: `이 이벤트 · 동일${selfEv.boardNames ? ' · ' + selfEv.boardNames : ''}`,
+      });
+    }
+    // 지금 이어진 대상(동일·조합)은 무조건 먼저, 보이게 — 그래야 확인하고 풀 수 있다(#2).
     for (const id of linked) {
+      if (id === item.id) continue;
       const ev = byId.get(id);
       if (ev) push(ev);
       else { this._sameOptions.set(id, { id, title: '(다른 곳의 이벤트)' }); options.push({ id, label: '(다른 곳의 이벤트)', sub: '연결됨' }); }
     }
     for (const ev of events) {
-      if (linked.has(ev.id) || excluded.has(ev.id)) continue;
+      if (ev.id === item.id || linked.has(ev.id) || excluded.has(ev.id)) continue;
       push(ev);
     }
     this.sameList.render(options);
@@ -391,6 +403,7 @@ export class ItemPanel {
 
   #toggleSame(targetId, next) {
     if (!this.item) return;
+    if (targetId === this.item.id) return;   // 자기 자신은 정체성이라 토글 안 함
     const set = this.#linkedTargets();
     if (next) set.add(targetId); else set.delete(targetId);
     this.#applyLinks([...set]);
@@ -639,7 +652,27 @@ export class ItemPanel {
       if (kids) for (const s of subKids) renderKid(s, kids);
     };
     const own = this.store.items.filter((x) => x.parent === item.id);
+    const ownIds = new Set(own.map((c) => c.id));
     for (const c of own) renderKid(c, box);
+
+    // (1b) 이 이벤트 자신이 품은 카드 — 이 보드에 자식이 안 실렸어도(다른 보드 트랙을 참조로
+    //      놓은 경우) 자기 이벤트의 카드는 상세에 다 보여야 한다. eventCards로 가져온다.
+    const selfBox = el('div.detail-kids');
+    box.append(selfBox);
+    this.adapter?.eventCards?.(item.id).then((cards) => {
+      if (this._detailGen !== gen || this.item?.id !== item.id) return;
+      clear(selfBox);
+      for (const c of (cards ?? [])) {
+        if (ownIds.has(c.id)) continue;   // 이미 위에 로컬로 그린 것은 건너뜀
+        const r = node({ title: c.title, status: c.status, hasKids: false, onOpen: () => this.open(c.id) });
+        if (c.depth) r.row.style.paddingLeft = `${8 + c.depth * 14}px`;
+        selfBox.append(r.row);
+      }
+      // 아무것도(로컬·자기·매핑) 없으면 안내
+      if (!box.querySelector('.detail-row') && !box.querySelector('.detail-group')) {
+        box.append(el('div.empty', { text: '구성이 없습니다.' }));
+      }
+    }).catch(() => {});
 
     // (2) 매핑한 이벤트 — 동일(same)과 조합(combine) 둘 다. 부품마다 접기 그룹, 자식 카드는
     //     그 부품 칸에 채운다(순서·자리 보존).
@@ -664,8 +697,6 @@ export class ItemPanel {
         }
       }).catch(() => { if (this._detailGen === gen && this.item?.id === item.id) { clear(kids); kids.append(el('div.empty', { text: '불러오지 못함' })); } });
     }
-
-    if (!own.length && !parts.length) box.append(el('div.empty', { text: '구성이 없습니다.' }));
   }
 
   /** 이 이벤트가 매핑한 대상들 — 동일(same, 대칭)과 조합(combine). {id, kind}. */

@@ -976,7 +976,7 @@ async function runSmoke(target) {
         await sleep(80);
         const cntSame = () => r.store.relations.filter((x) => x.type === 'same' && (x.from === id || x.to === id)).length;
         const cntComb = () => r.store.relations.filter((x) => x.type === 'combine' && x.from === id).length;
-        const opts = () => [...document.querySelectorAll('#i-same .fl-opt')];
+        const opts = () => [...document.querySelectorAll('#i-same .fl-opt')].filter((o) => o.dataset.id !== id);
         opts()[0].click(); await sleep(150);
         const one = { same: cntSame(), combine: cntComb() };   // 신선한 1개 = 동일(same)
         opts()[1].click(); await sleep(150);
