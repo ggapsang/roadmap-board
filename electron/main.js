@@ -1038,33 +1038,41 @@ async function runSmoke(target) {
     })()`);
     console.log('[smoke] task-xition ' + JSON.stringify(xition));
 
-    // 진척률은 태스크 완료율에서 자동 계산 (진행도 탭)
+    // 상세 탭 '구성' — 조합한 이벤트마다 그 안의 카드가 자기 그룹에 뜨고(부품별 컨테이너),
+    // 하위 카드와 같은 모양이며, 헤더를 눌러 접고 편다.
     progressCheck = await target.webContents.executeJavaScript(`(async () => {
-      const r = window.__roadmap;
-      // items[0]은 태스크 검증에 쓰이므로 건드리지 않는다 — 별도 카드로 시험.
-      const it = r.store.items[3];
-      const id = it.id;
-      const orig = { tasks: structuredClone(it.tasks ?? []), pg: it.pg };
-      r.store.commit('clear', () => { r.store.item(id).tasks = []; r.store.item(id).pg = 0; });
-      r.board.render();
-      await new Promise((res) => setTimeout(res, 100));
-      document.querySelector('[data-id="' + id + '"]').click();
-      await new Promise((res) => setTimeout(res, 200));
-      document.querySelector('#pItem .ptab[data-tab="task"]').click();
-      await new Promise((res) => setTimeout(res, 60));
-      document.getElementById('i-taskadd').click();
-      document.getElementById('i-taskadd').click();
-      await new Promise((res) => setTimeout(res, 100));
-      const cbs = document.querySelectorAll('#i-tasks input[type=checkbox]');
-      cbs[0].click();
-      await new Promise((res) => setTimeout(res, 100));
-      const pg = r.store.item(id).pg;
-      const pctText = document.getElementById('i-progpct').textContent;
-      document.querySelector('#pItem [data-close]').click();
-      r.store.commit('원복', () => { r.store.item(id).tasks = orig.tasks; r.store.item(id).pg = orig.pg; });
-      return { pg, half: pg === 50, pctText };
+      const run = (async () => {
+        const r = window.__roadmap;
+        const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+        const id = r.store.items.find((i) => !i.parent).id;
+        const home = r.store.item(id).place.t;
+        const hasCard = (tid) => r.store.items.some((x) => !x.parent && x.place.t === tid && x.id !== id);
+        const others = r.store.tracks.filter((t) => t.id !== home && hasCard(t.id)).slice(0, 2).map((t) => t.id);
+        const snap = JSON.parse(JSON.stringify(r.store.relations));
+        r.store.commit('smoke 조합', (doc) => {
+          doc.relations.push({ id: 'rcx1', type: 'combine', from: id, to: others[0] });
+          doc.relations.push({ id: 'rcx2', type: 'combine', from: id, to: others[1] });
+        });
+        document.querySelector('[data-id="' + id + '"]').click();
+        await sleep(350);
+        document.querySelector('#pItem .ptab[data-tab="task"]').click();
+        await sleep(120);
+        const groups = [...document.querySelectorAll('#i-children .detail-group')];
+        await sleep(350);   // eventCards 비동기 대기
+        const kidCounts = groups.map((g) => g.querySelectorAll(':scope > .detail-kids > .detail-row').length);
+        const eachHasKids = groups.length === 2 && kidCounts.every((n) => n > 0);
+        // 첫 그룹 접기 → 자식칸 숨김
+        groups[0].querySelector('.detail-parent').click();
+        await sleep(60);
+        const collapsedHidden = getComputedStyle(groups[0].querySelector(':scope > .detail-kids')).display === 'none';
+        document.querySelector('#pItem [data-close]').click();
+        r.store.commit('원복', (doc) => { doc.relations = snap; });
+        return { groups: groups.length, kidCounts, eachHasKids, collapsedHidden };
+      })();
+      const guard = new Promise((res) => setTimeout(() => res({ error: 'timeout' }), 12000));
+      return Promise.race([run.catch((e) => ({ error: String(e) })), guard]);
     })()`);
-    console.log('[smoke] progress ' + JSON.stringify(progressCheck));
+    console.log('[smoke] detail ' + JSON.stringify(progressCheck));
 
     // 걸침 카드에 크기 강제해도 트랙을 넘나든다 — 강제 상태에서 sp=2가 sp=1보다 넓어야.
     spanForce = await target.webContents.executeJavaScript(`(async () => {
@@ -1548,7 +1556,7 @@ async function runSmoke(target) {
     && combineCheck?.backToOne?.same === 1 && combineCheck?.backToOne?.combine === 0
     && xition?.promoted?.isCard === true && xition?.promoted?.notTask === true
     && xition?.backTask === true && xition?.stillCard === false
-    && progressCheck?.half === true
+    && progressCheck?.eachHasKids === true && progressCheck?.collapsedHidden === true
     && spanForce?.spanUnderForce === true && spanForce?.hasWidthGrip === true
     && trim?.trimmed === true && trim?.shrank === true
     && monthResize?.made === true && monthResize?.scale < 1 && monthResize?.shrank === true

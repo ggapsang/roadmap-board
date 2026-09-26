@@ -144,9 +144,19 @@ body.panel-open{--panel-w:var(--panel-size)}
 .task-text.linklike{cursor:pointer;text-align:left;background:none;border:1px solid transparent}
 .task-text.linklike:hover{background:var(--bg-hover);text-decoration:underline}
 
-/* 구성 일정의 소제목 (조합한 이벤트 등) */
-.detail-head{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
-  color:var(--text-tertiary);margin:var(--u2) 0 var(--u1)}
+/* 구성 트리 — 하위 카드와 조합한 이벤트를 같은 모양으로. 헤더를 눌러 접고 편다. */
+.detail-group{display:flex;flex-direction:column;gap:var(--u1)}
+.detail-row{align-items:center}
+.detail-parent{cursor:pointer}
+.detail-parent:hover{background:var(--bg-hover);border-radius:var(--u1)}
+.detail-kids{display:flex;flex-direction:column;gap:var(--u1);padding-left:var(--u3)}
+.detail-group.collapsed>.detail-kids{display:none}
+.tw{display:inline-flex;align-items:center;justify-content:center;width:var(--u4);flex:none;
+  color:var(--text-tertiary);transition:transform .12s ease}
+.tw .ic{width:var(--u3);height:var(--u3)}
+.tw-none{display:inline-block;width:var(--u4);flex:none}
+.detail-group.collapsed>.detail-parent .tw{transform:rotate(-90deg)}
+@media (prefers-reduced-motion:reduce){.tw{transition:none}}
 
 /* 상태 점 (프로젝트 소속 카드 목록) */
 .st-dot{width:8px;height:8px;border-radius:50%;flex:none;margin:0 var(--u1);background:var(--text-tertiary)}

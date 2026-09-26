@@ -608,85 +608,79 @@ export class ItemPanel {
     item.pg = Math.round((tasks.filter((t) => t.done).length / tasks.length) * 100);
   }
 
-  /** 진행도 바 — 태스크 완료율. (매핑된 다른 보드의 카드를 하위로 끌어오지 않는다.) */
-  #syncProgUI(item) {
-    const tasks = Array.isArray(item.tasks) ? item.tasks : [];
-    const pct = tasks.length ? Math.round((tasks.filter((t) => t.done).length / tasks.length) * 100) : 0;
-    $('i-progpct').textContent = tasks.length ? `${pct}%` : '태스크로 계산';
-    $('i-progfill').style.width = `${pct}%`;
-  }
+  /** 진행도 바는 제거됨 — 호출부 호환용 no-op. */
+  #syncProgUI() {}
 
   /**
-   * 구성 일정 — 이 이벤트를 이루는 것. (1) 이 카드의 하위 카드(같은 보드, 순서 있는 포함),
-   * (2) 조합(combine)한 이벤트와 그 안의 일정(다른 보드일 수 있음, 읽기 전용). 여기서 새
-   * 하위 카드를 만들지 않는다 — 하위 카드는 보드에서 드래그로 만든다.
+   * 구성 — 이 이벤트를 이루는 것을 트리로 보여 준다. 하위 카드(같은 보드)와 조합한 이벤트
+   * (다른 보드일 수 있음)를 **같은 모양**으로 그린다: [▸] 상태점 이름 (열기). 자식이 있으면
+   * 헤더를 눌러 펼치고 접는다. 여기서 카드를 새로 만들지 않는다 — 보드에서 만든다.
    */
   #renderChildren(item) {
     const box = $('i-children');
     clear(box);
+    const gen = (this._detailGen = (this._detailGen ?? 0) + 1);
 
-    const statusRow = (opts) => {
-      const { title, status, indent = 0, onOpen, sub } = opts;
-      const row = el('div.task' + (status === 'done' ? '.done' : ''), {
-        style: indent ? { paddingLeft: `${8 + indent * 14}px` } : undefined,
-      }, [
-        el('span.st-dot', { className: 'st-dot st-' + status }),
-        onOpen
-          ? el('button.task-text.linklike', { type: 'button', text: title || '(제목 없음)', title: '열기', on: { click: onOpen } })
-          : el('span.task-text', { text: title || '(제목 없음)' }),
-        sub ? el('em.muted', { text: sub }) : null,
+    // 공통 노드. hasKids면 접기 그룹(헤더+자식칸), 아니면 잎 행.
+    const node = ({ title, status = 'plan', onOpen, tag, hasKids }) => {
+      const chev = hasKids ? el('span.tw', {}, [icon(ICONS.down)]) : el('span.tw-none');
+      const name = onOpen
+        ? el('button.task-text.linklike.no-toggle', { type: 'button', text: title || '(제목 없음)', title: '열기', on: { click: (e) => { e.stopPropagation(); onOpen(); } } })
+        : el('span.task-text', { text: title || '(제목 없음)' });
+      const head = el('div.task.detail-row', {}, [
+        chev, el('span.st-dot', { className: 'st-dot st-' + status }), name,
+        tag ? (tag.nodeType ? tag : el('em.muted', { text: tag })) : null,
       ]);
-      return row;
+      if (status === 'done') head.classList.add('done');
+      if (!hasKids) return { row: head, kids: null };
+      const group = el('div.detail-group');
+      const kids = el('div.detail-kids');
+      head.classList.add('detail-parent');
+      head.addEventListener('click', (e) => { if (!e.target.closest('.no-toggle')) group.classList.toggle('collapsed'); });
+      group.append(head, kids);
+      return { row: group, kids };
     };
 
-    // (1) 이 카드의 하위 카드 (같은 보드) — 완료 토글·태스크로 내림은 유지, 추가는 없음.
-    const kids = this.store.items.filter((x) => x.parent === item.id);
-    for (const c of kids) {
-      const cb = el('input', {
-        type: 'checkbox', checked: c.st === 'done', title: '완료 표시',
-        on: { change: (e) => { this.store.commit('하위 완료', () => { c.st = e.target.checked ? 'done' : 'run'; }); this.#renderChildren(this.item); } },
-      });
-      const name = el('button.task-text.linklike', {
-        type: 'button', text: c.alias || c.ti || '(제목 없음)', title: '이 카드 열기',
-        on: { click: () => this.open(c.id) },
-      });
-      const down = el('button.task-del.task-demote', {
-        type: 'button', title: '태스크로 내림 (순서축에서 뺌 · 규칙 5, id 유지)',
-        on: { click: (e) => { e.preventDefault(); this.#demoteChild(item, c); } },
+    // (1) 같은 보드 하위 카드 — 조합과 같은 모양의 트리. '태스크로 내림'만 뒤에 붙인다.
+    const renderKid = (c, container) => {
+      const subKids = this.store.items.filter((x) => x.parent === c.id);
+      const demote = el('button.task-del.task-demote.no-toggle', {
+        type: 'button', title: '태스크로 내림 (규칙 5, id 유지)',
+        on: { click: (e) => { e.preventDefault(); e.stopPropagation(); this.#demoteChild(this.item, c); } },
       }, [icon(ICONS.down)]);
-      const row = el('label.task', {}, [cb, name, down]);
-      if (c.st === 'done') row.classList.add('done');
-      box.append(row);
-    }
+      const { row, kids } = node({
+        title: c.alias || c.ti, status: c.st, onOpen: () => this.open(c.id), tag: demote, hasKids: subKids.length > 0,
+      });
+      container.append(row);
+      if (kids) for (const s of subKids) renderKid(s, kids);
+    };
+    const own = this.store.items.filter((x) => x.parent === item.id);
+    for (const c of own) renderKid(c, box);
 
-    // (2) 조합한 이벤트와 그 안의 일정. 부품은 다른 보드일 수 있어 미리 받아 둔 목록에서 이름을,
-    //     안쪽 카드는 eventCards로 가져온다(비동기). 렌더 세대를 표시해 늦게 온 응답은 버린다.
+    // (2) 조합한 이벤트 — 부품마다 접기 그룹. 자식 카드는 그 부품 칸에 채운다(순서·자리 보존).
     const parts = this.#combineParts(item);
-    if (parts.length) {
-      const header = el('div.detail-head.muted', { text: '조합한 이벤트' });
-      box.append(header);
-      const gen = (this._detailGen = (this._detailGen ?? 0) + 1);
-      for (const pid of parts) {
-        const pev = (this._allEvents ?? []).find((e) => e.id === pid);
-        const partName = pev?.title || '(이벤트)';
-        const partBoard = pev?.boardId ?? Number(String(pev?.boardIds ?? '').split(',')[0]);
-        box.append(statusRow({
-          title: partName, status: pev?.st ?? 'plan', sub: '조합',
-          onOpen: partBoard ? () => this.openProject?.(partBoard) : null,
-        }));
-        this.adapter?.eventCards?.(pid).then((cards) => {
-          if (this._detailGen !== gen || this.item?.id !== item.id) return;
-          for (const c of (cards ?? [])) {
-            box.append(statusRow({
-              title: c.title, status: c.status, indent: 1 + (c.depth ?? 0),
-              onOpen: partBoard ? () => this.openProject?.(partBoard) : null,
-            }));
-          }
-        }).catch(() => {});
-      }
+    for (const pid of parts) {
+      const pev = (this._allEvents ?? []).find((e) => e.id === pid);
+      const partBoard = pev?.boardId ?? (Number(String(pev?.boardIds ?? '').split(',')[0]) || null);
+      const { row, kids } = node({
+        title: pev?.title || '(이벤트)', status: pev?.st ?? 'plan', tag: '조합', hasKids: true,
+        onOpen: partBoard ? () => this.openProject?.(partBoard) : null,
+      });
+      box.append(row);
+      kids.append(el('div.empty', { text: '불러오는 중…' }));
+      this.adapter?.eventCards?.(pid).then((cards) => {
+        if (this._detailGen !== gen || this.item?.id !== item.id) return;
+        clear(kids);
+        if (!(cards && cards.length)) { kids.append(el('div.empty', { text: '하위 일정 없음' })); return; }
+        for (const c of cards) {
+          const r = node({ title: c.title, status: c.status, hasKids: false, onOpen: partBoard ? () => this.openProject?.(partBoard) : null });
+          if (c.depth) r.row.style.paddingLeft = `${8 + c.depth * 14}px`;
+          kids.append(r.row);
+        }
+      }).catch(() => { if (this._detailGen === gen && this.item?.id === item.id) { clear(kids); kids.append(el('div.empty', { text: '불러오지 못함' })); } });
     }
 
-    if (!kids.length && !parts.length) box.append(el('div.empty', { text: '구성 일정이 없습니다.' }));
+    if (!own.length && !parts.length) box.append(el('div.empty', { text: '구성이 없습니다.' }));
   }
 
   /** 이 이벤트가 조합(combine)으로 품은 대상 id들. */

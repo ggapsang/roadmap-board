@@ -167,19 +167,15 @@
       </div>
     </section>
 
-    <!-- 상세 — 진척 요약 + 태스크(투두) + 구성 일정(조합한 이벤트·하위 일정) -->
+    <!-- 상세 — 태스크(투두) + 구성(조합한 이벤트·하위 일정, 트리) -->
     <section class="ptab-panel" data-panel="task" hidden>
-      <div class="fld">
-        <label>진행도 <span class="muted" id="i-progpct"></span></label>
-        <div class="prog-bar"><i id="i-progfill"></i></div>
-      </div>
       <div class="fld">
         <label>태스크 <span class="muted" id="i-taskcount"></span></label>
         <div class="tasks" id="i-tasks"></div>
         <button class="btn outline sm" id="i-taskadd" type="button">+ 태스크 추가</button>
       </div>
       <div class="fld">
-        <label>구성 일정 <span class="muted">이 이벤트를 이루는 것 · 조합한 이벤트와 그 안의 일정</span></label>
+        <label>구성 <span class="muted">이 이벤트를 이루는 것 · 조합한 이벤트와 하위 일정</span></label>
         <div class="tasks" id="i-children"></div>
       </div>
     </section>
