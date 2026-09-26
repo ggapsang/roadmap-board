@@ -1,10 +1,12 @@
 /**
  * 문서 저장소 — 렌더러가 쓰는 문서 모양({meta, tracks, items})과
- * 정규화된 테이블 사이를 오간다.
+ * 4대상 테이블(event·containment·disp·rel) 사이를 오간다.
  *
- * 저장은 "보드 하나를 통째로 다시 쓰기"다. 일정 수십~수백 건 규모에서는
- * 트랜잭션 한 번이면 끝나고, 부분 갱신 로직을 두는 것보다 정합성이 확실하다.
- * 규모가 커지면 이 함수 안만 바꾸면 된다.
+ * 규칙 3장: 모든 단위는 event, 담김은 containment 하나(순서 있음=트랙 위/하위 카드,
+ * 순서 없음=태스크), 표시는 disp(어느 포함 edge 위인가), 이음은 rel(보드 무관).
+ * 보드는 저장 대상이 아니라 '펼친 이벤트' — board 테이블은 최상위 레지스트리와
+ * 표시 설정(이름·기간·org·band·정렬순서)만 쥔다. 저장은 '보드 하나가 여는 이벤트
+ * 서브트리'를 다시 쓰되, 이벤트 본질은 공유되므로 지우지 않고 UPSERT한다(§3.4).
  */
 import { reidentify } from '../../src/core/schema.js';
 
@@ -12,6 +14,8 @@ import { reidentify } from '../../src/core/schema.js';
 const REVISION_INTERVAL_MIN = 5;
 /** 보관할 리비전 수 */
 const REVISION_KEEP = 200;
+
+const SEP = ' ';
 
 export class BoardRepository {
   /**
@@ -25,18 +29,54 @@ export class BoardRepository {
 
   open(boardId) { this.boardId = boardId; }
 
-  // ── 프로젝트 목록 ───────────────────────────────────────
+  // ── 포함 그래프 헬퍼 ────────────────────────────────────
+
+  /** parent -> [{child_id, ordered, ord}] (ord 오름차순). 전역 포함 그래프. */
+  #childMap() {
+    const kids = new Map();
+    for (const c of this.db.prepare('SELECT parent_id, child_id, ordered, ord FROM containment').all()) {
+      if (!kids.has(c.parent_id)) kids.set(c.parent_id, []);
+      kids.get(c.parent_id).push(c);
+    }
+    for (const arr of kids.values()) arr.sort((a, b) => a.ord - b.ord);
+    return kids;
+  }
+
+  /** root에서 포함을 따라 도달하는 모든 이벤트(루트 제외). */
+  #descendants(root, kids = this.#childMap()) {
+    const seen = new Set();
+    const stack = [root];
+    while (stack.length) {
+      const n = stack.pop();
+      for (const c of (kids.get(n) ?? [])) {
+        if (!seen.has(c.child_id)) { seen.add(c.child_id); stack.push(c.child_id); }
+      }
+    }
+    return seen;
+  }
+
+  // ── 프로젝트(보드) 목록 ─────────────────────────────────
 
   /** 최근 연 순서. 목록 화면용이라 문서 본문은 싣지 않는다. */
   listProjects() {
-    return this.db.prepare(`
+    const boards = this.db.prepare(`
       SELECT b.id, b.name, b.start_date AS start, b.end_date AS end,
              b.updated_at AS updatedAt, b.opened_at AS openedAt, b.ord AS ord,
-             (SELECT count(*) FROM placement WHERE board_id = b.id) AS items,
-             (SELECT count(*) FROM track     WHERE board_id = b.id) AS tracks
+             b.root_event_id AS root
       FROM board b
       ORDER BY COALESCE(b.opened_at, b.updated_at) DESC, b.id DESC
     `).all();
+    const kids = this.#childMap();
+    return boards.map((b) => {
+      const tracks = (kids.get(b.root) ?? []).filter((c) => c.ordered === 1);
+      const desc = b.root ? this.#descendants(b.root, kids) : new Set();
+      // 아이템 수 = 서브트리에서 트랙·태스크를 뺀 순서 있는 이벤트. 대략치(목록 배지용).
+      const trackIds = new Set(tracks.map((c) => c.child_id));
+      let items = 0;
+      for (const ev of desc) if (!trackIds.has(ev)) items += 1;
+      const { root, ...rest } = b;
+      return { ...rest, tracks: tracks.length, items };
+    });
   }
 
   /** 수동 정렬 순서 저장 — 첫 화면 드래그 재배치. orderedIds 순서대로 ord를 매긴다. */
@@ -49,38 +89,56 @@ export class BoardRepository {
 
   /**
    * 모든 보드를 통틀어 이벤트 목록. '동일 카드(같은 이벤트)' 연결 후보용.
-   * 카드(placement가 있는 이벤트)는 이벤트당 한 번(어느 보드에 있든), 프로젝트(보드)는
-   * 그 루트 이벤트로 함께 낸다. 본질(제목·기간·상태 등)도 실어 보내 바로 물려받게 한다.
-   * @returns {{id, title, kind, boards, s, e, ty, st, og, pg, note}[]}
+   * 보드(루트 이벤트)·트랙·카드를 모두 이벤트로 낸다. 각 이벤트가 어느 보드에 속하는지도
+   * 함께 실어, 보드를 넘는 동일성 연결에 쓴다.
+   * @returns {{id, title, kind, boardIds, boardNames, s, e, ty, st, og, pg, note}[]}
    */
   listEvents() {
-    const cards = this.db.prepare(`
-      SELECT e.id, e.title, e.type AS ty, e.start_date AS s, e.end_date AS e,
-             e.status AS st, e.org AS og, e.progress AS pg, e.note,
-             group_concat(DISTINCT b.name) AS boardNames,
-             group_concat(DISTINCT b.id)   AS boardIds
-      FROM placement p
-      JOIN event e ON e.id = p.event_id
-      JOIN board b ON b.id = p.board_id
-      GROUP BY e.id
-    `).all().map((r) => ({ ...r, kind: 'card' }));
+    const boardRows = this.db.prepare(
+      'SELECT id, name, root_event_id FROM board WHERE root_event_id IS NOT NULL',
+    ).all();
+    const kids = this.#childMap();
+    const rootIds = new Set(boardRows.map((b) => b.root_event_id));
 
-    const boards = this.db.prepare(`
-      SELECT e.id, e.title, e.type AS ty, e.start_date AS s, e.end_date AS e,
-             e.status AS st, e.org AS og, e.progress AS pg, e.note,
-             b.name AS boardNames, CAST(b.id AS TEXT) AS boardIds, b.id AS boardId
-      FROM board b JOIN event e ON e.id = b.root_event_id
-      WHERE b.root_event_id IS NOT NULL
-    `).all().map((r) => ({ ...r, kind: 'board' }));
+    const trackIds = new Set();
+    for (const b of boardRows) {
+      for (const c of (kids.get(b.root_event_id) ?? [])) if (c.ordered === 1) trackIds.add(c.child_id);
+    }
 
-    // 트랙도 이벤트다(§3.2) — 동일 이벤트로 묶는 후보에 함께 나온다.
-    const tracks = this.db.prepare(`
-      SELECT e.id, e.title, e.type AS ty, e.start_date AS s, e.end_date AS e,
-             e.status AS st, e.org AS og, e.progress AS pg, e.note,
-             b.name AS boardNames, CAST(t.board_id AS TEXT) AS boardIds, t.board_id AS boardId
-      FROM track t JOIN event e ON e.id = t.event_id JOIN board b ON b.id = t.board_id
-      WHERE t.event_id IS NOT NULL
-    `).all().map((r) => ({ ...r, kind: 'track' }));
+    // 이벤트 -> 어느 보드들에 속하나
+    const member = new Map();
+    for (const b of boardRows) {
+      for (const ev of this.#descendants(b.root_event_id, kids)) {
+        if (!member.has(ev)) member.set(ev, { ids: new Set(), names: new Set() });
+        member.get(ev).ids.add(b.id);
+        member.get(ev).names.add(b.name);
+      }
+    }
+
+    const essence = this.db.prepare(
+      `SELECT id, title, type AS ty, start_date AS s, end_date AS e,
+              status AS st, org AS og, progress AS pg, note FROM event WHERE id = ?`,
+    );
+    const memNames = (ev) => { const m = member.get(ev); return m ? [...m.names].join(',') : ''; };
+    const memIds = (ev) => { const m = member.get(ev); return m ? [...m.ids].join(',') : ''; };
+
+    const boards = boardRows.map((b) => {
+      const e = essence.get(b.root_event_id) ?? { id: b.root_event_id, title: b.name };
+      return { ...e, boardNames: b.name, boardIds: String(b.id), boardId: b.id, kind: 'board' };
+    });
+
+    const tracks = [...trackIds].map((ev) => {
+      const e = essence.get(ev);
+      return e ? { ...e, boardNames: memNames(ev), boardIds: memIds(ev), kind: 'track' } : null;
+    }).filter(Boolean);
+
+    const cards = [];
+    for (const ev of member.keys()) {
+      if (rootIds.has(ev) || trackIds.has(ev)) continue;
+      const e = essence.get(ev);
+      if (!e || e.ty === 'task') continue;   // 태스크는 후보에서 뺀다
+      cards.push({ ...e, boardNames: memNames(ev), boardIds: memIds(ev), kind: 'card' });
+    }
 
     return [...boards, ...tracks, ...cards];
   }
@@ -110,22 +168,32 @@ export class BoardRepository {
     return create();
   }
 
+  /** 보드 삭제 = 배치의 삭제(규칙 2). 이벤트는 남긴다 — 다른 보드에 쓰일 수 있으므로. */
   deleteProject(id) {
-    // board의 자식(placement·track 등)은 ON DELETE CASCADE. 배치가 없는 이벤트(보드 루트·
-    // 트랙 이벤트)는 배치로 안 걸리므로 직접 지운다.
-    const b = this.db.prepare('SELECT root_event_id FROM board WHERE id = ?').get(id);
-    const trackEvents = this.db.prepare('SELECT event_id FROM track WHERE board_id = ? AND event_id IS NOT NULL')
-      .all(id).map((r) => r.event_id);
-    this.db.prepare('DELETE FROM board WHERE id = ?').run(id);
-    if (b?.root_event_id) this.db.prepare('DELETE FROM event WHERE id = ?').run(b.root_event_id);
-    for (const ev of trackEvents) this.db.prepare('DELETE FROM event WHERE id = ?').run(ev);
+    const del = this.db.transaction(() => {
+      const b = this.db.prepare('SELECT root_event_id FROM board WHERE id = ?').get(id);
+      if (b?.root_event_id) {
+        const parents = new Set([b.root_event_id, ...this.#descendants(b.root_event_id)]);
+        const ph = [...parents].map(() => '?').join(',');
+        // 이 보드가 여는 서브트리의 표시(배치)·포함 골격만 지운다. 이벤트 본질은 남긴다.
+        this.db.prepare(`DELETE FROM disp        WHERE parent_id IN (${ph})`).run(...parents);
+        this.db.prepare(`DELETE FROM containment WHERE parent_id IN (${ph})`).run(...parents);
+      }
+      this.db.prepare('DELETE FROM org  WHERE board_id = ?').run(id);
+      this.db.prepare('DELETE FROM band WHERE board_id = ?').run(id);
+      this.db.prepare('DELETE FROM board WHERE id = ?').run(id);
+    });
+    del();
     if (this.boardId === id) this.boardId = null;
   }
 
   renameProject(id, name) {
+    const b = this.db.prepare('SELECT root_event_id FROM board WHERE id = ?').get(id);
     this.db.prepare(
       "UPDATE board SET name = ?, updated_at = datetime('now','localtime') WHERE id = ?",
     ).run(name, id);
+    // 보드 이름 = 루트 이벤트 제목 (규칙 6·§5.1) — 함께 바꾼다.
+    if (b?.root_event_id) this.db.prepare('UPDATE event SET title = ? WHERE id = ?').run(name, b.root_event_id);
   }
 
   /** 문서를 그대로 복사해 새 보드를 만든다 */
@@ -153,132 +221,210 @@ export class BoardRepository {
 
   // ── 문서 ────────────────────────────────────────────────
 
-  /** @returns {object|null} 렌더러 문서. 아직 아무것도 없으면 null. */
+  /**
+   * 4대상 테이블에서 렌더러 문서를 재구성한다.
+   *   보드 = 루트 이벤트. 트랙 = 루트의 순서 있는 자식. 카드 = 트랙 아래 순서 있는 후손.
+   *   걸침(sp) = 한 카드가 이웃 트랙들에 함께 소속된 수(다중 소속). 태스크 = 순서 없는 자식.
+   * @returns {object|null}
+   */
   load() {
     if (this.boardId == null) return null;
     const board = this.db.prepare('SELECT * FROM board WHERE id = ?').get(this.boardId);
     if (!board) return null;
-
-    const tracks = this.db.prepare(
-      'SELECT id, lab, name, width FROM track WHERE board_id = ? ORDER BY ord',
-    ).all(this.boardId).map((t) => ({ id: t.id, lab: t.lab, name: t.name, w: t.width }));
+    const root = board.root_event_id;
 
     const orgs = this.db.prepare(
       'SELECT name FROM org WHERE board_id = ? ORDER BY ord',
     ).all(this.boardId).map((r) => r.name);
-
     const bands = this.db.prepare(
       'SELECT id, from_date, to_date, label, scale FROM band WHERE board_id = ? ORDER BY ord',
     ).all(this.boardId)
       .map((r) => ({ id: r.id, from: r.from_date, to: r.to_date, label: r.label, scale: r.scale }));
 
-    // 이 보드의 배치 + 각 배치가 가리키는 이벤트 본질. item = event(본질) + placement(배치).
-    const rows = this.db.prepare(`
-      SELECT e.id AS id, e.title, e.start_date, e.end_date, e.type, e.status, e.org, e.progress, e.note,
-             p.track_id, p.span, p.pos_x, p.pos_w, p.height_days, p.align, p.show_note, p.parent_id, p.alias
-      FROM placement p JOIN event e ON e.id = p.event_id
-      WHERE p.board_id = ? ORDER BY p.ord
-    `).all(this.boardId);
+    const base = {
+      version: board.doc_version,
+      meta: { start: board.start_date, end: board.end_date, name: board.name },
+      orgs, bands, tracks: [], relations: [], items: [],
+    };
+    if (!root) return base;
 
-    // 순서 없는 태스크 — 이벤트에 딸린다(보드 무관). 이 보드의 이벤트 것만 모은다.
-    const eventIds = rows.map((r) => r.id);
-    const tasksByEvent = new Map();
-    if (eventIds.length) {
-      const ph = eventIds.map(() => '?').join(',');
-      const taskRows = this.db.prepare(
-        `SELECT id, event_id, text, done FROM event_task WHERE event_id IN (${ph}) ORDER BY ord`,
-      ).all(...eventIds);
-      for (const t of taskRows) {
-        if (!tasksByEvent.has(t.event_id)) tasksByEvent.set(t.event_id, []);
-        tasksByEvent.get(t.event_id).push({ id: t.id, text: t.text, done: t.done === 1 });
+    const cont = this.db.prepare('SELECT parent_id, child_id, ordered, ord FROM containment').all();
+    const kids = new Map();
+    for (const c of cont) {
+      if (!kids.has(c.parent_id)) kids.set(c.parent_id, []);
+      kids.get(c.parent_id).push(c);
+    }
+    for (const arr of kids.values()) arr.sort((a, b) => a.ord - b.ord);
+
+    // 트랙 = 루트의 순서 있는 자식
+    const trackEdges = (kids.get(root) ?? []).filter((c) => c.ordered === 1);
+    const trackIds = trackEdges.map((c) => c.child_id);
+    const trackIndex = new Map(trackIds.map((id, i) => [id, i]));
+    const trackSet = new Set(trackIds);
+
+    // 서브트리 이벤트 + 본질
+    const inSub = new Set();
+    const stack = [root];
+    while (stack.length) {
+      const n = stack.pop();
+      for (const c of (kids.get(n) ?? [])) {
+        if (!inSub.has(c.child_id)) { inSub.add(c.child_id); stack.push(c.child_id); }
+      }
+    }
+    const evIds = [...inSub, root];
+    const evById = new Map();
+    if (evIds.length) {
+      const ph = evIds.map(() => '?').join(',');
+      for (const e of this.db.prepare(`SELECT * FROM event WHERE id IN (${ph})`).all(...evIds)) {
+        evById.set(e.id, e);
       }
     }
 
-    // 선행(dep)은 relation 테이블에서, 포함(contain)은 배치의 parent_id에서 파생한다.
-    const relations = this.db.prepare(
-      'SELECT id, type, from_id, to_id FROM relation WHERE board_id = ?',
-    ).all(this.boardId).map((r) => ({ id: r.id, type: r.type, from: r.from_id, to: r.to_id }));
-    for (const r of rows) {
-      if (r.parent_id) relations.push({ id: `c_${r.id}`, type: 'contain', from: r.parent_id, to: r.id });
+    const dispBy = new Map();
+    for (const d of this.db.prepare('SELECT * FROM disp').all()) dispBy.set(d.parent_id + SEP + d.child_id, d);
+
+    const tracks = trackEdges.map((c) => {
+      const ev = evById.get(c.child_id) ?? {};
+      const d = dispBy.get(root + SEP + c.child_id) ?? {};
+      return { id: c.child_id, lab: d.lab ?? '', name: ev.title ?? '', w: d.px_width ?? null };
+    });
+
+    // 카드 재구성
+    const homeTrack = new Map();   // event -> 홈 트랙 id
+    const docParent = new Map();   // event -> 부모 카드 id | null
+    const spanOf = new Map();      // event -> 걸침 수
+    const ordOf = new Map();       // event -> 형제 내 순서
+
+    const trackMembers = new Map();
+    for (const c of cont) {
+      if (c.ordered !== 1 || !trackSet.has(c.parent_id) || !inSub.has(c.child_id)) continue;
+      if (!trackMembers.has(c.child_id)) trackMembers.set(c.child_id, []);
+      trackMembers.get(c.child_id).push(trackIndex.get(c.parent_id));
+      ordOf.set(c.child_id, c.ord);
+    }
+    for (const [ev, idxs] of trackMembers) {
+      idxs.sort((a, b) => a - b);
+      homeTrack.set(ev, trackIds[idxs[0]]);
+      spanOf.set(ev, idxs[idxs.length - 1] - idxs[0] + 1);
+      docParent.set(ev, null);
+    }
+    // 중첩 카드: 최상위 카드에서 순서 있는 포함을 따라 내려간다
+    const queue = [...trackMembers.keys()];
+    while (queue.length) {
+      const parent = queue.shift();
+      for (const c of (kids.get(parent) ?? [])) {
+        if (c.ordered !== 1 || !inSub.has(c.child_id) || homeTrack.has(c.child_id)) continue;
+        docParent.set(c.child_id, parent);
+        homeTrack.set(c.child_id, homeTrack.get(parent));
+        spanOf.set(c.child_id, 1);
+        ordOf.set(c.child_id, c.ord);
+        queue.push(c.child_id);
+      }
+    }
+
+    // 태스크(순서 없는 포함)
+    const tasksOf = new Map();
+    for (const c of cont) {
+      if (c.ordered !== 0 || !inSub.has(c.child_id)) continue;
+      const t = evById.get(c.child_id);
+      if (!t) continue;
+      if (!tasksOf.has(c.parent_id)) tasksOf.set(c.parent_id, []);
+      tasksOf.get(c.parent_id).push({ ord: c.ord, id: c.child_id, text: t.title, done: t.status === 'done' });
+    }
+    for (const arr of tasksOf.values()) arr.sort((a, b) => a.ord - b.ord);
+
+    const items = [];
+    for (const ev of homeTrack.keys()) {
+      const e = evById.get(ev);
+      if (!e) continue;
+      const parentId = docParent.get(ev) ?? null;
+      const edgeParent = parentId ?? homeTrack.get(ev);
+      const d = dispBy.get(edgeParent + SEP + ev) ?? {};
+      items.push({
+        id: ev,
+        s: e.start_date, e: e.end_date, ti: e.title, ty: e.type, st: e.status,
+        og: e.org, pg: e.progress, note: e.note,
+        parent: parentId,
+        alias: d.alias ?? null,
+        tasks: (tasksOf.get(ev) ?? []).map((t) => ({ id: t.id, text: t.text, done: t.done })),
+        place: {
+          t: homeTrack.get(ev), sp: spanOf.get(ev) ?? 1,
+          x: d.pos_x ?? null, w: d.pos_w ?? null, hd: d.height_days ?? null,
+          align: d.align ?? 'middle', showNote: d.show_note === 1,
+        },
+        _o: ordOf.get(ev) ?? 0,
+      });
+    }
+    items.sort((a, b) =>
+      (trackIndex.get(a.place.t) ?? 0) - (trackIndex.get(b.place.t) ?? 0) || a._o - b._o);
+    items.forEach((it) => { delete it._o; });
+
+    // 관계: rel(전역)에서 양끝이 이 서브트리 안인 것 + 포함(parent)에서 파생
+    const relations = [];
+    for (const r of this.db.prepare('SELECT id, type, from_id, to_id FROM rel').all()) {
+      if (inSub.has(r.from_id) && inSub.has(r.to_id)) {
+        relations.push({ id: r.id, type: r.type, from: r.from_id, to: r.to_id });
+      }
+    }
+    for (const it of items) {
+      if (it.parent) relations.push({ id: `c_${it.id}`, type: 'contain', from: it.parent, to: it.id });
     }
 
     return {
       version: board.doc_version,
-      meta: { start: board.start_date, end: board.end_date, name: board.name },
-      orgs,
-      bands,
-      tracks,
-      relations,
-      items: rows.map((r) => ({
-        id: r.id,
-        s: r.start_date, e: r.end_date,
-        ti: r.title, ty: r.type, st: r.status,
-        og: r.org, pg: r.progress, note: r.note,
-        parent: r.parent_id ?? null,
-        alias: r.alias ?? null,
-        tasks: tasksByEvent.get(r.id) ?? [],
-        place: {
-          t: r.track_id, sp: r.span,
-          align: r.align, showNote: r.show_note === 1, hd: r.height_days ?? null, x: r.pos_x, w: r.pos_w,
-        },
-      })),
+      meta: { start: board.start_date, end: board.end_date, name: evById.get(root)?.title ?? board.name },
+      orgs, bands, tracks, relations, items,
     };
   }
 
   /**
-   * 문서 전체 저장. 트랜잭션 1회.
+   * 문서 전체 저장. 트랜잭션 1회. 렌더러 문서를 4대상으로 분해한다.
    * @param {object} doc 렌더러 문서
    * @param {string} label 변경 설명 (리비전 라벨)
    */
   save(doc, label = '') {
     this.#requireBoard();
     const write = this.db.transaction(() => {
+      // 루트 이벤트 id 확보
+      const boardRow = this.db.prepare('SELECT root_event_id FROM board WHERE id = ?').get(this.boardId);
+      let root = boardRow?.root_event_id;
+      if (!root) root = `board:${this.boardId}`;
+
       this.db.prepare(`
-        INSERT INTO board (id, name, start_date, end_date, doc_version)
-        VALUES (@id, @name, @start, @end, @docVersion)
+        INSERT INTO board (id, name, start_date, end_date, doc_version, root_event_id)
+        VALUES (@id, @name, @start, @end, @docVersion, @root)
         ON CONFLICT(id) DO UPDATE SET
           name = @name, start_date = @start, end_date = @end, doc_version = @docVersion,
-          updated_at = datetime('now','localtime')
+          root_event_id = @root, updated_at = datetime('now','localtime')
       `).run({
         id: this.boardId,
         name: doc.meta.name ?? '로드맵',
-        start: doc.meta.start,
-        end: doc.meta.end,
-        docVersion: doc.version ?? 1,
+        start: doc.meta.start, end: doc.meta.end,
+        docVersion: doc.version ?? 1, root,
       });
 
-      // 이 보드의 배치·관계·구성을 비운다. 이벤트 본질은 공유될 수 있어 지우지 않고
-      // 아래에서 UPSERT한다(§3.4). 이 보드가 갖고 있던 이벤트의 태스크는 함께 정리한다.
-      const oldEventIds = this.db.prepare('SELECT event_id FROM placement WHERE board_id = ?')
-        .all(this.boardId).map((r) => r.event_id);
-      this.db.prepare('DELETE FROM placement WHERE board_id = ?').run(this.boardId);
-      this.db.prepare('DELETE FROM relation  WHERE board_id = ?').run(this.boardId);
-      this.db.prepare('DELETE FROM track WHERE board_id = ?').run(this.boardId);
-      this.db.prepare('DELETE FROM org   WHERE board_id = ?').run(this.boardId);
-      this.db.prepare('DELETE FROM band  WHERE board_id = ?').run(this.boardId);
-      if (oldEventIds.length) {
-        const ph = oldEventIds.map(() => '?').join(',');
-        this.db.prepare(`DELETE FROM event_task WHERE event_id IN (${ph})`).run(...oldEventIds);
+      // 이 보드가 여는 구조가 부모로 삼는 이벤트들(옛/새)을 모아, 그 아래 포함·표시를 비운다.
+      // 이벤트 본질은 공유될 수 있어 지우지 않는다(§3.4).
+      const oldParents = new Set([root, ...this.#descendants(root)]);
+      const newParents = new Set([root, ...doc.tracks.map((t) => t.id), ...doc.items.map((it) => it.id)]);
+      const clearParents = new Set([...oldParents, ...newParents]);
+      if (clearParents.size) {
+        const ph = [...clearParents].map(() => '?').join(',');
+        this.db.prepare(`DELETE FROM containment WHERE parent_id IN (${ph})`).run(...clearParents);
+        this.db.prepare(`DELETE FROM disp        WHERE parent_id IN (${ph})`).run(...clearParents);
       }
+      // 이 보드 안에서 양끝이 모두 도는 관계를 갈아끼운다(보드 밖 관계는 건드리지 않음, 규칙 8).
+      const itemIds = doc.items.map((it) => it.id);
+      if (itemIds.length) {
+        const ph = itemIds.map(() => '?').join(',');
+        this.db.prepare(
+          `DELETE FROM rel WHERE type IN ('dep','same') AND from_id IN (${ph}) AND to_id IN (${ph})`,
+        ).run(...itemIds, ...itemIds);
+      }
+      this.db.prepare('DELETE FROM org  WHERE board_id = ?').run(this.boardId);
+      this.db.prepare('DELETE FROM band WHERE board_id = ?').run(this.boardId);
 
-      const insBand = this.db.prepare(
-        'INSERT INTO band (board_id, id, ord, from_date, to_date, label, scale) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      );
-      (doc.bands ?? []).forEach((b, i) =>
-        insBand.run(this.boardId, b.id, i, b.from, b.to, b.label ?? '', b.scale ?? 1));
-
-      const insOrg = this.db.prepare(
-        'INSERT INTO org (board_id, ord, name) VALUES (?, ?, ?)',
-      );
-      (doc.orgs ?? []).forEach((o, i) => insOrg.run(this.boardId, i, o));
-
-      const insTrack = this.db.prepare(
-        'INSERT INTO track (board_id, id, ord, lab, name, width, event_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      );
-      doc.tracks.forEach((t, i) =>
-        insTrack.run(this.boardId, t.id, i, t.lab ?? '', t.name, t.w ?? null, `track:${this.boardId}:${t.id}`));
-
-      // 이벤트 본질은 UPSERT — 같은 이벤트가 여러 보드에 있어도 하나의 본질을 공유한다(§3.4).
+      // 준비된 문장들
       const upEvent = this.db.prepare(`
         INSERT INTO event (id, title, start_date, end_date, type, status, org, progress, note)
         VALUES (@id, @title, @s, @e, @type, @status, @org, @pg, @note)
@@ -286,84 +432,97 @@ export class BoardRepository {
           title = @title, start_date = @s, end_date = @e, type = @type,
           status = @status, org = @org, progress = @pg, note = @note
       `);
-      const insPlace = this.db.prepare(`
-        INSERT INTO placement (board_id, event_id, track_id, ord, span,
-                               pos_x, pos_w, height_days, align, show_note, parent_id, alias)
-        VALUES (@board, @id, @track, @ord, @span, @x, @w, @hd, @align, @showNote, @parent, @alias)
+      const insCont = this.db.prepare(
+        'INSERT OR REPLACE INTO containment (parent_id, child_id, ordered, ord) VALUES (?, ?, ?, ?)',
+      );
+      const insDisp = this.db.prepare(`
+        INSERT OR REPLACE INTO disp (parent_id, child_id, pos_x, pos_w, height_days, align, show_note, alias, lab, px_width)
+        VALUES (@parent, @child, @x, @w, @hd, @align, @showNote, @alias, @lab, @pxWidth)
       `);
-      const insTask = this.db.prepare(
-        'INSERT OR REPLACE INTO event_task (id, event_id, ord, text, done) VALUES (?, ?, ?, ?, ?)',
-      );
       const insRel = this.db.prepare(
-        'INSERT OR IGNORE INTO relation (board_id, id, type, from_id, to_id) VALUES (?, ?, ?, ?, ?)',
+        'INSERT OR IGNORE INTO rel (id, type, from_id, to_id) VALUES (?, ?, ?, ?)',
       );
+      const insBand = this.db.prepare(
+        'INSERT INTO band (board_id, id, ord, from_date, to_date, label, scale) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      );
+      const insOrg = this.db.prepare('INSERT INTO org (board_id, ord, name) VALUES (?, ?, ?)');
+
+      // 트랙 이벤트 id는 보드마다 유일해야 한다 — 빈 보드가 모두 't0'을 쓰기 때문.
+      // 보드 접두를 붙이되 멱등하게(이미 붙어 있으면 그대로) — load↔save 왕복에 안전.
+      const tkey = (raw) => (typeof raw === 'string' && raw.startsWith(`track:${this.boardId}:`))
+        ? raw : `track:${this.boardId}:${raw}`;
+
+      (doc.bands ?? []).forEach((b, i) =>
+        insBand.run(this.boardId, b.id, i, b.from, b.to, b.label ?? '', b.scale ?? 1));
+      (doc.orgs ?? []).forEach((o, i) => insOrg.run(this.boardId, i, o));
+
+      // 루트(보드) 이벤트
+      upEvent.run({
+        id: root, title: doc.meta.name ?? '로드맵', s: doc.meta.start, e: doc.meta.end,
+        type: 'bar', status: 'plan', org: '', pg: 0, note: '',
+      });
+
+      // 트랙: 이벤트 + 포함(루트→트랙) + 표시(라벨·폭)
+      doc.tracks.forEach((t, i) => {
+        const tid = tkey(t.id);
+        upEvent.run({
+          id: tid, title: t.name ?? '', s: doc.meta.start, e: doc.meta.end,
+          type: 'bar', status: 'plan', org: '', pg: 0, note: '',
+        });
+        insCont.run(root, tid, 1, i);
+        insDisp.run({
+          parent: root, child: tid, x: null, w: null, hd: null,
+          align: 'middle', showNote: 0, alias: null, lab: t.lab ?? '', pxWidth: t.w ?? null,
+        });
+      });
+
+      const trackAt = new Map(doc.tracks.map((t, i) => [tkey(t.id), i]));
 
       doc.items.forEach((it, i) => {
-        // place(정규화된 배치) 또는 flat(정규화 전) 둘 다 받는다.
         const p = it.place ?? it;
         upEvent.run({
           id: it.id, title: it.ti ?? '', s: it.s, e: it.e, type: it.ty ?? 'bar',
           status: it.st ?? 'plan', org: it.og ?? '', pg: it.pg ?? 0, note: it.note ?? '',
         });
-        insPlace.run({
-          board: this.boardId, id: it.id, track: p.t, ord: i, span: p.sp ?? 1,
+        // 부모 = 명시된 상위 카드, 없으면 홈 트랙
+        const homeTrackId = tkey(p.t);
+        const edgeParent = it.parent ?? homeTrackId;
+        insCont.run(edgeParent, it.id, 1, i);
+        insDisp.run({
+          parent: edgeParent, child: it.id,
           x: p.x ?? null, w: p.w ?? null, hd: p.hd ?? null,
-          align: p.align ?? 'middle', showNote: p.showNote ? 1 : 0, parent: it.parent ?? null,
-          alias: it.alias ?? null,
+          align: p.align ?? 'middle', showNote: p.showNote ? 1 : 0, alias: it.alias ?? null,
+          lab: null, pxWidth: null,
         });
-        // 태스크는 이벤트 뒤에 (FK 충족). 태스크도 이벤트다 — 배킹 이벤트를 함께 둔다(§3.3).
-        // event_task는 '이 이벤트가 태스크를 순서 없이 담는다'는 링크. 순서가 생기면 카드로 승격.
+        // 걸침: 홈 트랙 다음 (sp-1)개 트랙에도 소속(다중 소속). 최상위 카드에만.
+        const sp = p.sp ?? 1;
+        if (!it.parent && sp > 1 && trackAt.has(homeTrackId)) {
+          const from = trackAt.get(homeTrackId);
+          for (let k = 1; k < sp && from + k < doc.tracks.length; k += 1) {
+            insCont.run(tkey(doc.tracks[from + k].id), it.id, 1, i);
+          }
+        }
+        // 태스크: 이벤트 + 순서 없는 포함
         (Array.isArray(it.tasks) ? it.tasks : []).forEach((t, ti) => {
-          insTask.run(t.id, it.id, ti, t.text ?? '', t.done ? 1 : 0);
           upEvent.run({
             id: t.id, title: t.text ?? '', s: it.s, e: it.e, type: 'task',
             status: t.done ? 'done' : 'plan', org: '', pg: 0, note: '',
           });
+          insCont.run(it.id, t.id, 0, ti);
         });
       });
 
-      // 이 보드 자체도 이벤트다 — 루트 이벤트의 본질을 보드 이름·기간에 맞춰 둔다(§3.2·§5.1).
-      // 이 이벤트를 다른 보드에 배치하면 그 카드가 곧 이 보드가 된다(카드↔보드).
-      const boardRow = this.db.prepare('SELECT root_event_id FROM board WHERE id = ?').get(this.boardId);
-      let rootId = boardRow?.root_event_id;
-      if (!rootId) {
-        rootId = `board:${this.boardId}`;
-        this.db.prepare('UPDATE board SET root_event_id = ? WHERE id = ?').run(rootId, this.boardId);
-      }
-      upEvent.run({
-        id: rootId, title: doc.meta.name ?? '로드맵', s: doc.meta.start, e: doc.meta.end,
-        type: 'bar', status: 'plan', org: '', pg: 0, note: '',
-      });
-
-      // 트랙도 이벤트다 — 각 트랙의 배킹 이벤트 본질을 트랙 이름에 맞춘다(§3.2).
-      for (const t of doc.tracks) {
-        upEvent.run({
-          id: `track:${this.boardId}:${t.id}`, title: t.name ?? '', s: doc.meta.start, e: doc.meta.end,
-          type: 'bar', status: 'plan', org: '', pg: 0, note: '',
-        });
-      }
-
-      // 선행(dep)·동일(same) 관계를 relation 테이블에. 포함(contain)은 parent_id에서 파생이라 저장 안 함.
-      // 정규화 전 문서(item.dp만 있는 경우)도 관대하게 받는다.
+      // 관계(dep·same). 포함(contain)은 containment에서 파생이라 rel에 넣지 않는다.
       if (Array.isArray(doc.relations)) {
         for (const rel of doc.relations) {
           if (rel.type !== 'dep' && rel.type !== 'same') continue;
-          insRel.run(this.boardId, rel.id || `r_${rel.from}_${rel.to}`, rel.type, rel.from, rel.to);
+          insRel.run(rel.id || `r_${rel.from}_${rel.to}`, rel.type, rel.from, rel.to);
         }
       } else {
         for (const it of doc.items) {
-          for (const dep of it.dp ?? []) insRel.run(this.boardId, `r_${dep}_${it.id}`, 'dep', dep, it.id);
+          for (const dep of it.dp ?? []) insRel.run(`r_${dep}_${it.id}`, 'dep', dep, it.id);
         }
       }
-
-      // 어디에도 놓이지 않은 이벤트는 정리한다. 단 보드의 루트 이벤트는 배치가 없어도 남긴다
-      // (그 보드가 곧 그 이벤트이므로).
-      this.db.prepare(`
-        DELETE FROM event WHERE id NOT IN (SELECT event_id FROM placement)
-          AND id NOT IN (SELECT root_event_id FROM board WHERE root_event_id IS NOT NULL)
-          AND id NOT IN (SELECT event_id FROM track WHERE event_id IS NOT NULL)
-          AND id NOT IN (SELECT id FROM event_task)
-      `).run();
 
       this.#maybeRevision(doc, label);
     });

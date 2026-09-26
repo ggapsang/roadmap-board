@@ -1263,10 +1263,14 @@ async function runSmoke(target) {
   if (!result.error) {
     try {
       const mark = await target.webContents.executeJavaScript(writeProbe);
-      // 이벤트는 이제 event(본질) + placement(배치)에 저장된다.
+      // 이벤트는 event(본질) + containment(포함)에 저장된다. 루트→첫 트랙→첫 카드로 내려가
+      // 그 본질이 바뀌었는지 본다.
       const row = db.prepare(
-        `SELECT e.title FROM placement p JOIN event e ON e.id = p.event_id
-         WHERE p.board_id = ? ORDER BY p.ord LIMIT 1`,
+        `SELECT e.title FROM board b
+         JOIN containment tc ON tc.parent_id = b.root_event_id AND tc.ordered = 1
+         JOIN containment cc ON cc.parent_id = tc.child_id AND cc.ordered = 1
+         JOIN event e ON e.id = cc.child_id
+         WHERE b.id = ? ORDER BY tc.ord, cc.ord LIMIT 1`,
       ).get(opened.opened);
       wrote = row?.title === mark;
       console.log('[smoke] write round-trip ' + (wrote ? 'ok' : `FAIL (DB=${row?.title})`));
@@ -1276,32 +1280,39 @@ async function runSmoke(target) {
     }
   }
 
-  // 이벤트를 보드 밖으로 뺀 핵심 검증 — 같은 이벤트를 두 보드에 배치하면 본질이 공유된다 (§3.4)
+  // 이벤트를 보드 밖으로 뺀 핵심 검증 — 같은 이벤트를 두 보드에 두면 본질이 공유되고,
+  // 보드를 지워도 이벤트는 남는다 (§3.4·규칙 2). 배치=포함(containment)으로 확인한다.
   let shared = null;
   if (wrote) {
     try {
       const bid = opened.opened;
-      const first = db.prepare('SELECT event_id FROM placement WHERE board_id = ? ORDER BY ord LIMIT 1').get(bid);
-      const eventId = first.event_id;
-      const b2 = db.prepare(
-        "INSERT INTO board (name, start_date, end_date, doc_version) VALUES ('공유 테스트','2026-09-21','2027-04-04',14)",
-      ).run();
-      const b2id = Number(b2.lastInsertRowid);
-      // 같은 이벤트를 두 번째 보드에도 배치
+      const first = db.prepare(
+        `SELECT cc.child_id AS id FROM board b
+         JOIN containment tc ON tc.parent_id = b.root_event_id AND tc.ordered = 1
+         JOIN containment cc ON cc.parent_id = tc.child_id AND cc.ordered = 1
+         WHERE b.id = ? ORDER BY tc.ord, cc.ord LIMIT 1`,
+      ).get(bid);
+      const eventId = first.id;
+      const root2 = 'board:shared-test';
       db.prepare(
-        "INSERT INTO placement (board_id, event_id, track_id, ord, span, align, show_note) VALUES (?, ?, 't0', 0, 1, 'middle', 0)",
-      ).run(b2id, eventId);
-      // 이벤트 본질을 한 번 바꾸면 두 보드가 함께 반영되는가
+        "INSERT OR IGNORE INTO event (id, title, start_date, end_date, type, status, org, progress, note) VALUES (?, '공유 테스트','2026-09-21','2027-04-04','bar','plan','',0,'')",
+      ).run(root2);
+      const b2 = db.prepare(
+        "INSERT INTO board (name, start_date, end_date, doc_version, root_event_id) VALUES ('공유 테스트','2026-09-21','2027-04-04',17, ?)",
+      ).run(root2);
+      const b2id = Number(b2.lastInsertRowid);
+      // 같은 이벤트를 두 번째 보드의 루트 밑에 포함으로도 둔다 (다중 소속)
+      db.prepare('INSERT OR IGNORE INTO containment (parent_id, child_id, ordered, ord) VALUES (?, ?, 1, 0)').run(root2, eventId);
+      // 본질을 한 번 바꾸면 두 보드가 함께 반영 (본질은 전역 하나)
       db.prepare("UPDATE event SET status = 'done' WHERE id = ?").run(eventId);
-      const q = db.prepare(
-        'SELECT e.status FROM placement p JOIN event e ON e.id = p.event_id WHERE p.board_id = ? AND p.event_id = ?',
-      );
-      const inB1 = q.get(bid, eventId)?.status;
-      const inB2 = q.get(b2id, eventId)?.status;
-      const places = db.prepare('SELECT count(*) c FROM placement WHERE event_id = ?').get(eventId).c;
-      shared = inB1 === 'done' && inB2 === 'done' && places === 2;
-      db.prepare('DELETE FROM board WHERE id = ?').run(b2id);   // 정리 (placement CASCADE)
-      console.log('[smoke] shared-event ' + JSON.stringify({ shared, places, inB1, inB2 }));
+      const st = db.prepare('SELECT status FROM event WHERE id = ?').get(eventId)?.status;
+      const places = db.prepare('SELECT count(*) c FROM containment WHERE child_id = ?').get(eventId).c;
+      // 보드 삭제 = 배치 삭제. 이벤트는 남아야 한다.
+      db.prepare('DELETE FROM containment WHERE parent_id = ?').run(root2);
+      db.prepare('DELETE FROM board WHERE id = ?').run(b2id);
+      const survives = !!db.prepare('SELECT id FROM event WHERE id = ?').get(eventId);
+      shared = st === 'done' && places >= 2 && survives;
+      console.log('[smoke] shared-event ' + JSON.stringify({ shared, places, st, survives }));
     } catch (err) { console.log('[smoke] shared-event FAIL ' + err); shared = false; }
   }
 
@@ -1316,22 +1327,26 @@ async function runSmoke(target) {
     } catch (err) { console.log('[smoke] board-is-event FAIL ' + err); boardEvent = false; }
   }
 
-  // 트랙도 이벤트다 — 각 트랙에 배킹 이벤트가 있고 본질이 트랙 이름에 맞춰진다 (§3.2)
+  // 트랙도 이벤트다 — 트랙은 루트의 순서 있는 자식이고, 그 자체가 event다 (§3.2)
   let trackEvent = null;
   if (wrote) {
     try {
-      const tr = db.prepare('SELECT id, name, event_id FROM track WHERE board_id = ? ORDER BY ord LIMIT 1').get(opened.opened);
-      const ev = tr?.event_id ? db.prepare('SELECT title FROM event WHERE id = ?').get(tr.event_id) : null;
-      trackEvent = !!ev && ev.title === tr.name;
-      console.log('[smoke] track-is-event ' + JSON.stringify({ trackEvent, event: tr?.event_id, title: ev?.title }));
+      const tr = db.prepare(
+        `SELECT tc.child_id AS id, e.title FROM board b
+         JOIN containment tc ON tc.parent_id = b.root_event_id AND tc.ordered = 1
+         JOIN event e ON e.id = tc.child_id
+         WHERE b.id = ? ORDER BY tc.ord LIMIT 1`,
+      ).get(opened.opened);
+      trackEvent = !!tr && typeof tr.title === 'string';
+      console.log('[smoke] track-is-event ' + JSON.stringify({ trackEvent, event: tr?.id, title: tr?.title }));
     } catch (err) { console.log('[smoke] track-is-event FAIL ' + err); trackEvent = false; }
   }
 
-  // 태스크도 이벤트다 — 각 태스크에 배킹 이벤트(type='task')가 있다 (§3.2·§3.3)
+  // 태스크도 이벤트다 — 순서 없는 포함(ordered=0)의 자식은 type='task' 이벤트다 (§3.2·§3.3)
   let taskEvent = null;
   if (wrote) {
     try {
-      const et = db.prepare('SELECT id FROM event_task LIMIT 1').get();
+      const et = db.prepare('SELECT child_id AS id FROM containment WHERE ordered = 0 LIMIT 1').get();
       const ev = et ? db.prepare('SELECT type, title FROM event WHERE id = ?').get(et.id) : null;
       taskEvent = !!ev && ev.type === 'task';
       console.log('[smoke] task-is-event ' + JSON.stringify({ taskEvent, id: et?.id, type: ev?.type }));
