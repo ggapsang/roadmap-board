@@ -1441,6 +1441,7 @@ function registerIpc() {
   // 프로젝트
   ipcMain.handle('project:list', guard(() => repo.listProjects()));
   ipcMain.handle('event:list', guard(() => repo.listEvents()));
+  ipcMain.handle('project:reorder', guard((_e, ids) => { repo.reorderProjects(ids ?? []); return true; }));
   ipcMain.handle('project:open', guard((_e, id) => {
     repo.open(id);
     repo.touchOpened(id);

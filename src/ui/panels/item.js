@@ -110,9 +110,18 @@ export class ItemPanel {
       autogrow($(F.title));
       this.#renderTitleDrop();
     });
-    // 줄바꿈은 Shift+Enter, 그냥 Enter는 편집 종료
+    // 연결 후보 드롭다운 키보드 조작: ↓/↑로 훑고 Enter로 연결. 드롭다운이 없으면
+    // 그냥 Enter는 편집 종료(줄바꿈은 Shift+Enter).
     $(F.title).addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $(F.title).blur(); }
+      const open = !$('i-title-drop').hidden;
+      if (e.key === 'ArrowDown') { if (this.#dropNav(1)) e.preventDefault(); return; }
+      if (e.key === 'ArrowUp') { if (this.#dropNav(-1)) e.preventDefault(); return; }
+      if (e.key === 'Escape' && open) { e.preventDefault(); $('i-title-drop').hidden = true; return; }
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        const m = open && this._dropIdx >= 0 ? this._dropMatches?.[this._dropIdx] : null;
+        if (m) this.#confirmLink(m.id); else $(F.title).blur();
+      }
     });
     // 평상시엔 드롭다운을 숨긴다 — 검색(입력) 중에만 뜬다.
     $(F.title).addEventListener('blur', () => setTimeout(() => { $('i-title-drop').hidden = true; }, 120));
@@ -122,6 +131,14 @@ export class ItemPanel {
       const item = this.item;
       if (!item) return;
       this.store.commit('별칭', () => { item.alias = $('i-aliasname').value.trim() || null; });
+    });
+    // 제목을 별칭으로 — 같은 이벤트로 묶인 카드가 이 보드에선 자기 이름을 유지하게 한다.
+    $('i-alias-fromname').addEventListener('click', () => {
+      const item = this.item;
+      if (!item) return;
+      const name = item.ti || '';
+      this.store.commit('제목을 별칭으로', () => { item.alias = name || null; });
+      $('i-aliasname').value = name;
     });
 
     // 표시 토글 — 아이콘 버튼(aria-pressed)
@@ -294,8 +311,12 @@ export class ItemPanel {
     if (!ev) return;
     if (this.store.item(targetId)) { toast('이미 이 보드에 있는 이벤트입니다'); return; }
     const old = item.id;
+    const origName = item.ti;
     this.store.commit('동일 카드 연결', (doc) => {
       const it = doc.items.find((x) => x.id === old);
+      // 연결 전 이름이 대상과 다르면 원래 이름을 별칭으로 남긴다 — 다시 이름 정할 필요 없이
+      // 이 보드에선 원래 이름으로 계속 보인다(§3.5).
+      if (!it.alias && origName && origName !== (ev.title ?? '')) it.alias = origName;
       it.id = targetId;
       it.ti = ev.title ?? ''; it.s = ev.s; it.e = ev.e; it.ty = ev.ty ?? 'bar';
       it.st = ev.st ?? 'plan'; it.og = ev.og ?? ''; it.pg = ev.pg ?? 0; it.note = ev.note ?? '';
@@ -334,6 +355,8 @@ export class ItemPanel {
   #renderTitleDrop() {
     const drop = $('i-title-drop');
     drop.replaceChildren();
+    this._dropMatches = [];
+    this._dropIdx = -1;
     const item = this.item;
     const q = $(F.title).value.trim().toLowerCase();
     if (!item || !q || !this._sameOptions) { drop.hidden = true; return; }
@@ -341,7 +364,8 @@ export class ItemPanel {
       .filter((ev) => ev.id !== item.id && (ev.title || '').toLowerCase().includes(q))
       .slice(0, 8);
     if (!matches.length) { drop.hidden = true; return; }
-    for (const m of matches) {
+    this._dropMatches = matches;
+    matches.forEach((m) => {
       const row = el('button.title-drop-opt', {
         type: 'button',
         on: { mousedown: (e) => { e.preventDefault(); this.#confirmLink(m.id); } },
@@ -350,8 +374,20 @@ export class ItemPanel {
         el('em', { text: m.kind === 'board' ? '프로젝트' : (m.boardNames || '') }),
       ]);
       drop.append(row);
-    }
+    });
     drop.hidden = false;
+  }
+
+  /** 드롭다운을 ↓/↑로 훑는다. 열려 있으면 true(기본 동작 막기용). */
+  #dropNav(delta) {
+    const drop = $('i-title-drop');
+    if (drop.hidden || !this._dropMatches?.length) return false;
+    const n = this._dropMatches.length;
+    this._dropIdx = (this._dropIdx + delta + n) % n;
+    const rows = [...drop.querySelectorAll('.title-drop-opt')];
+    rows.forEach((r, i) => r.classList.toggle('active', i === this._dropIdx));
+    rows[this._dropIdx]?.scrollIntoView({ block: 'nearest' });
+    return true;
   }
 
   async #confirmLink(targetId) {
@@ -363,7 +399,7 @@ export class ItemPanel {
     const where = ev?.kind === 'board' ? '프로젝트' : (ev?.boardNames || '다른 보드');
     const ok = await askConfirm({
       title: '같은 이벤트로 연결', confirmLabel: '연결',
-      message: `'${name}' (${where})와(과) 같은 이벤트로 연결하시겠습니까? 이 카드가 그 이벤트가 되어 보드를 넘어 본질을 공유합니다.`,
+      message: `'${name}' (${where})와 연결할까요?`,
     });
     if (ok) this.#linkSame(targetId);
   }

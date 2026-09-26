@@ -12,7 +12,7 @@ import { SCHEMA_VERSION } from '../core/schema.js';
 import { $, el, clear, button, icon, ICONS } from './dom.js';
 import { toast } from './toast.js';
 import { toggleTheme } from './theme.js';
-import { askText } from './dialog.js';
+import { askText, askConfirm } from './dialog.js';
 
 /** 빈 보드 — 오늘이 속한 달부터 6개월, 트랙 3개 */
 function blankDoc(name) {
@@ -45,11 +45,17 @@ export class Launcher {
     this.onOpen = onOpen;
     this.onRenamed = onRenamed;
     this.root = $('launcher');
+    this._query = '';
+    this._sort = 'recent';       // recent | name | manual
+    this._projects = [];
 
     $('l-new-blank').addEventListener('click', () => this.#create());
     $('l-close').addEventListener('click', () => this.hide());
     // 보드에 들어가지 않아도 테마를 바꿀 수 있어야 한다
     $('l-theme').addEventListener('click', () => toggleTheme());
+
+    $('l-search').addEventListener('input', (e) => { this._query = e.target.value; this.#paint(); });
+    $('l-sort').addEventListener('change', (e) => { this._sort = e.target.value; this.#paint(); });
   }
 
   get visible() { return !this.root.hidden; }
@@ -63,25 +69,38 @@ export class Launcher {
   hide() { this.root.hidden = true; }
 
   async render() {
-    const list = $('l-list');
-    clear(list);
-
-    let projects = [];
     try {
-      projects = await this.adapter.listProjects();
+      this._projects = await this.adapter.listProjects();
     } catch (err) {
-      list.append(el('p.note', { text: '목록을 읽지 못했습니다: ' + err.message }));
+      clear($('l-list'));
+      $('l-list').append(el('p.note', { text: '목록을 읽지 못했습니다: ' + err.message }));
       return;
     }
-
-    $('l-empty').hidden = projects.length > 0;
-
-    for (const p of projects) {
-      list.append(this.#card(p));
-    }
+    this.#paint();
   }
 
-  #card(p) {
+  /** 검색·정렬을 적용해 목록을 다시 그린다 (네트워크 없이 즉석). */
+  #paint() {
+    const list = $('l-list');
+    clear(list);
+    $('l-empty').hidden = this._projects.length > 0;
+
+    const q = this._query.trim().toLowerCase();
+    let rows = this._projects.filter((p) => !q || (p.name || '').toLowerCase().includes(q));
+    if (this._sort === 'name') {
+      rows = rows.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
+    } else if (this._sort === 'manual') {
+      rows = rows.slice().sort((a, b) => (a.ord ?? 1e9) - (b.ord ?? 1e9) || a.id - b.id);
+    } else {
+      rows = rows.slice().sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+    }
+
+    const manual = this._sort === 'manual';
+    list.classList.toggle('reorder', manual);
+    for (const p of rows) list.append(this.#card(p, manual));
+  }
+
+  #card(p, manual = false) {
     const period = p.start && p.end
       ? `${String(p.start).replace(/-/g, '.')} — ${String(p.end).replace(/-/g, '.')}`
       : '기간 미설정';
@@ -90,6 +109,7 @@ export class Launcher {
 
     const card = el('div.pcard', {
       tabIndex: 0,
+      dataset: { id: String(p.id) },
       on: {
         click: (e) => { if (!e.target.closest('.pcard-actions')) open(); },
         keydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); open(); } },
@@ -107,7 +127,32 @@ export class Launcher {
         button({ className: 'mini', iconPath: ICONS.trash, title: '삭제', onClick: () => this.#delete(p) }),
       ]),
     ]);
+    if (manual) this.#makeDraggable(card);
     return card;
+  }
+
+  /** 수동 순서 모드에서 카드를 끌어 재배치. 놓으면 순서를 저장한다. */
+  #makeDraggable(card) {
+    card.draggable = true;
+    card.addEventListener('dragstart', (e) => {
+      card.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    card.addEventListener('dragend', () => {
+      card.classList.remove('dragging');
+      const ids = [...$('l-list').querySelectorAll('.pcard')].map((c) => Number(c.dataset.id));
+      // 화면 순서를 캐시에도 반영하고 저장한다.
+      this._projects.forEach((p) => { p.ord = ids.indexOf(p.id); });
+      this.adapter.reorderProjects(ids).catch((err) => toast('순서 저장 실패: ' + err.message, 'warn'));
+    });
+    card.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      const dragging = $('l-list').querySelector('.pcard.dragging');
+      if (!dragging || dragging === card) return;
+      const rect = card.getBoundingClientRect();
+      const after = e.clientY > rect.top + rect.height / 2;
+      card.parentNode.insertBefore(dragging, after ? card.nextSibling : card);
+    });
   }
 
   async #open(id) {
@@ -121,9 +166,9 @@ export class Launcher {
 
   async #create() {
     const name = await askText({
-      title: '새 프로젝트',
+      title: '새 보드',
       label: '이름',
-      value: '새 프로젝트',
+      value: '새 보드',
       confirmLabel: '만들기',
     });
     if (!name) return;
@@ -138,7 +183,7 @@ export class Launcher {
 
   async #rename(p) {
     const name = await askText({
-      title: '이름 변경', label: '프로젝트 이름', value: p.name, confirmLabel: '변경',
+      title: '이름 변경', label: '보드 이름', value: p.name, confirmLabel: '변경',
     });
     if (!name || name === p.name) return;
     try {
@@ -155,7 +200,7 @@ export class Launcher {
 
   async #duplicate(p) {
     const name = await askText({
-      title: '프로젝트 복제', label: '사본 이름', value: `${p.name} 사본`, confirmLabel: '복제',
+      title: '보드 복제', label: '사본 이름', value: `${p.name} 사본`, confirmLabel: '복제',
     });
     if (!name) return;
     try {
@@ -168,8 +213,12 @@ export class Launcher {
   }
 
   async #delete(p) {
-    const detail = p.items ? `일정 ${p.items}건이 함께 사라집니다.` : '';
-    if (!confirm(`'${p.name}'을(를) 삭제합니다. ${detail} 되돌릴 수 없습니다. 계속할까요?`)) return;
+    const detail = p.items ? `일정 ${p.items}건이 함께 사라집니다. ` : '';
+    const ok = await askConfirm({
+      title: '보드 삭제', confirmLabel: '삭제', danger: true,
+      message: `'${p.name}'을(를) 삭제합니다. ${detail}되돌릴 수 없습니다.`,
+    });
+    if (!ok) return;
     await this.adapter.deleteProject(p.id);
     await this.render();
     toast('삭제했습니다');

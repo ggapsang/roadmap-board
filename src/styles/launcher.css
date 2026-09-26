@@ -11,9 +11,18 @@
 .lhead h1{margin:0;font-size:24px;line-height:32px;font-weight:700;letter-spacing:.06em}
 .lhead p{margin:var(--u1) 0 0;font-size:13px;line-height:20px;color:var(--text-secondary)}
 
-.lactions{display:flex;gap:var(--u2);margin-bottom:var(--u6);flex-wrap:wrap}
+.lactions{display:flex;gap:var(--u2);margin-bottom:var(--u6);flex-wrap:wrap;align-items:center}
+.lsearch{display:flex;align-items:center;gap:var(--u2);flex:1;min-width:180px;
+  height:var(--u9);padding:0 var(--u3);background:var(--bg-input);
+  border:1px solid var(--border-default);border-radius:var(--r-control)}
+.lsearch svg.ic{color:var(--text-tertiary);flex:none}
+.lsearch input{flex:1;min-width:0;border:0;background:none;outline:0;font-size:14px}
+#l-sort{height:var(--u9);padding:0 var(--u2-5);background:var(--bg-input);
+  border:1px solid var(--border-default);border-radius:var(--r-control);font-size:13px}
 
 .plist{display:flex;flex-direction:column;gap:var(--u2)}
+.plist.reorder .pcard{cursor:grab}
+.pcard.dragging{opacity:.5}
 .pcard{display:flex;align-items:center;gap:var(--u3);padding:var(--u3) var(--u4);
   background:var(--bg-panel);border:1px solid var(--border-subtle);border-radius:var(--r-card);
   cursor:pointer}

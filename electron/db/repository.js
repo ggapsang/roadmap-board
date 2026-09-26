@@ -31,12 +31,20 @@ export class BoardRepository {
   listProjects() {
     return this.db.prepare(`
       SELECT b.id, b.name, b.start_date AS start, b.end_date AS end,
-             b.updated_at AS updatedAt, b.opened_at AS openedAt,
+             b.updated_at AS updatedAt, b.opened_at AS openedAt, b.ord AS ord,
              (SELECT count(*) FROM placement WHERE board_id = b.id) AS items,
              (SELECT count(*) FROM track     WHERE board_id = b.id) AS tracks
       FROM board b
       ORDER BY COALESCE(b.opened_at, b.updated_at) DESC, b.id DESC
     `).all();
+  }
+
+  /** 수동 정렬 순서 저장 — 첫 화면 드래그 재배치. orderedIds 순서대로 ord를 매긴다. */
+  reorderProjects(orderedIds) {
+    const set = this.db.prepare('UPDATE board SET ord = ? WHERE id = ?');
+    this.db.transaction(() => {
+      orderedIds.forEach((id, i) => set.run(i, id));
+    })();
   }
 
   /**

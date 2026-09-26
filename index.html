@@ -108,7 +108,10 @@
       </div>
       <div class="fld">
         <label for="i-aliasname">별칭 <span class="muted">이 보드에서 부를 다른 이름 (비우면 제목대로)</span></label>
-        <input id="i-aliasname" type="text" placeholder="(없음)">
+        <div class="alias-row">
+          <input id="i-aliasname" type="text" placeholder="(없음)">
+          <button class="btn outline sm" id="i-alias-fromname" type="button" title="현재 제목을 별칭으로 넣는다">제목을 별칭으로</button>
+        </div>
       </div>
       <div class="fld"><label>상태</label><div class="pick" id="i-status"></div></div>
       <div class="two">
@@ -269,7 +272,7 @@
       <img class="mk" src="./assets/icon.png" alt="" width="56" height="56">
       <div class="grow">
         <h1>WOLFPACK</h1>
-        <p>프로젝트를 고르거나 새로 만듭니다.</p>
+        <p>보드를 고르거나 새로 만듭니다.</p>
       </div>
       <button class="btn icon" id="l-theme" type="button" title="테마 전환" aria-label="테마 전환">
         <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9Z"/></svg></button>
@@ -278,13 +281,23 @@
     </div>
 
     <div class="lactions">
+      <div class="lsearch">
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="l-search" type="search" placeholder="보드 검색…" aria-label="보드 검색">
+      </div>
+      <select id="l-sort" aria-label="정렬">
+        <option value="recent">최근 편집순</option>
+        <option value="name">이름순</option>
+        <option value="manual">수동 순서 (드래그)</option>
+      </select>
+      <div class="grow"></div>
       <button class="btn cta" id="l-new-blank" type="button">
-        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>새 프로젝트</button>
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>새 보드</button>
     </div>
 
     <div class="plist" id="l-list"></div>
     <div class="lempty" id="l-empty" hidden>
-      아직 프로젝트가 없습니다. <b>새 프로젝트</b>로 시작하세요.
+      아직 보드가 없습니다. <b>새 보드</b>로 시작하세요.
     </div>
 
     <img class="lhero" src="./assets/hero.jpg" alt="WOLFPACK" width="930" height="563">

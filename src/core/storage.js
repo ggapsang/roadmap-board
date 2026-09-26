@@ -58,6 +58,7 @@ export class ElectronAdapter extends StorageAdapter {
   async createProject(doc, name) { return this.api.createProject(doc, name); }
   async renameProject(id, name) { return this.api.renameProject(id, name); }
   async duplicateProject(id, name) { return this.api.duplicateProject(id, name); }
+  async reorderProjects(ids) { return this.api.reorderProjects ? this.api.reorderProjects(ids) : undefined; }
   async deleteProject(id) {
     await this.api.deleteProject(id);
     if (this.projectId === id) this.projectId = null;

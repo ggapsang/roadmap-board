@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('roadmapDB', {
   renameProject: (id, name) => call('project:rename', id, name),
   duplicateProject: (id, name) => call('project:duplicate', id, name),
   deleteProject: (id) => call('project:delete', id),
+  reorderProjects: (ids) => call('project:reorder', ids),
 
   // 변경 이력 (기획안 P2)
   revisions: (limit) => call('db:revisions', limit),

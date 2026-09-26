@@ -45,6 +45,11 @@ body.panel-open{--panel-w:var(--panel-size)}
 .ptab[aria-selected="true"]{color:var(--text-primary);font-weight:600;border-bottom-color:var(--accent)}
 .ptab-panel[hidden]{display:none}
 
+/* 별칭 입력 + '제목을 별칭으로' 버튼 나란히 */
+.alias-row{display:flex;gap:var(--u2);align-items:center}
+.alias-row input{flex:1;min-width:0}
+.alias-row .btn.sm{margin-top:0;flex:none;white-space:nowrap}
+
 /* ── 제목 검색 → "같은 카드로 연결" 드롭다운 (평상시 숨김, 입력 시에만) ── */
 .title-wrap{position:relative}
 .title-drop{position:absolute;left:0;right:0;top:100%;z-index:10;margin-top:2px;
@@ -54,7 +59,7 @@ body.panel-open{--panel-w:var(--panel-size)}
 .title-drop-opt{display:flex;align-items:center;gap:var(--u2);width:100%;text-align:left;
   appearance:none;border:0;background:none;cursor:pointer;padding:var(--u1-5) var(--u2);
   border-radius:var(--u1);font-size:13px;color:var(--text-primary)}
-.title-drop-opt:hover{background:var(--bg-hover)}
+.title-drop-opt:hover,.title-drop-opt.active{background:var(--bg-hover)}
 .tdo-name{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .title-drop-opt em{font-style:normal;font-size:11px;color:var(--text-tertiary)}
 
