@@ -263,9 +263,15 @@ export class BoardRepository {
           x: p.x ?? null, w: p.w ?? null, hd: p.hd ?? null,
           align: p.align ?? 'middle', showNote: p.showNote ? 1 : 0, parent: it.parent ?? null,
         });
-        // 태스크는 이벤트 뒤에 (FK 충족).
-        (Array.isArray(it.tasks) ? it.tasks : []).forEach((t, ti) =>
-          insTask.run(t.id, it.id, ti, t.text ?? '', t.done ? 1 : 0));
+        // 태스크는 이벤트 뒤에 (FK 충족). 태스크도 이벤트다 — 배킹 이벤트를 함께 둔다(§3.3).
+        // event_task는 '이 이벤트가 태스크를 순서 없이 담는다'는 링크. 순서가 생기면 카드로 승격.
+        (Array.isArray(it.tasks) ? it.tasks : []).forEach((t, ti) => {
+          insTask.run(t.id, it.id, ti, t.text ?? '', t.done ? 1 : 0);
+          upEvent.run({
+            id: t.id, title: t.text ?? '', s: it.s, e: it.e, type: 'task',
+            status: t.done ? 'done' : 'plan', org: '', pg: 0, note: '',
+          });
+        });
       });
 
       // 이 보드 자체도 이벤트다 — 루트 이벤트의 본질을 보드 이름·기간에 맞춰 둔다(§3.2·§5.1).
@@ -308,6 +314,7 @@ export class BoardRepository {
         DELETE FROM event WHERE id NOT IN (SELECT event_id FROM placement)
           AND id NOT IN (SELECT root_event_id FROM board WHERE root_event_id IS NOT NULL)
           AND id NOT IN (SELECT event_id FROM track WHERE event_id IS NOT NULL)
+          AND id NOT IN (SELECT id FROM event_task)
       `).run();
 
       this.#maybeRevision(doc, label);

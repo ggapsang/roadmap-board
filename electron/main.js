@@ -1189,8 +1189,19 @@ async function runSmoke(target) {
     } catch (err) { console.log('[smoke] track-is-event FAIL ' + err); trackEvent = false; }
   }
 
+  // 태스크도 이벤트다 — 각 태스크에 배킹 이벤트(type='task')가 있다 (§3.2·§3.3)
+  let taskEvent = null;
+  if (wrote) {
+    try {
+      const et = db.prepare('SELECT id FROM event_task LIMIT 1').get();
+      const ev = et ? db.prepare('SELECT type, title FROM event WHERE id = ?').get(et.id) : null;
+      taskEvent = !!ev && ev.type === 'task';
+      console.log('[smoke] task-is-event ' + JSON.stringify({ taskEvent, id: et?.id, type: ev?.type }));
+    } catch (err) { console.log('[smoke] task-is-event FAIL ' + err); taskEvent = false; }
+  }
+
   const ok = !result.error && !opened?.error && !renamed?.error
-    && shared === true && boardEvent === true && trackEvent === true
+    && shared === true && boardEvent === true && trackEvent === true && taskEvent === true
     && relCheck?.allDep === true && relCheck?.added === true && relCheck?.removed === true
     && orderCheck?.topoOk === true && orderCheck?.edges > 0 && orderCheck?.maxRank > 0
     && orderMode?.hasOrderAxis === true && orderMode?.ordered === true && orderMode?.cards > 0 && orderMode?.back === true
