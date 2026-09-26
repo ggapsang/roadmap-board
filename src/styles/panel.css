@@ -103,9 +103,13 @@ body.panel-open{--panel-w:var(--panel-size)}
 .trow{display:flex;align-items:center;gap:var(--u2);padding:var(--u2);border:1px solid var(--border-subtle);
   border-radius:var(--u1-5);font-size:13px}
 .trow.active{border-color:var(--accent)}
-.trow .names{flex:1;display:flex;flex-direction:column;gap:2px;min-width:0}
-.trow input{border:0;background:none;outline:0;font-size:13px;font-weight:500;min-width:0;width:100%;padding:0}
-.trow input.lab{font-size:11px;font-weight:400;color:var(--text-tertiary)}
+.trow .names{flex:1;display:flex;flex-direction:column;gap:var(--u1);min-width:0}
+/* 편집 가능한 필드로 보이게 — 옅은 밑줄. 비어 있어도 placeholder가 보여 추가할 수 있음을 안다. */
+.trow input{border:0;border-bottom:1px solid var(--border-subtle);background:none;outline:0;
+  font-size:13px;font-weight:500;min-width:0;width:100%;padding:2px 0}
+.trow input:focus{border-bottom-color:var(--accent)}
+.trow input::placeholder{color:var(--text-tertiary);opacity:.9}
+.trow input.lab{font-size:11px;font-weight:400;color:var(--text-secondary)}
 .trow .mini{width:var(--u6);height:var(--u6);border:1px solid var(--border-default);border-radius:var(--u1);
   background:var(--bg-panel);color:var(--text-secondary);cursor:pointer;display:flex;align-items:center;justify-content:center;flex:none}
 .trow .mini:hover{background:var(--bg-hover);color:var(--text-primary)}
