@@ -92,7 +92,7 @@
   </header>
   <div class="ptabs" role="tablist" aria-label="편집 탭">
     <button class="ptab" type="button" role="tab" data-tab="attr" aria-selected="true">속성</button>
-    <button class="ptab" type="button" role="tab" data-tab="rel"  aria-selected="false">관계</button>
+    <button class="ptab" type="button" role="tab" data-tab="rel"  aria-selected="false">매핑</button>
     <button class="ptab" type="button" role="tab" data-tab="disp" aria-selected="false">표시</button>
     <button class="ptab" type="button" role="tab" data-tab="task" aria-selected="false">진행도</button>
   </div>
@@ -115,34 +115,33 @@
       </div>
       <div class="fld"><label>상태</label><div class="pick" id="i-status"></div></div>
       <div class="two">
-        <div class="fld"><label for="i-track">트랙</label><select id="i-track"></select></div>
         <div class="fld"><label for="i-type">유형</label><select id="i-type"></select></div>
+        <div class="fld"><label for="i-org">담당</label><select id="i-org"></select></div>
       </div>
       <div class="two">
         <div class="fld"><label for="i-start">시작</label><input id="i-start" type="date"></div>
         <div class="fld"><label for="i-end">종료</label><input id="i-end" type="date"></div>
       </div>
-      <div class="fld">
-        <label for="i-span">트랙 걸침 <span class="muted">덮을 트랙을 고른다 (보드 위에선 드래그로도)</span></label>
-        <div class="seg wrap" id="i-span"></div>
-      </div>
-      <div class="fld"><label for="i-org">담당</label><select id="i-org"></select></div>
       <div class="fld"><label for="i-note">비고</label><textarea id="i-note"></textarea></div>
     </section>
 
-    <!-- 관계 — 선행·상위 모두 같은 검색 리스트 -->
+    <!-- 매핑 — 이 이벤트를 어디에 어떻게 놓을지: 트랙(다중)·동일성·포함·선행 -->
     <section class="ptab-panel" data-panel="rel" hidden>
       <div class="fld">
-        <label>선행 일정 <span class="muted">먼저 끝나야 하는 것 · 여럿</span></label>
-        <div id="i-deps"></div>
+        <label>트랙 매핑 <span class="muted">덮을 트랙 · 여럿 (2개 이상도)</span></label>
+        <div class="seg wrap" id="i-span"></div>
       </div>
       <div class="fld">
-        <label>상위 일정 <span class="muted">이 카드를 품는 일정 · 하나</span></label>
+        <label>동일 카드 <span class="muted">같은 이벤트 (본질 공유) · 카드·트랙·프로젝트</span></label>
+        <div id="i-same"></div>
+      </div>
+      <div class="fld">
+        <label>상위 일정 <span class="muted">이 카드를 품는 일정 (포함) · 하나</span></label>
         <div id="i-parent"></div>
       </div>
       <div class="fld">
-        <label>동일 카드 <span class="muted">같은 이벤트로 묶을 카드 · 여럿 (본질 공유)</span></label>
-        <div id="i-same"></div>
+        <label>선행 일정 <span class="muted">먼저 끝나야 하는 것 · 여럿</span></label>
+        <div id="i-deps"></div>
       </div>
     </section>
 

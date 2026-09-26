@@ -13,9 +13,9 @@ import { createFilterList } from '../components/filter-list.js';
 import { askConfirm } from '../dialog.js';
 import { toast } from '../toast.js';
 
-/** 값이 바로 문서로 반영되는 단순 입력들 (걸침·관계·별칭·진척은 별도 UI가 맡는다) */
+/** 값이 바로 문서로 반영되는 단순 입력들 (트랙·관계·별칭·진척은 매핑 탭 UI가 맡는다) */
 const F = {
-  title: 'i-title', track: 'i-track', type: 'i-type', start: 'i-start',
+  title: 'i-title', type: 'i-type', start: 'i-start',
   end: 'i-end', org: 'i-org', note: 'i-note',
 };
 
@@ -189,17 +189,12 @@ export class ItemPanel {
     const item = this.item;
     if (!item) return;
 
-    const track = $(F.track);
-    clear(track);
-    for (const t of this.store.tracks) track.append(el('option', { value: t.id, text: t.name }));
-
     const org = $(F.org);
     clear(org);
     for (const o of this.store.orgs) org.append(el('option', { value: o, text: o }));
 
     $(F.title).value = item.ti;
     autogrow($(F.title));
-    track.value = item.place.t;
     $(F.type).value = item.ty;
     $(F.start).value = item.s;
     $(F.end).value = item.e;
@@ -210,7 +205,7 @@ export class ItemPanel {
 
     this.#syncStatus(item);
     this.#syncAlign(item);
-    this.#renderSpanPick(item);
+    this.#renderTrackMap(item);
     $('i-shownote').setAttribute('aria-pressed', String(item.place?.showNote === true));
     $('i-fixedh').setAttribute('aria-pressed', String(item.place?.hd != null));
 
@@ -255,30 +250,42 @@ export class ItemPanel {
   }
 
   /**
-   * 트랙 걸침 선택기 — 숫자 대신 트랙을 골라 덮는다. 홈 트랙(place.t)부터 오른쪽으로
-   * 이어지는 트랙을 클릭해 걸침 범위를 정한다(연속). 홈 왼쪽 트랙은 홈을 바꾸는 것이라
-   * 여기서 다루지 않는다(트랙 선택으로). 자식 카드는 걸침이 없어 숨긴다.
+   * 트랙 매핑 — 이 이벤트가 덮을 트랙을 고른다(여럿 가능, §3.7). 트랙 칩을 눌러 켜고 끈다.
+   * 여러 트랙을 고르면 그 최소~최대 범위를 덮는다(화면상 한 덩어리라 경계는 이어진다).
+   * 자식 카드는 트랙이 상위를 따르므로 매핑하지 않는다.
    */
-  #renderSpanPick(item) {
+  #renderTrackMap(item) {
     const box = $('i-span');
     clear(box);
-    if (item.parent) { box.append(el('span.muted', { text: '상위 일정 안에서는 걸침이 없습니다.' })); return; }
+    if (item.parent) { box.append(el('span.muted', { text: '상위 일정 안에서는 트랙이 상위를 따릅니다.' })); return; }
     const tracks = this.store.tracks;
     const home = this.store.trackIndex(item.place.t);
+    const sp = item.place.sp ?? 1;
+    const covered = new Set();
+    for (let k = 0; k < sp; k++) covered.add(home + k);
     tracks.forEach((t, i) => {
-      if (i < home) return;
-      const inSpan = i < home + (item.place.sp ?? 1);
       box.append(el('button.seg-btn', {
-        type: 'button', text: t.name, title: `${t.name}까지 걸치기`,
-        attrs: { 'aria-pressed': String(inSpan) },
-        on: {
-          click: () => {
-            this.store.commit('트랙 걸침', () => { item.place.sp = i - home + 1; });
-            this.#renderSpanPick(item);
-          },
-        },
+        type: 'button', text: t.name, title: `${t.name} 매핑`,
+        attrs: { 'aria-pressed': String(covered.has(i)) },
+        on: { click: () => this.#toggleTrack(item, i) },
       }));
     });
+  }
+
+  #toggleTrack(item, idx) {
+    const tracks = this.store.tracks;
+    const home = this.store.trackIndex(item.place.t);
+    const sp = item.place.sp ?? 1;
+    const set = new Set();
+    for (let k = 0; k < sp; k++) set.add(home + k);
+    if (set.has(idx)) set.delete(idx); else set.add(idx);
+    if (!set.size) set.add(idx);            // 최소 한 트랙엔 놓인다
+    const min = Math.min(...set); const max = Math.max(...set);
+    this.store.commit('트랙 매핑', () => {
+      item.place.t = tracks[min].id;
+      item.place.sp = max - min + 1;        // 고른 트랙들을 감싸는 범위(경계 포함)
+    });
+    this.#renderTrackMap(item);
   }
 
   // ── 관계 (선행·상위·별칭) ────────────────────────────────
@@ -456,9 +463,8 @@ export class ItemPanel {
       item.place.x = null;
       item.place.w = null;
     });
-    // 트랙이 상위를 따라 바뀌었으면 속성 탭 선택도 맞춘다
-    $(F.track).value = item.place.t;
-    $(F.span).value = item.place.sp;
+    // 상위에 담기면 트랙이 상위를 따르므로 트랙 매핑 표시도 갱신한다.
+    this.#renderTrackMap(item);
   }
 
   #descendantsOf(id) {
@@ -646,23 +652,15 @@ export class ItemPanel {
 
     this.store.commit('일정 편집', () => {
       item.ti = $(F.title).value;
-      item.place.t = $(F.track).value;
       item.ty = $(F.type).value;
       item.s = $(F.start).value || item.s;
       item.e = $(F.end).value || item.s;
       if (item.e < item.s) item.e = item.s;
-
-      // 홈 트랙이 바뀌면 걸침이 트랙 경계를 넘지 않게 다시 맞춘다.
-      const ti = this.store.trackIndex(item.place.t);
-      const maxSpan = Math.max(1, this.store.tracks.length - ti);
-      item.place.sp = Math.min(maxSpan, Math.max(1, item.place.sp ?? 1));
-
       item.og = $(F.org).value;
       item.note = $(F.note).value;
     });
 
     $(F.end).value = item.e;
-    this.#renderSpanPick(item);   // 트랙(홈)이 바뀌었을 수 있어 걸침 선택기 갱신
   }
 
   remove() {
