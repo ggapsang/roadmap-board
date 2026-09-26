@@ -155,6 +155,36 @@ export class BoardRepository {
   }
 
   /**
+   * 한 이벤트가 품은 카드들(순서 있는 후손, 태스크 제외). 조합(combine)한 이벤트의 안쪽
+   * 일정을 '상세' 탭에 펼쳐 보여줄 때 쓴다. 그 이벤트의 홈 보드가 어디든 따라간다.
+   * @returns {{id, title, status, depth}[]}
+   */
+  eventCards(eventId) {
+    const kids = this.#childMap();
+    const out = [];
+    const seen = new Set();
+    const walk = (id, depth) => {
+      for (const c of (kids.get(id) ?? [])) {
+        if (c.ordered !== 1 || seen.has(c.child_id)) continue;
+        seen.add(c.child_id);
+        out.push({ id: c.child_id, depth });
+        walk(c.child_id, depth + 1);
+      }
+    };
+    walk(eventId, 0);
+    if (!out.length) return [];
+    const ids = out.map((o) => o.id);
+    const ph = ids.map(() => '?').join(',');
+    const ess = new Map();
+    for (const e of this.db.prepare(
+      `SELECT id, title, status, type FROM event WHERE id IN (${ph})`,
+    ).all(...ids)) ess.set(e.id, e);
+    return out
+      .map((o) => ({ id: o.id, depth: o.depth, title: ess.get(o.id)?.title ?? '', status: ess.get(o.id)?.status ?? 'plan', type: ess.get(o.id)?.type ?? 'bar' }))
+      .filter((r) => r.type !== 'task');
+  }
+
+  /**
    * 새 보드를 만들고 문서를 채운다.
    * @returns {number} 새 보드 id
    */
@@ -273,14 +303,28 @@ export class BoardRepository {
     const trackIndex = new Map(trackIds.map((id, i) => [id, i]));
     const trackSet = new Set(trackIds);
 
-    // 서브트리 이벤트 + 본질. 조합(ordered=2)은 층을 끌어오지 않는다(관계로만 복원).
+    // 다른 보드의 구조 이벤트(그 보드의 루트·트랙)는 이 보드에선 '접힌 참조 카드'로만 보인다.
+    // 그 아래(그 보드의 카드들)를 이 보드로 끌어오지 않는다 — 안 그러면 남의 보드 내용이
+    // 여기로 쏟아진다(펼치기=board, 접기=card).
+    const foreign = new Set();
+    for (const b of this.db.prepare('SELECT root_event_id FROM board WHERE root_event_id IS NOT NULL').all()) {
+      const r = b.root_event_id;
+      if (r === root) continue;
+      foreign.add(r);
+      for (const c of (kids.get(r) ?? [])) if (c.ordered === 1) foreign.add(c.child_id);
+    }
+
+    // 서브트리 이벤트 + 본질. 조합(ordered=2)·남의 보드 구조는 층을 끌어오지 않는다(참조는 잎).
     const inSub = new Set();
     const stack = [root];
     while (stack.length) {
       const n = stack.pop();
       for (const c of (kids.get(n) ?? [])) {
         if (c.ordered === 2) continue;
-        if (!inSub.has(c.child_id)) { inSub.add(c.child_id); stack.push(c.child_id); }
+        if (!inSub.has(c.child_id)) {
+          inSub.add(c.child_id);
+          if (!foreign.has(c.child_id)) stack.push(c.child_id);   // 참조 카드는 더 안 판다
+        }
       }
     }
     const evIds = [...inSub, root];
@@ -326,10 +370,12 @@ export class BoardRepository {
       spanOf.set(ev, idxs[idxs.length - 1] - idxs[0] + 1);
       docParent.set(ev, null);
     }
-    // 중첩 카드: 최상위 카드에서 순서 있는 포함을 따라 내려간다
+    // 중첩 카드: 최상위 카드에서 순서 있는 포함을 따라 내려간다. 참조 카드(남의 보드 구조)는
+    // 잎이라 그 아래로 내려가지 않는다.
     const queue = [...trackMembers.keys()];
     while (queue.length) {
       const parent = queue.shift();
+      if (foreign.has(parent)) continue;
       for (const c of (kids.get(parent) ?? [])) {
         if (c.ordered !== 1 || !inSub.has(c.child_id) || homeTrack.has(c.child_id)) continue;
         docParent.set(c.child_id, parent);

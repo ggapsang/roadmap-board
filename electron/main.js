@@ -1655,6 +1655,8 @@ function registerIpc() {
   }));
   // 활성 보드만 바꾼다(문서는 안 읽음). 탭 캐시에서 즉시 전환할 때 저장 대상을 맞춘다.
   ipcMain.handle('project:select', guard((_e, id) => { repo.open(id); repo.touchOpened(id); return true; }));
+  // 한 이벤트가 품은 카드들 — '상세' 탭에서 조합한 이벤트의 안쪽 일정을 펼칠 때.
+  ipcMain.handle('event:cards', guard((_e, id) => repo.eventCards(id)));
   ipcMain.handle('project:create', guard((_e, doc, name) => repo.createProject(doc, name)));
   ipcMain.handle('project:rename', guard((_e, id, name) => { repo.renameProject(id, name); return true; }));
   ipcMain.handle('project:duplicate', guard((_e, id, name) => repo.duplicateProject(id, name)));

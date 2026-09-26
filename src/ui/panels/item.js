@@ -170,7 +170,6 @@ export class ItemPanel {
     });
 
     $('i-taskadd').addEventListener('click', () => this.#addTask());
-    $('i-childadd').addEventListener('click', () => this.#addChild());
     $('i-del').addEventListener('click', () => this.remove());
     $('i-dup').addEventListener('click', () => this.duplicate());
   }
@@ -608,13 +607,31 @@ export class ItemPanel {
     $('i-progfill').style.width = `${pct}%`;
   }
 
-  /** 하위 카드 목록 — 이 카드의 실제 하위 카드(순서 있는 포함)만. */
+  /**
+   * 구성 일정 — 이 이벤트를 이루는 것. (1) 이 카드의 하위 카드(같은 보드, 순서 있는 포함),
+   * (2) 조합(combine)한 이벤트와 그 안의 일정(다른 보드일 수 있음, 읽기 전용). 여기서 새
+   * 하위 카드를 만들지 않는다 — 하위 카드는 보드에서 드래그로 만든다.
+   */
   #renderChildren(item) {
     const box = $('i-children');
     clear(box);
-    $('i-childadd').hidden = false;
+
+    const statusRow = (opts) => {
+      const { title, status, indent = 0, onOpen, sub } = opts;
+      const row = el('div.task' + (status === 'done' ? '.done' : ''), {
+        style: indent ? { paddingLeft: `${8 + indent * 14}px` } : undefined,
+      }, [
+        el('span.st-dot', { className: 'st-dot st-' + status }),
+        onOpen
+          ? el('button.task-text.linklike', { type: 'button', text: title || '(제목 없음)', title: '열기', on: { click: onOpen } })
+          : el('span.task-text', { text: title || '(제목 없음)' }),
+        sub ? el('em.muted', { text: sub }) : null,
+      ]);
+      return row;
+    };
+
+    // (1) 이 카드의 하위 카드 (같은 보드) — 완료 토글·태스크로 내림은 유지, 추가는 없음.
     const kids = this.store.items.filter((x) => x.parent === item.id);
-    if (!kids.length) { box.append(el('div.empty', { text: '하위 카드가 없습니다.' })); return; }
     for (const c of kids) {
       const cb = el('input', {
         type: 'checkbox', checked: c.st === 'done', title: '완료 표시',
@@ -632,9 +649,45 @@ export class ItemPanel {
       if (c.st === 'done') row.classList.add('done');
       box.append(row);
     }
+
+    // (2) 조합한 이벤트와 그 안의 일정. 부품은 다른 보드일 수 있어 미리 받아 둔 목록에서 이름을,
+    //     안쪽 카드는 eventCards로 가져온다(비동기). 렌더 세대를 표시해 늦게 온 응답은 버린다.
+    const parts = this.#combineParts(item);
+    if (parts.length) {
+      const header = el('div.detail-head.muted', { text: '조합한 이벤트' });
+      box.append(header);
+      const gen = (this._detailGen = (this._detailGen ?? 0) + 1);
+      for (const pid of parts) {
+        const pev = (this._allEvents ?? []).find((e) => e.id === pid);
+        const partName = pev?.title || '(이벤트)';
+        const partBoard = pev?.boardId ?? Number(String(pev?.boardIds ?? '').split(',')[0]);
+        box.append(statusRow({
+          title: partName, status: pev?.st ?? 'plan', sub: '조합',
+          onOpen: partBoard ? () => this.openProject?.(partBoard) : null,
+        }));
+        this.adapter?.eventCards?.(pid).then((cards) => {
+          if (this._detailGen !== gen || this.item?.id !== item.id) return;
+          for (const c of (cards ?? [])) {
+            box.append(statusRow({
+              title: c.title, status: c.status, indent: 1 + (c.depth ?? 0),
+              onOpen: partBoard ? () => this.openProject?.(partBoard) : null,
+            }));
+          }
+        }).catch(() => {});
+      }
+    }
+
+    if (!kids.length && !parts.length) box.append(el('div.empty', { text: '구성 일정이 없습니다.' }));
   }
 
-  /** 다른 보드의 이벤트(카드·트랙·프로젝트)를 받아 동일 후보·하위 카드·진행도를 갱신. */
+  /** 이 이벤트가 조합(combine)으로 품은 대상 id들. */
+  #combineParts(item) {
+    const id = item?.id;
+    if (!id) return [];
+    return this.store.relations.filter((r) => r.type === 'combine' && r.from === id).map((r) => r.to);
+  }
+
+  /** 다른 보드의 이벤트(카드·트랙·프로젝트)를 받아 동일 후보·구성 일정·진행도를 갱신. */
   async #loadCrossBoard(item) {
     let events = [];
     try { events = (await this.adapter?.listEvents?.()) ?? []; } catch { events = []; }
@@ -643,19 +696,6 @@ export class ItemPanel {
     this.#renderSame(item);
     this.#renderChildren(item);
     this.#syncProgUI(item);
-  }
-
-  #addChild() {
-    const item = this.item;
-    if (!item) return;
-    const child = {
-      id: newId('e'), ti: '새 하위 카드', s: item.s, e: item.e,
-      ty: 'bar', st: 'plan', og: item.og, pg: 0, note: '', parent: item.id, alias: null, tasks: [],
-      place: { t: item.place.t, sp: 1, x: null, w: null, hd: null, align: 'middle', showNote: false },
-    };
-    this.store.commit('하위 카드 추가', (doc) => { doc.items.push(child); });
-    this.#renderChildren(this.item);
-    this.open(child.id);   // 새 하위 카드를 바로 편집
   }
 
   /**

@@ -103,7 +103,7 @@
     <button class="ptab" type="button" role="tab" data-tab="attr" aria-selected="true">속성</button>
     <button class="ptab" type="button" role="tab" data-tab="rel"  aria-selected="false">매핑</button>
     <button class="ptab" type="button" role="tab" data-tab="disp" aria-selected="false">표시</button>
-    <button class="ptab" type="button" role="tab" data-tab="task" aria-selected="false">진행도</button>
+    <button class="ptab" type="button" role="tab" data-tab="task" aria-selected="false">상세</button>
   </div>
   <div class="body2">
     <!-- 속성 -->
@@ -167,7 +167,7 @@
       </div>
     </section>
 
-    <!-- 진행도 — 진척 요약 + 태스크(투두) + 하위 카드 -->
+    <!-- 상세 — 진척 요약 + 태스크(투두) + 구성 일정(조합한 이벤트·하위 일정) -->
     <section class="ptab-panel" data-panel="task" hidden>
       <div class="fld">
         <label>진행도 <span class="muted" id="i-progpct"></span></label>
@@ -179,9 +179,8 @@
         <button class="btn outline sm" id="i-taskadd" type="button">+ 태스크 추가</button>
       </div>
       <div class="fld">
-        <label>하위 카드 <span class="muted">펼치면 나오는 안쪽 일정</span></label>
+        <label>구성 일정 <span class="muted">이 이벤트를 이루는 것 · 조합한 이벤트와 그 안의 일정</span></label>
         <div class="tasks" id="i-children"></div>
-        <button class="btn outline sm" id="i-childadd" type="button">+ 하위 카드 추가</button>
       </div>
     </section>
   </div>

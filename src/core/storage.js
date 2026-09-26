@@ -25,6 +25,7 @@ export class StorageAdapter {
 
   async listProjects() { return []; }
   async listEvents() { return []; }
+  async eventCards() { return []; }
   async openProject() { return null; }
   /** 활성 보드만 바꾼다(문서는 안 읽음). 캐시된 탭으로 즉시 전환할 때 저장 대상을 맞춘다. */
   selectProject(id) { this.projectId = id; }
@@ -50,6 +51,7 @@ export class ElectronAdapter extends StorageAdapter {
 
   async listProjects() { return this.api.listProjects(); }
   async listEvents() { return this.api.listEvents ? this.api.listEvents() : []; }
+  async eventCards(id) { return this.api.eventCards ? this.api.eventCards(id) : []; }
 
   async openProject(id) {
     const doc = await this.api.openProject(id);

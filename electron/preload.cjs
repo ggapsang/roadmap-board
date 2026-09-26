@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld('roadmapDB', {
   listProjects: () => call('project:list'),
   // 모든 보드를 통틀어 이벤트 목록 — '동일 카드(같은 이벤트)' 연결 후보
   listEvents: () => call('event:list'),
+  // 한 이벤트가 품은 카드들 — 상세 탭에서 조합한 이벤트의 안쪽 일정
+  eventCards: (id) => call('event:cards', id),
   openProject: (id) => call('project:open', id),
   // 활성 보드만 바꾼다(문서는 안 읽음) — 탭을 캐시에서 즉시 전환할 때 저장 대상을 맞춘다
   selectProject: (id) => call('project:select', id),
