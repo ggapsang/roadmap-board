@@ -95,12 +95,12 @@ export class Launcher {
       rows = rows.slice().sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
     }
 
-    const manual = this._sort === 'manual';
-    list.classList.toggle('reorder', manual);
-    for (const p of rows) list.append(this.#card(p, manual));
+    // 드래그는 항상 가능하다 — 끌어 옮기는 순간 그게 수동 순서가 된다(수동 옵션을 따로 두지 않음).
+    list.classList.add('reorder');
+    for (const p of rows) list.append(this.#card(p));
   }
 
-  #card(p, manual = false) {
+  #card(p) {
     const period = p.start && p.end
       ? `${String(p.start).replace(/-/g, '.')} — ${String(p.end).replace(/-/g, '.')}`
       : '기간 미설정';
@@ -127,11 +127,11 @@ export class Launcher {
         button({ className: 'mini', iconPath: ICONS.trash, title: '삭제', onClick: () => this.#delete(p) }),
       ]),
     ]);
-    if (manual) this.#makeDraggable(card);
+    this.#makeDraggable(card);
     return card;
   }
 
-  /** 수동 순서 모드에서 카드를 끌어 재배치. 놓으면 순서를 저장한다. */
+  /** 카드를 끌어 재배치. 끌어 옮기는 순간 정렬이 '수동'이 되고, 놓으면 순서를 저장한다. */
   #makeDraggable(card) {
     card.draggable = true;
     card.addEventListener('dragstart', (e) => {
@@ -140,6 +140,8 @@ export class Launcher {
     });
     card.addEventListener('dragend', () => {
       card.classList.remove('dragging');
+      this._sort = 'manual';   // 드래그한 순간부터 이 순서가 수동 순서다
+      $('l-sort').selectedIndex = -1;
       const ids = [...$('l-list').querySelectorAll('.pcard')].map((c) => Number(c.dataset.id));
       // 화면 순서를 캐시에도 반영하고 저장한다.
       this._projects.forEach((p) => { p.ord = ids.indexOf(p.id); });

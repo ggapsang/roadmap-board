@@ -936,7 +936,8 @@ async function runSmoke(target) {
       await new Promise((res) => setTimeout(res, 350));   // loadCrossBoard 대기
       document.querySelector('#pItem .ptab[data-tab="rel"]').click();
       await new Promise((res) => setTimeout(res, 80));
-      const opts = document.querySelectorAll('#i-same .fl-opt').length;
+      const optIds = [...document.querySelectorAll('#i-same .fl-opt')].map((o) => o.dataset.id);
+      const homeTrack = r.store.items[0].place.t;
       document.querySelector('#pItem [data-close]').click();
       return {
         count: events.length,
@@ -944,7 +945,8 @@ async function runSmoke(target) {
         hasCard: events.some((e) => e.kind === 'card'),
         hasTrack: events.some((e) => e.kind === 'track'),
         hasBoardIds: events.every((e) => e.boardIds != null),
-        pickerOpts: opts,
+        pickerOpts: optIds.length,
+        ownTrackExcluded: !optIds.includes(homeTrack),   // #4 자기 트랙은 후보에서 빠진다
       };
     })()`);
     console.log('[smoke] same-card ' + JSON.stringify(sameCheck));
@@ -1465,6 +1467,7 @@ async function runSmoke(target) {
     && cornerCheck?.widthChanged === true && cornerCheck?.heightChanged === true && cornerCheck?.topGrew === true
     && sameCheck?.count > 0 && sameCheck?.hasBoard === true && sameCheck?.hasCard === true
     && sameCheck?.hasTrack === true && sameCheck?.hasBoardIds === true && sameCheck?.pickerOpts > 0
+    && sameCheck?.ownTrackExcluded === true
     && combineCheck?.one?.same === 1 && combineCheck?.one?.combine === 0
     && combineCheck?.two?.same === 0 && combineCheck?.two?.combine === 2
     && combineCheck?.backToOne?.same === 1 && combineCheck?.backToOne?.combine === 0

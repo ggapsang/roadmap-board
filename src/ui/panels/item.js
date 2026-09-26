@@ -322,9 +322,10 @@ export class ItemPanel {
     this._sameOptions = new Map();
     const events = this._allEvents ?? [];
     const kindLabel = { board: '프로젝트', track: '트랙', card: '카드' };
+    const excluded = this.#sameExcluded(item);
     const options = [];
     for (const ev of events) {
-      if (ev.id === item.id) continue;
+      if (excluded.has(ev.id)) continue;
       this._sameOptions.set(ev.id, ev);
       options.push({
         id: ev.id,
@@ -333,6 +334,18 @@ export class ItemPanel {
       });
     }
     this.sameList.render(options);
+  }
+
+  /** 동일·조합 후보에서 뺄 것: 자기 자신·자기가 걸친 트랙·조상(상위 일정)·자손. */
+  #sameExcluded(item) {
+    const out = new Set([item.id]);
+    const home = this.store.trackIndex(item.place.t);
+    const sp = item.place.sp ?? 1;
+    for (let k = 0; k < sp; k += 1) { const t = this.store.tracks[home + k]; if (t) out.add(t.id); }
+    let p = item.parent;
+    while (p && !out.has(p)) { out.add(p); p = this.store.item(p)?.parent; }
+    for (const d of this.#descendantsOf(item.id)) out.add(d);
+    return out;
   }
 
   /** 이 이벤트가 same·combine로 이어 둔 대상 id 집합. 선택 상태의 진실. */
@@ -375,6 +388,7 @@ export class ItemPanel {
         return true;
       });
       if (targets.length === 1) {
+        // 동일 — 이 카드가 그 이벤트다. 대상 본질을 물려받고, 이 보드 이름은 별칭으로 남긴다.
         const t = targets[0];
         const ev = this._sameOptions?.get(t);
         doc.relations.push({ id: newId('r'), type: 'same', from: id, to: t });
@@ -385,7 +399,13 @@ export class ItemPanel {
           it.pg = ev.pg ?? it.pg; it.note = ev.note ?? it.note;
         }
       } else if (targets.length >= 2) {
+        // 조합이 되는 순간 이건 부품 하나가 아니라 '그것들의 합'인 별개 이벤트다.
+        // 동일 때 물려받은 이름(별칭에 원래 이름 보관)을 되돌려 제 정체성을 회복한다.
+        if (it.alias) { it.ti = it.alias; it.alias = null; }
         for (const t of targets) doc.relations.push({ id: newId('r'), type: 'combine', from: id, to: t });
+      } else if (it.alias) {
+        // 0개 — 다시 독립 이벤트. 물려받아 가려졌던 원래 이름을 되돌린다.
+        it.ti = it.alias; it.alias = null;
       }
     });
     this.#renderSame(item);

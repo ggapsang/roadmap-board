@@ -543,12 +543,14 @@ export class BoardRepository {
         }
         // 동일(same)로 묶인 이벤트끼리 본질을 맞춘다 — 보드를 넘어 공유(§3.4). 편집한 이 보드가
         // 원본이라, 이 보드의 이벤트 본질을 반대쪽(다른 보드일 수 있음)에 복사한다. 별칭은 배치라 제외.
+        // 트랙·보드(루트)도 이벤트라 원본이 될 수 있다 — 트랙 이름을 바꾸면 동일 카드에 반영된다(§3.2).
+        const essenceIds = new Set([...itemIds, root, ...doc.tracks.map((t) => tkey(t.id))]);
         const getEss = this.db.prepare(
           'SELECT title, start_date AS s, end_date AS e, type, status, org, progress AS pg, note FROM event WHERE id = ?',
         );
         for (const rel of doc.relations) {
           if (rel.type !== 'same') continue;
-          const src = idSet.has(rel.from) ? rel.from : (idSet.has(rel.to) ? rel.to : null);
+          const src = essenceIds.has(rel.from) ? rel.from : (essenceIds.has(rel.to) ? rel.to : null);
           const dst = src === rel.from ? rel.to : rel.from;
           if (!src || src === dst) continue;
           const e = getEss.get(src);
