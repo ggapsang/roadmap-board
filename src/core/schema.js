@@ -414,6 +414,9 @@ export function normalize(doc) {
 function normalizeRelations(doc, itemIds) {
   const acyclic = new Set(RELATION_TYPES.filter((r) => r.acyclic).map((r) => r.key));
   const symmetric = new Set(RELATION_TYPES.filter((r) => r.symmetric).map((r) => r.key));
+  // 보드를 넘나드는 관계(동일·조합)는 반대쪽 끝이 다른 보드에 있을 수 있다. 한쪽만 이 보드
+  // 안이면 살린다 — 안 그러면 정규화가 매번 보드 밖 대상을 끊어 버린다.
+  const crossBoard = new Set(RELATION_TYPES.filter((r) => r.crossBoard).map((r) => r.key));
   const src = [];
   // 관계는 doc.relations에서 받는다. 단 포함(contain)은 item.parent가 authoritative라
   // 입력의 contain은 버리고 item.parent에서 다시 만든다(중복·불일치 방지).
@@ -442,7 +445,11 @@ function normalizeRelations(doc, itemIds) {
     const type = RELATION_KEYS.includes(r.type) ? r.type : 'dep';
     const { from, to } = r;
     if (typeof from !== 'string' || typeof to !== 'string') continue;
-    if (from === to || !itemIds.has(from) || !itemIds.has(to)) continue;
+    if (from === to) continue;
+    const inHere = crossBoard.has(type)
+      ? (itemIds.has(from) || itemIds.has(to))   // 한쪽만 이 보드여도 OK
+      : (itemIds.has(from) && itemIds.has(to));  // 선행·포함은 양끝 다 이 보드
+    if (!inHere) continue;
     // 대칭 관계(동일)는 (a,b)와 (b,a)가 같다 — 끝점을 정렬해 중복을 없앤다.
     const key = symmetric.has(type)
       ? `${type}|${[from, to].sort().join('|')}`

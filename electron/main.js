@@ -196,6 +196,7 @@ async function runSmoke(target) {
   let drill = null;
   let panelFit = null;
   let sameCheck = null;
+  let combineCheck = null;
   let spanForce = null;
   let progressCheck = null;
   let cornerCheck = null;
@@ -947,6 +948,42 @@ async function runSmoke(target) {
     })()`);
     console.log('[smoke] same-card ' + JSON.stringify(sameCheck));
 
+    // 동일·조합 멀티선택 — 1개 고르면 same(동일), 2개+면 combine(조합). 실제 패널을 조작한다.
+    combineCheck = await target.webContents.executeJavaScript(`(async () => {
+      const run = (async () => {
+        const r = window.__roadmap;
+        const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+        const id = r.store.items[0].id;
+        const snapRel = JSON.parse(JSON.stringify(r.store.relations));
+        const it0 = r.store.items[0];
+        const snap = { ti: it0.ti, s: it0.s, e: it0.e, ty: it0.ty, st: it0.st, og: it0.og, pg: it0.pg, note: it0.note, alias: it0.alias ?? null };
+        document.querySelector('[data-id="' + id + '"]').click();
+        await sleep(350);
+        document.querySelector('#pItem .ptab[data-tab="rel"]').click();
+        await sleep(80);
+        const cntSame = () => r.store.relations.filter((x) => x.type === 'same' && (x.from === id || x.to === id)).length;
+        const cntComb = () => r.store.relations.filter((x) => x.type === 'combine' && x.from === id).length;
+        const opts = () => [...document.querySelectorAll('#i-same .fl-opt')];
+        opts()[0].click(); await sleep(150);
+        const one = { same: cntSame(), combine: cntComb() };
+        opts()[1].click(); await sleep(150);
+        const two = { same: cntSame(), combine: cntComb() };
+        const sel = opts().filter((o) => o.getAttribute('aria-selected') === 'true');
+        sel[sel.length - 1].click(); await sleep(150);   // 하나 해제 → 다시 동일
+        const backToOne = { same: cntSame(), combine: cntComb() };
+        document.querySelector('#pItem [data-close]').click();
+        r.store.commit('smoke 원복', (doc) => {
+          doc.relations = snapRel;
+          const it = doc.items.find((x) => x.id === id) || doc.items[0];
+          Object.assign(it, snap);
+        });
+        return { one, two, backToOne };
+      })();
+      const guard = new Promise((res) => setTimeout(() => res({ error: 'timeout' }), 8000));
+      return Promise.race([run.catch((e) => ({ error: String(e) })), guard]);
+    })()`);
+    console.log('[smoke] combine-map ' + JSON.stringify(combineCheck));
+
     // 진척률은 태스크 완료율에서 자동 계산 (진행도 탭)
     progressCheck = await target.webContents.executeJavaScript(`(async () => {
       const r = window.__roadmap;
@@ -1386,6 +1423,9 @@ async function runSmoke(target) {
     && cornerCheck?.widthChanged === true && cornerCheck?.heightChanged === true && cornerCheck?.topGrew === true
     && sameCheck?.count > 0 && sameCheck?.hasBoard === true && sameCheck?.hasCard === true
     && sameCheck?.hasTrack === true && sameCheck?.hasBoardIds === true && sameCheck?.pickerOpts > 0
+    && combineCheck?.one?.same === 1 && combineCheck?.one?.combine === 0
+    && combineCheck?.two?.same === 0 && combineCheck?.two?.combine === 2
+    && combineCheck?.backToOne?.same === 1 && combineCheck?.backToOne?.combine === 0
     && progressCheck?.half === true
     && spanForce?.spanUnderForce === true && spanForce?.hasWidthGrip === true
     && trim?.trimmed === true && trim?.shrank === true

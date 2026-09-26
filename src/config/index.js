@@ -57,7 +57,8 @@ export const DEFAULT_TYPE = 'bar';
 export const RELATION_TYPES = [
   { key: 'dep', label: '선행', acyclic: true },
   { key: 'contain', label: '포함', acyclic: true },   // 상위 일정 안에 든 카드. 지금은 item.parent가 렌더용 사본.
-  { key: 'same', label: '동일', symmetric: true },    // 두 카드가 같은 이벤트(본질 공유). 대칭 관계.
+  { key: 'same', label: '동일', symmetric: true, crossBoard: true },    // 두 카드가 같은 이벤트(본질 공유). 대칭.
+  { key: 'combine', label: '조합', acyclic: true, crossBoard: true },   // 이 이벤트가 여러 이벤트의 합(포함). §3.7
   // { key: 'cause', label: '원인', acyclic: true },
   // { key: 'join',  label: '합류' },
   // { key: 'ref',   label: '참조' },

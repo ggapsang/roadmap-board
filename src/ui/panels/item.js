@@ -85,12 +85,13 @@ export class ItemPanel {
       isSelected: (id) => this.item?.parent === id,
       onChange: (id, next) => this.#setParent(next ? id : null),
     });
-    // 동일 카드 = 같은 이벤트(공유 정체성). 보드를 넘어 모든 보드의 카드·프로젝트가 후보다.
-    // 고르면 이 카드가 그 이벤트가 된다(다중 배치) — 본질 공유, 위치·별칭은 보드별.
+    // 동일·조합 = 이 이벤트를 다른 이벤트와 잇는다. 보드를 넘어 모든 카드·트랙·프로젝트가 후보.
+    //   1개 고르면 → 같은 이벤트(동일). 본질을 공유하고, 이 보드 이름은 별칭으로 유지.
+    //   2개 이상 → 이 이벤트가 그것들의 합(조합, §3.7). 각각을 품는다.
     this.sameList = createFilterList({
-      mode: 'single', placeholder: '다른 보드의 카드·프로젝트 검색…', emptyText: '다른 보드의 카드가 없습니다.',
-      isSelected: (id) => this.item?.id === id,
-      onChange: (id, next) => { if (next) this.#confirmLink(id); else this.#unlinkSame(); },
+      mode: 'multi', placeholder: '다른 보드의 카드·트랙·프로젝트 검색…', emptyText: '이을 이벤트가 없습니다.',
+      isSelected: (id) => this.#linkedTargets().has(id),
+      onChange: (id, next) => this.#toggleSame(id, next),
     });
     $('i-deps').append(this.depsList.root);
     $('i-parent').append(this.parentList.root);
@@ -311,12 +312,11 @@ export class ItemPanel {
     });
   }
 
-  // ── 동일 카드 = 같은 이벤트(공유 정체성, 보드를 넘나든다) (§3.2 다중 소속·§3.4) ──
+  // ── 동일 · 조합 = 이 이벤트를 다른 이벤트와 잇는다 (§3.4·§3.7, 보드를 넘나든다) ──
 
   /**
-   * 동일 이벤트 후보 — 모든 단위가 이벤트다(§3.2). 카드·트랙·프로젝트(보드)를 모두 낸다.
-   * 보드를 가리지 않는다(같은 보드도 기본으로 나온다 — 묶는 일은 드물지만). this._allEvents는
-   * open()에서 미리 받아 둔다.
+   * 동일·조합 후보 — 모든 단위가 이벤트다(§3.2). 카드·트랙·프로젝트(보드)를 모두 낸다.
+   * this._allEvents는 open()에서 미리 받아 둔다. 자기 자신과는 잇지 않는다.
    */
   #renderSame(item) {
     this._sameOptions = new Map();
@@ -324,11 +324,7 @@ export class ItemPanel {
     const kindLabel = { board: '프로젝트', track: '트랙', card: '카드' };
     const options = [];
     for (const ev of events) {
-      if (ev.id === item.id) {
-        // 자기 행은 이미 공유(다른 보드에도 있음/보드·트랙 루트)일 때만 '연결됨'으로 보여 준다.
-        const shared = ev.kind !== 'card' || String(ev.boardIds ?? '').split(',').length > 1;
-        if (!shared) continue;
-      }
+      if (ev.id === item.id) continue;
       this._sameOptions.set(ev.id, ev);
       options.push({
         id: ev.id,
@@ -339,52 +335,65 @@ export class ItemPanel {
     this.sameList.render(options);
   }
 
-  /** 이 카드를 target 이벤트로 만든다(다중 배치). 본질을 물려받고 참조를 옮긴다. */
-  #linkSame(targetId) {
-    const item = this.item;
-    if (!item) return;
-    const ev = this._sameOptions?.get(targetId);
-    if (!ev) return;
-    if (this.store.item(targetId)) { toast('이미 이 보드에 있는 이벤트입니다'); return; }
-    const old = item.id;
-    const origName = item.ti;
-    this.store.commit('동일 카드 연결', (doc) => {
-      const it = doc.items.find((x) => x.id === old);
-      // 연결 전 이름이 대상과 다르면 원래 이름을 별칭으로 남긴다 — 다시 이름 정할 필요 없이
-      // 이 보드에선 원래 이름으로 계속 보인다(§3.5).
-      if (!it.alias && origName && origName !== (ev.title ?? '')) it.alias = origName;
-      it.id = targetId;
-      it.ti = ev.title ?? ''; it.s = ev.s; it.e = ev.e; it.ty = ev.ty ?? 'bar';
-      it.st = ev.st ?? 'plan'; it.og = ev.og ?? ''; it.pg = ev.pg ?? 0; it.note = ev.note ?? '';
-      for (const r of doc.relations) {
-        if (r.from === old) r.from = targetId;
-        if (r.to === old) r.to = targetId;
-      }
-      for (const x of doc.items) { if (x.parent === old) x.parent = targetId; }
-    });
-    this.view.selectedItem = targetId;
-    this.open(targetId);
-    toast('같은 이벤트로 연결했습니다 — 보드를 넘어 본질이 공유됩니다');
+  /** 이 이벤트가 same·combine로 이어 둔 대상 id 집합. 선택 상태의 진실. */
+  #linkedTargets() {
+    const id = this.item?.id;
+    const set = new Set();
+    if (!id) return set;
+    for (const r of this.store.relations) {
+      if (r.type === 'same' && (r.from === id || r.to === id)) set.add(r.from === id ? r.to : r.from);
+      else if (r.type === 'combine' && r.from === id) set.add(r.to);
+    }
+    return set;
   }
 
-  /** 연결 해제 — 이 보드만의 독립 카드로 분리(새 이벤트 id, 본질은 유지). */
-  #unlinkSame() {
+  #toggleSame(targetId, next) {
+    if (!this.item) return;
+    const set = this.#linkedTargets();
+    if (next) set.add(targetId); else set.delete(targetId);
+    this.#applyLinks([...set]);
+  }
+
+  /**
+   * 고른 대상 수로 뜻이 갈린다(사용자 규칙).
+   *   1개 → 같은 이벤트(동일). 대상 본질을 물려받고, 이 보드 이름은 별칭으로 남긴다(§3.5).
+   *   2개+ → 이 이벤트가 그것들의 합(조합, §3.7). combine로 각각을 품는다.
+   *   0개 → 아무 연결도 없다.
+   * 본질 공유는 저장 계층이 same 무리끼리 맞춰 준다(보드를 넘어).
+   */
+  #applyLinks(targets) {
     const item = this.item;
     if (!item) return;
-    const old = item.id;
-    const fresh = newId('e');
-    this.store.commit('동일 카드 해제', (doc) => {
-      const it = doc.items.find((x) => x.id === old);
-      it.id = fresh;
-      for (const r of doc.relations) {
-        if (r.from === old) r.from = fresh;
-        if (r.to === old) r.to = fresh;
+    const id = item.id;
+    const origName = item.ti;
+    this.store.commit('동일·조합', (doc) => {
+      const it = doc.items.find((x) => x.id === id) ?? item;
+      // 이 이벤트가 걸어 둔 same·combine를 전부 걷어낸다 (다시 만든다)
+      doc.relations = (doc.relations ?? []).filter((r) => {
+        if (r.type === 'same' && (r.from === id || r.to === id)) return false;
+        if (r.type === 'combine' && r.from === id) return false;
+        return true;
+      });
+      if (targets.length === 1) {
+        const t = targets[0];
+        const ev = this._sameOptions?.get(t);
+        doc.relations.push({ id: newId('r'), type: 'same', from: id, to: t });
+        if (ev) {
+          if (!it.alias && origName && origName !== (ev.title ?? '')) it.alias = origName;
+          it.ti = ev.title ?? it.ti; it.s = ev.s ?? it.s; it.e = ev.e ?? it.e;
+          it.ty = ev.ty ?? it.ty; it.st = ev.st ?? it.st; it.og = ev.og ?? it.og;
+          it.pg = ev.pg ?? it.pg; it.note = ev.note ?? it.note;
+        }
+      } else if (targets.length >= 2) {
+        for (const t of targets) doc.relations.push({ id: newId('r'), type: 'combine', from: id, to: t });
       }
-      for (const x of doc.items) { if (x.parent === old) x.parent = fresh; }
     });
-    this.view.selectedItem = fresh;
-    this.open(fresh);
-    toast('연결을 해제했습니다 — 이 보드만의 카드로 분리');
+    this.#renderSame(item);
+    if (this.item) {
+      $('i-aliasname').value = this.item.alias ?? '';
+      $(F.title).value = this.item.ti ?? '';
+      autogrow($(F.title));
+    }
   }
 
   /** 제목으로 검색하면 뜨는 "같은 카드로 연결" 후보(모든 보드). 평상시엔 숨김. */
@@ -435,9 +444,13 @@ export class ItemPanel {
     const where = ev?.kind === 'board' ? '프로젝트' : (ev?.boardNames || '다른 보드');
     const ok = await askConfirm({
       title: '같은 이벤트로 연결', confirmLabel: '연결',
-      message: `'${name}' (${where})와 연결할까요?`,
+      message: `'${name}' (${where})와 같은 이벤트로 이을까요?`,
     });
-    if (ok) this.#linkSame(targetId);
+    if (ok) {
+      const set = this.#linkedTargets();
+      set.add(targetId);
+      this.#applyLinks([...set]);
+    }
   }
 
   /** 상위 일정 후보 — 자기·자손·마일스톤을 뺀 것. 체크가 없으면 상위 없음(트랙에 직접). */

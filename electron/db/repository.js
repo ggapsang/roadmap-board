@@ -42,13 +42,17 @@ export class BoardRepository {
     return kids;
   }
 
-  /** root에서 포함을 따라 도달하는 모든 이벤트(루트 제외). */
+  /**
+   * root에서 구조적 포함(순서 있음=1, 태스크=0)을 따라 도달하는 모든 이벤트(루트 제외).
+   * 조합(ordered=2)은 다른 보드의 부품을 가리키는 관계라 서브트리에 끌어오지 않는다.
+   */
   #descendants(root, kids = this.#childMap()) {
     const seen = new Set();
     const stack = [root];
     while (stack.length) {
       const n = stack.pop();
       for (const c of (kids.get(n) ?? [])) {
+        if (c.ordered === 2) continue;
         if (!seen.has(c.child_id)) { seen.add(c.child_id); stack.push(c.child_id); }
       }
     }
@@ -262,12 +266,13 @@ export class BoardRepository {
     const trackIndex = new Map(trackIds.map((id, i) => [id, i]));
     const trackSet = new Set(trackIds);
 
-    // 서브트리 이벤트 + 본질
+    // 서브트리 이벤트 + 본질. 조합(ordered=2)은 층을 끌어오지 않는다(관계로만 복원).
     const inSub = new Set();
     const stack = [root];
     while (stack.length) {
       const n = stack.pop();
       for (const c of (kids.get(n) ?? [])) {
+        if (c.ordered === 2) continue;
         if (!inSub.has(c.child_id)) { inSub.add(c.child_id); stack.push(c.child_id); }
       }
     }
@@ -359,11 +364,19 @@ export class BoardRepository {
       (trackIndex.get(a.place.t) ?? 0) - (trackIndex.get(b.place.t) ?? 0) || a._o - b._o);
     items.forEach((it) => { delete it._o; });
 
-    // 관계: rel(전역)에서 양끝이 이 서브트리 안인 것 + 포함(parent)에서 파생
+    // 관계: rel(전역)에서. 선행(dep)은 양끝이 이 보드, 동일(same)은 보드를 넘으므로 한쪽만
+    // 이 보드여도 싣는다. 포함(contain)은 item.parent에서 파생. 조합(combine)은
+    // containment(ordered=2)에서 복원 — 부모가 이 보드 이벤트인 것.
     const relations = [];
     for (const r of this.db.prepare('SELECT id, type, from_id, to_id FROM rel').all()) {
-      if (inSub.has(r.from_id) && inSub.has(r.to_id)) {
-        relations.push({ id: r.id, type: r.type, from: r.from_id, to: r.to_id });
+      const keep = r.type === 'same'
+        ? (inSub.has(r.from_id) || inSub.has(r.to_id))
+        : (inSub.has(r.from_id) && inSub.has(r.to_id));
+      if (keep) relations.push({ id: r.id, type: r.type, from: r.from_id, to: r.to_id });
+    }
+    for (const c of cont) {
+      if (c.ordered === 2 && inSub.has(c.parent_id)) {
+        relations.push({ id: `x_${c.parent_id}_${c.child_id}`, type: 'combine', from: c.parent_id, to: c.child_id });
       }
     }
     for (const it of items) {
@@ -413,12 +426,16 @@ export class BoardRepository {
         this.db.prepare(`DELETE FROM containment WHERE parent_id IN (${ph})`).run(...clearParents);
         this.db.prepare(`DELETE FROM disp        WHERE parent_id IN (${ph})`).run(...clearParents);
       }
-      // 이 보드 안에서 양끝이 모두 도는 관계를 갈아끼운다(보드 밖 관계는 건드리지 않음, 규칙 8).
+      // 관계를 갈아끼운다. 선행(dep)은 양끝이 이 보드일 때만. 동일(same)은 보드를 넘으므로
+      // 한쪽만 이 보드여도 이 보드 저장이 갱신 주체다(규칙 8 — 관계는 보드 무관, 편집한 쪽이 쓴다).
       const itemIds = doc.items.map((it) => it.id);
       if (itemIds.length) {
         const ph = itemIds.map(() => '?').join(',');
         this.db.prepare(
-          `DELETE FROM rel WHERE type IN ('dep','same') AND from_id IN (${ph}) AND to_id IN (${ph})`,
+          `DELETE FROM rel WHERE type = 'dep' AND from_id IN (${ph}) AND to_id IN (${ph})`,
+        ).run(...itemIds, ...itemIds);
+        this.db.prepare(
+          `DELETE FROM rel WHERE type = 'same' AND (from_id IN (${ph}) OR to_id IN (${ph}))`,
         ).run(...itemIds, ...itemIds);
       }
       this.db.prepare('DELETE FROM org  WHERE board_id = ?').run(this.boardId);
@@ -512,11 +529,30 @@ export class BoardRepository {
         });
       });
 
-      // 관계(dep·same). 포함(contain)은 containment에서 파생이라 rel에 넣지 않는다.
+      // 관계 쓰기. 선행·동일은 rel 테이블. 포함(contain)은 item.parent에서 파생이라 안 넣는다.
+      // 조합(combine)은 '이 이벤트가 여러 이벤트의 합' — 포함이므로 containment(ordered=2)에 넣되,
+      // 부품(자식)은 다른 보드일 수 있어 이 보드 층에는 끌어오지 않는다.
+      const idSet = new Set(itemIds);
       if (Array.isArray(doc.relations)) {
         for (const rel of doc.relations) {
-          if (rel.type !== 'dep' && rel.type !== 'same') continue;
-          insRel.run(rel.id || `r_${rel.from}_${rel.to}`, rel.type, rel.from, rel.to);
+          if (rel.type === 'dep' || rel.type === 'same') {
+            insRel.run(rel.id || `r_${rel.from}_${rel.to}`, rel.type, rel.from, rel.to);
+          } else if (rel.type === 'combine' && idSet.has(rel.from)) {
+            insCont.run(rel.from, rel.to, 2, 0);
+          }
+        }
+        // 동일(same)로 묶인 이벤트끼리 본질을 맞춘다 — 보드를 넘어 공유(§3.4). 편집한 이 보드가
+        // 원본이라, 이 보드의 이벤트 본질을 반대쪽(다른 보드일 수 있음)에 복사한다. 별칭은 배치라 제외.
+        const getEss = this.db.prepare(
+          'SELECT title, start_date AS s, end_date AS e, type, status, org, progress AS pg, note FROM event WHERE id = ?',
+        );
+        for (const rel of doc.relations) {
+          if (rel.type !== 'same') continue;
+          const src = idSet.has(rel.from) ? rel.from : (idSet.has(rel.to) ? rel.to : null);
+          const dst = src === rel.from ? rel.to : rel.from;
+          if (!src || src === dst) continue;
+          const e = getEss.get(src);
+          if (e) upEvent.run({ id: dst, title: e.title, s: e.s, e: e.e, type: e.type, status: e.status, org: e.org, pg: e.pg, note: e.note });
         }
       } else {
         for (const it of doc.items) {

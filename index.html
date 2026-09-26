@@ -122,17 +122,17 @@
         <div class="fld"><label for="i-start">시작</label><input id="i-start" type="date"></div>
         <div class="fld"><label for="i-end">종료</label><input id="i-end" type="date"></div>
       </div>
+      <div class="fld">
+        <label>트랙 <span class="muted">이 보드에서 덮을 트랙 · 여럿 고르면 걸쳐 놓입니다</span></label>
+        <div class="seg wrap" id="i-span"></div>
+      </div>
       <div class="fld"><label for="i-note">비고</label><textarea id="i-note"></textarea></div>
     </section>
 
-    <!-- 매핑 — 이 이벤트를 어디에 어떻게 놓을지: 트랙(다중)·동일성·포함·선행 -->
+    <!-- 매핑 — 이 이벤트를 다른 이벤트와 잇는다: 동일·조합·포함·선행 (보드를 넘나든다) -->
     <section class="ptab-panel" data-panel="rel" hidden>
       <div class="fld">
-        <label>트랙 매핑 <span class="muted">덮을 트랙 · 여럿 (2개 이상도)</span></label>
-        <div class="seg wrap" id="i-span"></div>
-      </div>
-      <div class="fld">
-        <label>동일 카드 <span class="muted">같은 이벤트 (본질 공유) · 카드·트랙·프로젝트</span></label>
+        <label>동일 · 조합 <span class="muted">1개 고르면 같은 이벤트(별칭) · 2개 이상이면 그 합</span></label>
         <div id="i-same"></div>
       </div>
       <div class="fld">
