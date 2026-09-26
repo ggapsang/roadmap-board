@@ -65,8 +65,10 @@ export class BoardRepository {
   }
 
   deleteProject(id) {
-    // board의 자식은 전부 ON DELETE CASCADE다
+    // board의 자식(placement 등)은 ON DELETE CASCADE. 루트 이벤트는 배치가 없어 직접 지운다.
+    const b = this.db.prepare('SELECT root_event_id FROM board WHERE id = ?').get(id);
     this.db.prepare('DELETE FROM board WHERE id = ?').run(id);
+    if (b?.root_event_id) this.db.prepare('DELETE FROM event WHERE id = ?').run(b.root_event_id);
     if (this.boardId === id) this.boardId = null;
   }
 
@@ -261,6 +263,19 @@ export class BoardRepository {
           insTask.run(t.id, it.id, ti, t.text ?? '', t.done ? 1 : 0));
       });
 
+      // 이 보드 자체도 이벤트다 — 루트 이벤트의 본질을 보드 이름·기간에 맞춰 둔다(§3.2·§5.1).
+      // 이 이벤트를 다른 보드에 배치하면 그 카드가 곧 이 보드가 된다(카드↔보드).
+      const boardRow = this.db.prepare('SELECT root_event_id FROM board WHERE id = ?').get(this.boardId);
+      let rootId = boardRow?.root_event_id;
+      if (!rootId) {
+        rootId = `board:${this.boardId}`;
+        this.db.prepare('UPDATE board SET root_event_id = ? WHERE id = ?').run(rootId, this.boardId);
+      }
+      upEvent.run({
+        id: rootId, title: doc.meta.name ?? '로드맵', s: doc.meta.start, e: doc.meta.end,
+        type: 'bar', status: 'plan', org: '', pg: 0, note: '',
+      });
+
       // 선행 관계('dep')만 relation 테이블에. 포함(contain)은 placement.parent_id에서 파생.
       // 정규화 전 문서(item.dp만 있는 경우)도 관대하게 받는다.
       if (Array.isArray(doc.relations)) {
@@ -274,8 +289,12 @@ export class BoardRepository {
         }
       }
 
-      // 어느 보드에도 놓이지 않은 이벤트는 정리한다(지금은 배치 없는 이벤트가 의미 없다).
-      this.db.prepare('DELETE FROM event WHERE id NOT IN (SELECT event_id FROM placement)').run();
+      // 어디에도 놓이지 않은 이벤트는 정리한다. 단 보드의 루트 이벤트는 배치가 없어도 남긴다
+      // (그 보드가 곧 그 이벤트이므로).
+      this.db.prepare(`
+        DELETE FROM event WHERE id NOT IN (SELECT event_id FROM placement)
+          AND id NOT IN (SELECT root_event_id FROM board WHERE root_event_id IS NOT NULL)
+      `).run();
 
       this.#maybeRevision(doc, label);
     });
