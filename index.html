@@ -94,7 +94,7 @@
     <button class="ptab" type="button" role="tab" data-tab="attr" aria-selected="true">속성</button>
     <button class="ptab" type="button" role="tab" data-tab="rel"  aria-selected="false">관계</button>
     <button class="ptab" type="button" role="tab" data-tab="disp" aria-selected="false">표시</button>
-    <button class="ptab" type="button" role="tab" data-tab="task" aria-selected="false">태스크</button>
+    <button class="ptab" type="button" role="tab" data-tab="task" aria-selected="false">진행도</button>
   </div>
   <div class="body2">
     <!-- 속성 -->
@@ -122,9 +122,9 @@
         <div class="fld"><label for="i-start">시작</label><input id="i-start" type="date"></div>
         <div class="fld"><label for="i-end">종료</label><input id="i-end" type="date"></div>
       </div>
-      <div class="two">
-        <div class="fld"><label for="i-span">트랙 걸침 (칸)</label><input id="i-span" type="number" min="1" max="8" step="1"></div>
-        <div class="fld"><label for="i-prog">진척률 (%)</label><input id="i-prog" type="number" min="0" max="100" step="5"></div>
+      <div class="fld">
+        <label for="i-span">트랙 걸침 <span class="muted">덮을 트랙을 고른다 (보드 위에선 드래그로도)</span></label>
+        <div class="seg wrap" id="i-span"></div>
       </div>
       <div class="fld"><label for="i-org">담당</label><select id="i-org"></select></div>
       <div class="fld"><label for="i-note">비고</label><textarea id="i-note"></textarea></div>
@@ -159,12 +159,21 @@
       </div>
     </section>
 
-    <!-- 태스크 -->
+    <!-- 진행도 — 진척 요약 + 태스크(투두) + 하위 카드 -->
     <section class="ptab-panel" data-panel="task" hidden>
+      <div class="fld">
+        <label>진행도 <span class="muted" id="i-progpct"></span></label>
+        <div class="prog-bar"><i id="i-progfill"></i></div>
+      </div>
       <div class="fld">
         <label>태스크 <span class="muted" id="i-taskcount"></span></label>
         <div class="tasks" id="i-tasks"></div>
         <button class="btn outline sm" id="i-taskadd" type="button">+ 태스크 추가</button>
+      </div>
+      <div class="fld">
+        <label>하위 카드 <span class="muted">펼치면 나오는 안쪽 일정</span></label>
+        <div class="tasks" id="i-children"></div>
+        <button class="btn outline sm" id="i-childadd" type="button">+ 하위 카드 추가</button>
       </div>
     </section>
   </div>

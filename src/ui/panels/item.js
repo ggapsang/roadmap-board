@@ -13,10 +13,10 @@ import { createFilterList } from '../components/filter-list.js';
 import { askConfirm } from '../dialog.js';
 import { toast } from '../toast.js';
 
-/** 값이 바로 문서로 반영되는 단순 입력들 (관계·별칭은 별도 리스트가 맡는다) */
+/** 값이 바로 문서로 반영되는 단순 입력들 (걸침·관계·별칭·진척은 별도 UI가 맡는다) */
 const F = {
   title: 'i-title', track: 'i-track', type: 'i-type', start: 'i-start',
-  end: 'i-end', span: 'i-span', prog: 'i-prog', org: 'i-org', note: 'i-note',
+  end: 'i-end', org: 'i-org', note: 'i-note',
 };
 
 const ALIGN_ICON = { top: ICONS.alignTop, middle: ICONS.alignMiddle, bottom: ICONS.alignBottom };
@@ -169,6 +169,7 @@ export class ItemPanel {
     });
 
     $('i-taskadd').addEventListener('click', () => this.#addTask());
+    $('i-childadd').addEventListener('click', () => this.#addChild());
     $('i-del').addEventListener('click', () => this.remove());
     $('i-dup').addEventListener('click', () => this.duplicate());
   }
@@ -202,9 +203,6 @@ export class ItemPanel {
     $(F.type).value = item.ty;
     $(F.start).value = item.s;
     $(F.end).value = item.e;
-    $(F.span).value = item.place.sp;
-    $(F.span).max = String(Math.max(1, this.store.tracks.length));
-    $(F.prog).value = item.pg;
     $(F.org).value = item.og;
     $(F.note).value = item.note ?? '';
     $('i-aliasname').value = item.alias ?? '';
@@ -212,6 +210,7 @@ export class ItemPanel {
 
     this.#syncStatus(item);
     this.#syncAlign(item);
+    this.#renderSpanPick(item);
     $('i-shownote').setAttribute('aria-pressed', String(item.place?.showNote === true));
     $('i-fixedh').setAttribute('aria-pressed', String(item.place?.hd != null));
 
@@ -219,6 +218,8 @@ export class ItemPanel {
     this.#renderParents(item);
     this.#renderSame(item);
     this.#renderTasks(item);
+    this.#renderChildren(item);
+    this.#syncProgUI(item);
 
     this.#showTab('attr');
     this.panels.open('pItem');
@@ -249,6 +250,33 @@ export class ItemPanel {
     for (const b of $('i-status').querySelectorAll('button')) {
       b.setAttribute('aria-pressed', String(b.dataset.st === item.st));
     }
+  }
+
+  /**
+   * 트랙 걸침 선택기 — 숫자 대신 트랙을 골라 덮는다. 홈 트랙(place.t)부터 오른쪽으로
+   * 이어지는 트랙을 클릭해 걸침 범위를 정한다(연속). 홈 왼쪽 트랙은 홈을 바꾸는 것이라
+   * 여기서 다루지 않는다(트랙 선택으로). 자식 카드는 걸침이 없어 숨긴다.
+   */
+  #renderSpanPick(item) {
+    const box = $('i-span');
+    clear(box);
+    if (item.parent) { box.append(el('span.muted', { text: '상위 일정 안에서는 걸침이 없습니다.' })); return; }
+    const tracks = this.store.tracks;
+    const home = this.store.trackIndex(item.place.t);
+    tracks.forEach((t, i) => {
+      if (i < home) return;
+      const inSpan = i < home + (item.place.sp ?? 1);
+      box.append(el('button.seg-btn', {
+        type: 'button', text: t.name, title: `${t.name}까지 걸치기`,
+        attrs: { 'aria-pressed': String(inSpan) },
+        on: {
+          click: () => {
+            this.store.commit('트랙 걸침', () => { item.place.sp = i - home + 1; });
+            this.#renderSpanPick(item);
+          },
+        },
+      }));
+    });
   }
 
   // ── 관계 (선행·상위·별칭) ────────────────────────────────
@@ -463,8 +491,9 @@ export class ItemPanel {
         type: 'checkbox', checked: t.done,
         on: {
           change: (e) => {
-            this.store.commit('태스크 완료', () => { t.done = e.target.checked; });
+            this.store.commit('태스크 완료', () => { t.done = e.target.checked; this.#syncProgress(item); });
             this.#renderTasks(this.item);
+            this.#syncProgUI(this.item);
           },
         },
       });
@@ -476,8 +505,9 @@ export class ItemPanel {
         type: 'button', title: '태스크 삭제',
         on: {
           click: () => {
-            this.store.commit('태스크 삭제', () => { item.tasks = item.tasks.filter((x) => x.id !== t.id); });
+            this.store.commit('태스크 삭제', () => { item.tasks = item.tasks.filter((x) => x.id !== t.id); this.#syncProgress(item); });
             this.#renderTasks(this.item);
+            this.#syncProgUI(this.item);
           },
         },
       }, [icon(ICONS.close)]);
@@ -494,10 +524,62 @@ export class ItemPanel {
     this.store.commit('태스크 추가', () => {
       if (!Array.isArray(item.tasks)) item.tasks = [];
       item.tasks.push(task);
+      this.#syncProgress(item);
     });
     this.#renderTasks(this.item);
+    this.#syncProgUI(this.item);
     const inputs = $('i-tasks').querySelectorAll('.task-text');
     inputs[inputs.length - 1]?.focus();
+  }
+
+  // ── 진행도 (태스크 완료율) + 하위 카드 목록 ──────────────
+
+  /** 진척률 = 태스크 완료 비율. 태스크가 있으면 자동 계산해 item.pg에 반영. */
+  #syncProgress(item) {
+    const tasks = Array.isArray(item.tasks) ? item.tasks : [];
+    if (!tasks.length) { item.pg = 0; return; }
+    item.pg = Math.round((tasks.filter((t) => t.done).length / tasks.length) * 100);
+  }
+
+  #syncProgUI(item) {
+    const tasks = Array.isArray(item.tasks) ? item.tasks : [];
+    const pct = tasks.length ? Math.round((tasks.filter((t) => t.done).length / tasks.length) * 100) : 0;
+    $('i-progpct').textContent = tasks.length ? `${pct}%` : '태스크로 계산';
+    $('i-progfill').style.width = `${pct}%`;
+  }
+
+  /** 하위 카드 목록 — 투두 형태. 완료(상태 done) 체크·이름·열기. 순서 없는 태스크와 별개. */
+  #renderChildren(item) {
+    const box = $('i-children');
+    clear(box);
+    const kids = this.store.items.filter((x) => x.parent === item.id);
+    if (!kids.length) { box.append(el('div.empty', { text: '하위 카드가 없습니다.' })); return; }
+    for (const c of kids) {
+      const cb = el('input', {
+        type: 'checkbox', checked: c.st === 'done', title: '완료 표시',
+        on: { change: (e) => { this.store.commit('하위 완료', () => { c.st = e.target.checked ? 'done' : 'run'; }); this.#renderChildren(this.item); } },
+      });
+      const name = el('button.task-text.linklike', {
+        type: 'button', text: c.alias || c.ti || '(제목 없음)', title: '이 카드 열기',
+        on: { click: () => this.open(c.id) },
+      });
+      const row = el('label.task', {}, [cb, name]);
+      if (c.st === 'done') row.classList.add('done');
+      box.append(row);
+    }
+  }
+
+  #addChild() {
+    const item = this.item;
+    if (!item) return;
+    const child = {
+      id: newId('e'), ti: '새 하위 카드', s: item.s, e: item.e,
+      ty: 'bar', st: 'plan', og: item.og, pg: 0, note: '', parent: item.id, alias: null, tasks: [],
+      place: { t: item.place.t, sp: 1, x: null, w: null, hd: null, align: 'middle', showNote: false },
+    };
+    this.store.commit('하위 카드 추가', (doc) => { doc.items.push(child); });
+    this.#renderChildren(this.item);
+    this.open(child.id);   // 새 하위 카드를 바로 편집
   }
 
   // ── 폼 적용 ─────────────────────────────────────────────
@@ -515,18 +597,17 @@ export class ItemPanel {
       item.e = $(F.end).value || item.s;
       if (item.e < item.s) item.e = item.s;
 
+      // 홈 트랙이 바뀌면 걸침이 트랙 경계를 넘지 않게 다시 맞춘다.
       const ti = this.store.trackIndex(item.place.t);
       const maxSpan = Math.max(1, this.store.tracks.length - ti);
-      item.place.sp = Math.min(maxSpan, Math.max(1, Math.round(Number($(F.span).value) || 1)));
+      item.place.sp = Math.min(maxSpan, Math.max(1, item.place.sp ?? 1));
 
-      item.pg = Math.min(100, Math.max(0, Math.round(Number($(F.prog).value) || 0)));
       item.og = $(F.org).value;
       item.note = $(F.note).value;
     });
 
     $(F.end).value = item.e;
-    $(F.span).value = item.place.sp;
-    $(F.prog).value = item.pg;
+    this.#renderSpanPick(item);   // 트랙(홈)이 바뀌었을 수 있어 걸침 선택기 갱신
   }
 
   remove() {

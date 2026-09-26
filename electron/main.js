@@ -197,6 +197,7 @@ async function runSmoke(target) {
   let panelFit = null;
   let sameCheck = null;
   let spanForce = null;
+  let progressCheck = null;
   let cornerCheck = null;
   let trackResize = null;
   let spanEdit = null;
@@ -468,23 +469,22 @@ async function runSmoke(target) {
     })()`), 20000, 'panel-fit');
     console.log('[smoke] panel-fit ' + JSON.stringify(panelFit));
 
-    // 트랙 걸침(sp) — 오른쪽 패널에서 조절되는가
+    // 트랙 걸침 — 숫자 대신 트랙 칩을 눌러 조절. 세 번째 칩 → sp=3.
     spanEdit = await withTimeout(target.webContents.executeJavaScript(`(async () => {
       const r = window.__roadmap;
       const card = document.querySelector('.col > .ev:not(.ms)');
       const id = card.dataset.id;
       card.click();
       await new Promise((res) => setTimeout(res, 200));
-      const input = document.getElementById('i-span');
-      const before = { sp: r.store.item(id).place.sp, px: Math.round(card.getBoundingClientRect().width) };
-      input.value = '3';
-      input.dispatchEvent(new Event('change', { bubbles: true }));
+      const before = { sp: r.store.item(id).place.sp, px: Math.round(document.querySelector('[data-id="' + id + '"]').getBoundingClientRect().width) };
+      const chips = document.querySelectorAll('#i-span .seg-btn');
+      chips[2]?.click();          // 홈 트랙부터 세 번째 → sp=3
       await new Promise((res) => setTimeout(res, 200));
       const el = document.querySelector('[data-id="' + id + '"]');
       const after = { sp: r.store.item(id).place.sp, px: Math.round(el.getBoundingClientRect().width) };
       r.store.commit('원복', () => { r.store.item(id).place.sp = before.sp; });
       document.querySelector('#pItem [data-close]').click();
-      return { before, after, label: document.querySelector('label[for="i-span"]')?.textContent };
+      return { before, after, chips: chips.length, label: document.querySelector('label[for="i-span"]')?.textContent };
     })()`), 20000, 'span');
     console.log('[smoke] span ' + JSON.stringify(spanEdit));
 
@@ -937,6 +937,34 @@ async function runSmoke(target) {
     })()`);
     console.log('[smoke] same-card ' + JSON.stringify(sameCheck));
 
+    // 진척률은 태스크 완료율에서 자동 계산 (진행도 탭)
+    progressCheck = await target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      // items[0]은 태스크 검증에 쓰이므로 건드리지 않는다 — 별도 카드로 시험.
+      const it = r.store.items[3];
+      const id = it.id;
+      const orig = { tasks: structuredClone(it.tasks ?? []), pg: it.pg };
+      r.store.commit('clear', () => { r.store.item(id).tasks = []; r.store.item(id).pg = 0; });
+      r.board.render();
+      await new Promise((res) => setTimeout(res, 100));
+      document.querySelector('[data-id="' + id + '"]').click();
+      await new Promise((res) => setTimeout(res, 200));
+      document.querySelector('#pItem .ptab[data-tab="task"]').click();
+      await new Promise((res) => setTimeout(res, 60));
+      document.getElementById('i-taskadd').click();
+      document.getElementById('i-taskadd').click();
+      await new Promise((res) => setTimeout(res, 100));
+      const cbs = document.querySelectorAll('#i-tasks input[type=checkbox]');
+      cbs[0].click();
+      await new Promise((res) => setTimeout(res, 100));
+      const pg = r.store.item(id).pg;
+      const pctText = document.getElementById('i-progpct').textContent;
+      document.querySelector('#pItem [data-close]').click();
+      r.store.commit('원복', () => { r.store.item(id).tasks = orig.tasks; r.store.item(id).pg = orig.pg; });
+      return { pg, half: pg === 50, pctText };
+    })()`);
+    console.log('[smoke] progress ' + JSON.stringify(progressCheck));
+
     // 걸침 카드에 크기 강제해도 트랙을 넘나든다 — 강제 상태에서 sp=2가 sp=1보다 넓어야.
     spanForce = await target.webContents.executeJavaScript(`(async () => {
       const r = window.__roadmap;
@@ -1332,6 +1360,7 @@ async function runSmoke(target) {
     && fixedH?.mapGrew === true && fixedH?.hasTopGrip === true && fixedH?.datesUnchanged === true && fixedH?.dragChanged === true
     && cornerCheck?.widthChanged === true && cornerCheck?.heightChanged === true && cornerCheck?.topGrew === true
     && sameCheck?.count > 0 && sameCheck?.hasBoard === true && sameCheck?.hasCard === true && sameCheck?.hasBoardIds === true
+    && progressCheck?.half === true
     && spanForce?.spanUnderForce === true && spanForce?.hasWidthGrip === true
     && trim?.trimmed === true && trim?.shrank === true
     && monthResize?.made === true && monthResize?.scale < 1 && monthResize?.shrank === true

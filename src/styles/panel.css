@@ -130,6 +130,20 @@ body.panel-open{--panel-w:var(--panel-size)}
 .deps em{font-style:normal;color:var(--text-tertiary);display:block;font-size:11px;margin-top:2px}
 .deps .empty{color:var(--text-tertiary);font-size:12px;padding:var(--u2)}
 
+/* 트랙 걸침 선택 칩 (숫자 대신 트랙을 골라 덮는다) */
+.seg.wrap{display:flex;flex-wrap:wrap;gap:var(--u1);border:0;overflow:visible}
+.seg.wrap .seg-btn{border:1px solid var(--border-default);border-radius:var(--u1-5);
+  height:var(--u7);width:auto;padding:0 var(--u2-5);font-size:12px;white-space:nowrap}
+
+/* 진행도 막대 (태스크 완료율) */
+.prog-bar{height:8px;background:var(--bg-hover);border-radius:var(--r-pill);overflow:hidden}
+.prog-bar>i{display:block;height:100%;background:var(--accent);border-radius:var(--r-pill);transition:width .15s ease}
+@media (prefers-reduced-motion:reduce){.prog-bar>i{transition:none}}
+
+/* 하위 카드 목록의 이름 — 눌러서 그 카드로 이동 */
+.task-text.linklike{cursor:pointer;text-align:left;background:none;border:1px solid transparent}
+.task-text.linklike:hover{background:var(--bg-hover);text-decoration:underline}
+
 /* 태스크(순서 없는 할 일) 목록 */
 .muted{color:var(--text-tertiary);font-weight:400;font-size:11px}
 .btn.sm{height:var(--u6);padding:0 var(--u2-5);font-size:12px;margin-top:var(--u2)}
