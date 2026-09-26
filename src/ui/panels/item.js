@@ -521,6 +521,10 @@ export class ItemPanel {
         type: 'text', value: t.text, placeholder: '할 일',
         on: { input: (e) => { this.store.commit('태스크 수정', () => { t.text = e.target.value; }); } },
       });
+      const up = el('button.task-del.task-promote', {
+        type: 'button', title: '하위 카드로 승격 (순서축에 올림 · 규칙 5, id 유지)',
+        on: { click: (e) => { e.preventDefault(); this.#promoteTask(item, t); } },
+      }, [icon(ICONS.up)]);
       const rm = el('button.task-del', {
         type: 'button', title: '태스크 삭제',
         on: {
@@ -531,7 +535,7 @@ export class ItemPanel {
           },
         },
       }, [icon(ICONS.close)]);
-      const row = el('label.task', {}, [cb, text, rm]);
+      const row = el('label.task', {}, [cb, text, up, rm]);
       if (t.done) row.classList.add('done');
       box.append(row);
     }
@@ -626,7 +630,11 @@ export class ItemPanel {
         type: 'button', text: c.alias || c.ti || '(제목 없음)', title: '이 카드 열기',
         on: { click: () => this.open(c.id) },
       });
-      const row = el('label.task', {}, [cb, name]);
+      const down = el('button.task-del.task-demote', {
+        type: 'button', title: '태스크로 내림 (순서축에서 뺌 · 규칙 5, id 유지)',
+        on: { click: (e) => { e.preventDefault(); this.#demoteChild(item, c); } },
+      }, [icon(ICONS.down)]);
+      const row = el('label.task', {}, [cb, name, down]);
       if (c.st === 'done') row.classList.add('done');
       box.append(row);
     }
@@ -654,6 +662,47 @@ export class ItemPanel {
     this.store.commit('하위 카드 추가', (doc) => { doc.items.push(child); });
     this.#renderChildren(this.item);
     this.open(child.id);   // 새 하위 카드를 바로 편집
+  }
+
+  /**
+   * 태스크↔하위 카드 전환 — 규칙 5. 하위 카드와 태스크는 '순서축에 놓이는가'로만 갈린다.
+   * 전환은 배치만 바뀌고 **id는 그대로** (삭제 후 생성이 아니다).
+   */
+  #promoteTask(item, task) {
+    if (!item || this.store.readonly) return;
+    this.store.commit('태스크를 하위 카드로', (doc) => {
+      const parent = doc.items.find((x) => x.id === item.id);
+      if (!parent) return;
+      parent.tasks = (Array.isArray(parent.tasks) ? parent.tasks : []).filter((t) => t.id !== task.id);
+      doc.items.push({
+        id: task.id,                                   // id 유지
+        ti: task.text || '새 카드', s: parent.s, e: parent.e,
+        ty: 'bar', st: task.done ? 'done' : 'plan', og: parent.og, pg: 0, note: '',
+        parent: parent.id, alias: null, tasks: [],
+        place: { t: parent.place.t, sp: 1, x: null, w: null, hd: null, align: 'middle', showNote: false },
+      });
+      this.#syncProgress(parent);
+    });
+    this.#renderTasks(this.item);
+    this.#renderChildren(this.item);
+    this.#syncProgUI(this.item);
+  }
+
+  #demoteChild(item, child) {
+    if (!item || this.store.readonly) return;
+    // 태스크는 순서 없는 잎이다 — 자손을 가진 카드는 내리면 그 층을 잃으므로 막는다.
+    if (this.store.items.some((x) => x.parent === child.id)) { toast('하위 카드가 있는 카드는 태스크로 내릴 수 없습니다'); return; }
+    this.store.commit('하위 카드를 태스크로', (doc) => {
+      doc.items = doc.items.filter((x) => x.id !== child.id);
+      const parent = doc.items.find((x) => x.id === item.id);
+      if (!parent) return;
+      if (!Array.isArray(parent.tasks)) parent.tasks = [];
+      parent.tasks.push({ id: child.id, text: child.alias || child.ti || '', done: child.st === 'done' });   // id 유지
+      this.#syncProgress(parent);
+    });
+    this.#renderTasks(this.item);
+    this.#renderChildren(this.item);
+    this.#syncProgUI(this.item);
   }
 
   // ── 폼 적용 ─────────────────────────────────────────────

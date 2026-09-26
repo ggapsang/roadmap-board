@@ -197,6 +197,7 @@ async function runSmoke(target) {
   let panelFit = null;
   let sameCheck = null;
   let combineCheck = null;
+  let xition = null;
   let spanForce = null;
   let progressCheck = null;
   let cornerCheck = null;
@@ -984,6 +985,47 @@ async function runSmoke(target) {
     })()`);
     console.log('[smoke] combine-map ' + JSON.stringify(combineCheck));
 
+    // 태스크↔하위카드 전환 — id를 유지한 채 순서축 위/아래로 (규칙 5). 진행도 탭 버튼을 누른다.
+    xition = await target.webContents.executeJavaScript(`(async () => {
+      const run = (async () => {
+        const r = window.__roadmap;
+        const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+        const host = r.store.items.find((x) => !x.parent && x.ty !== 'ms');
+        const hid = host.id;
+        const kid = 'kXITION';
+        r.store.commit('smoke 태스크', (doc) => {
+          const h = doc.items.find((x) => x.id === hid);
+          if (!Array.isArray(h.tasks)) h.tasks = [];
+          h.tasks.push({ id: kid, text: '전환테스트', done: false });
+        });
+        document.querySelector('[data-id="' + hid + '"]').click();
+        await sleep(350);
+        document.querySelector('#pItem .ptab[data-tab="task"]').click();
+        await sleep(80);
+        const proms = [...document.querySelectorAll('#i-tasks .task-promote')];
+        proms[proms.length - 1].click();
+        await sleep(150);
+        const asCard = r.store.items.find((x) => x.id === kid);
+        const promoted = { isCard: !!asCard, parent: asCard ? asCard.parent : null,
+          notTask: !(r.store.item(hid).tasks || []).some((t) => t.id === kid) };
+        const dems = [...document.querySelectorAll('#i-children .task-demote')];
+        dems[dems.length - 1].click();
+        await sleep(150);
+        const backTask = (r.store.item(hid).tasks || []).some((t) => t.id === kid);
+        const stillCard = !!r.store.items.find((x) => x.id === kid);
+        document.querySelector('#pItem [data-close]').click();
+        r.store.commit('smoke 원복', (doc) => {
+          const h = doc.items.find((x) => x.id === hid);
+          if (h) h.tasks = (h.tasks || []).filter((t) => t.id !== kid);
+          doc.items = doc.items.filter((x) => x.id !== kid);
+        });
+        return { promoted, backTask, stillCard };
+      })();
+      const guard = new Promise((res) => setTimeout(() => res({ error: 'timeout' }), 8000));
+      return Promise.race([run.catch((e) => ({ error: String(e) })), guard]);
+    })()`);
+    console.log('[smoke] task-xition ' + JSON.stringify(xition));
+
     // 진척률은 태스크 완료율에서 자동 계산 (진행도 탭)
     progressCheck = await target.webContents.executeJavaScript(`(async () => {
       const r = window.__roadmap;
@@ -1426,6 +1468,8 @@ async function runSmoke(target) {
     && combineCheck?.one?.same === 1 && combineCheck?.one?.combine === 0
     && combineCheck?.two?.same === 0 && combineCheck?.two?.combine === 2
     && combineCheck?.backToOne?.same === 1 && combineCheck?.backToOne?.combine === 0
+    && xition?.promoted?.isCard === true && xition?.promoted?.notTask === true
+    && xition?.backTask === true && xition?.stillCard === false
     && progressCheck?.half === true
     && spanForce?.spanUnderForce === true && spanForce?.hasWidthGrip === true
     && trim?.trimmed === true && trim?.shrank === true
