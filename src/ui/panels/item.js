@@ -214,12 +214,14 @@ export class ItemPanel {
     $('i-shownote').setAttribute('aria-pressed', String(item.place?.showNote === true));
     $('i-fixedh').setAttribute('aria-pressed', String(item.place?.hd != null));
 
+    this._allEvents = null;            // 다른 보드 이벤트는 아래에서 비동기로 받는다
     this.#renderDeps(item);
     this.#renderParents(item);
-    this.#renderSame(item);
+    this.#renderSame(item);            // 우선 로컬(빈 후보) — 로드 후 채운다
     this.#renderTasks(item);
-    this.#renderChildren(item);
-    this.#syncProgUI(item);
+    this.#renderChildren(item);        // 우선 로컬 하위 카드
+    this.#syncProgUI(item);            // 우선 태스크 진행도
+    this.#loadCrossBoard(item);        // 모든 보드 이벤트 로드 → 동일 후보·하위·진행도 갱신
 
     this.#showTab('attr');
     this.panels.open('pItem');
@@ -305,27 +307,26 @@ export class ItemPanel {
   // ── 동일 카드 = 같은 이벤트(공유 정체성, 보드를 넘나든다) (§3.2 다중 소속·§3.4) ──
 
   /**
-   * 동일 카드 후보 — 모든 보드의 카드 + 모든 프로젝트(보드). 단 이 보드에만 있는
-   * 카드/자기 자신은 뺀다(같은 보드엔 한 이벤트가 한 번만 놓인다). listEvents는 비동기.
+   * 동일 이벤트 후보 — 모든 단위가 이벤트다(§3.2). 카드·트랙·프로젝트(보드)를 모두 낸다.
+   * 보드를 가리지 않는다(같은 보드도 기본으로 나온다 — 묶는 일은 드물지만). this._allEvents는
+   * open()에서 미리 받아 둔다.
    */
-  async #renderSame(item) {
-    this.sameList.render([]);
+  #renderSame(item) {
     this._sameOptions = new Map();
-    let events = [];
-    try { events = (await this.adapter?.listEvents?.()) ?? []; } catch { events = []; }
-    if (this.item?.id !== item.id) return;
-    const cur = this.adapter?.projectId;
+    const events = this._allEvents ?? [];
+    const kindLabel = { board: '프로젝트', track: '트랙', card: '카드' };
     const options = [];
     for (const ev of events) {
-      const ids = String(ev.boardIds ?? '').split(',').map((s) => Number(s));
-      const crossBoard = ev.kind === 'board' ? ev.boardId !== cur : ids.some((b) => b !== cur);
-      if (!crossBoard) continue;                     // 이 보드에만 있는 건 후보 아님
-      if (this.store.item(ev.id) && ev.id !== item.id) continue;  // 이미 이 보드에 있으면 이중 배치 불가
+      if (ev.id === item.id) {
+        // 자기 행은 이미 공유(다른 보드에도 있음/보드·트랙 루트)일 때만 '연결됨'으로 보여 준다.
+        const shared = ev.kind !== 'card' || String(ev.boardIds ?? '').split(',').length > 1;
+        if (!shared) continue;
+      }
       this._sameOptions.set(ev.id, ev);
       options.push({
         id: ev.id,
         label: ev.title || '(제목 없음)',
-        sub: ev.kind === 'board' ? '프로젝트' : (ev.boardNames || ''),
+        sub: `${kindLabel[ev.kind] || ''}${ev.boardNames ? ' · ' + ev.boardNames : ''}`,
       });
     }
     this.sameList.render(options);
@@ -541,17 +542,60 @@ export class ItemPanel {
     item.pg = Math.round((tasks.filter((t) => t.done).length / tasks.length) * 100);
   }
 
+  /** 이 카드가 어떤 보드(프로젝트)와 같은 이벤트면 그 보드 id, 아니면 null. */
+  #linkedBoard(item) {
+    const ev = (this._allEvents ?? []).find((e) => e.kind === 'board' && e.id === item?.id);
+    return ev ? ev.boardId : null;
+  }
+
+  /** 이 보드에 속한(그 보드에 배치된) 카드들. */
+  #boardCards(boardId) {
+    return (this._allEvents ?? []).filter((e) => e.kind === 'card'
+      && String(e.boardIds ?? '').split(',').map(Number).includes(boardId));
+  }
+
   #syncProgUI(item) {
-    const tasks = Array.isArray(item.tasks) ? item.tasks : [];
-    const pct = tasks.length ? Math.round((tasks.filter((t) => t.done).length / tasks.length) * 100) : 0;
-    $('i-progpct').textContent = tasks.length ? `${pct}%` : '태스크로 계산';
+    const boardId = this.#linkedBoard(item);
+    let pct = 0; let label;
+    if (boardId != null) {
+      // 이 카드는 그 프로젝트다 — 진행도는 그 보드에 속한 카드들의 완료율.
+      const cards = this.#boardCards(boardId);
+      const done = cards.filter((c) => c.st === 'done').length;
+      pct = cards.length ? Math.round((done / cards.length) * 100) : 0;
+      label = cards.length ? `${done}/${cards.length} 카드` : '보드에 카드 없음';
+    } else {
+      const tasks = Array.isArray(item.tasks) ? item.tasks : [];
+      pct = tasks.length ? Math.round((tasks.filter((t) => t.done).length / tasks.length) * 100) : 0;
+      label = tasks.length ? `${pct}%` : '태스크로 계산';
+    }
+    $('i-progpct').textContent = label;
     $('i-progfill').style.width = `${pct}%`;
   }
 
-  /** 하위 카드 목록 — 투두 형태. 완료(상태 done) 체크·이름·열기. 순서 없는 태스크와 별개. */
+  /**
+   * 하위 카드 목록 — 투두 형태. 이 카드가 프로젝트(보드)와 같은 이벤트면 그 보드에 속한
+   * 카드들이 나온다(펼치면 그 보드니까). 아니면 이 카드의 로컬 하위 카드.
+   */
   #renderChildren(item) {
     const box = $('i-children');
     clear(box);
+    const boardId = this.#linkedBoard(item);
+    if (boardId != null) {
+      $('i-childadd').hidden = true;
+      const cards = this.#boardCards(boardId);
+      if (!cards.length) { box.append(el('div.empty', { text: '그 보드에 카드가 없습니다.' })); return; }
+      for (const c of cards) {
+        const name = el('button.task-text.linklike', {
+          type: 'button', text: c.title || '(제목 없음)', title: '그 보드 열기',
+          on: { click: () => this.openProject?.(boardId) },
+        });
+        const row = el('label.task', {}, [el('span.st-dot', { className: 'st-dot st-' + c.st }), name]);
+        if (c.st === 'done') row.classList.add('done');
+        box.append(row);
+      }
+      return;
+    }
+    $('i-childadd').hidden = false;
     const kids = this.store.items.filter((x) => x.parent === item.id);
     if (!kids.length) { box.append(el('div.empty', { text: '하위 카드가 없습니다.' })); return; }
     for (const c of kids) {
@@ -567,6 +611,17 @@ export class ItemPanel {
       if (c.st === 'done') row.classList.add('done');
       box.append(row);
     }
+  }
+
+  /** 다른 보드의 이벤트(카드·트랙·프로젝트)를 받아 동일 후보·하위 카드·진행도를 갱신. */
+  async #loadCrossBoard(item) {
+    let events = [];
+    try { events = (await this.adapter?.listEvents?.()) ?? []; } catch { events = []; }
+    if (this.item?.id !== item.id) return;
+    this._allEvents = events;
+    this.#renderSame(item);
+    this.#renderChildren(item);
+    this.#syncProgUI(item);
   }
 
   #addChild() {

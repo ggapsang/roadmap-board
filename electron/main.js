@@ -924,15 +924,25 @@ async function runSmoke(target) {
     })()`), 20000, 'corner');
     console.log('[smoke] resize4 ' + JSON.stringify(cornerCheck));
 
-    // 동일 카드 후보 목록 — 보드를 넘어 모든 보드의 카드 + 프로젝트(보드)가 나온다 (§3.2·§3.4)
+    // 동일 이벤트 후보 목록 — 모든 단위가 이벤트(§3.2): 카드·트랙·프로젝트가 모두 나온다.
+    // 그리고 실제 패널 '동일 카드' 목록이 채워지는지(같은 보드 카드 포함)도 본다.
     sameCheck = await target.webContents.executeJavaScript(`(async () => {
       const r = window.__roadmap;
       const events = await r.adapter.listEvents();
+      const id = r.store.items[0].id;
+      document.querySelector('[data-id="' + id + '"]').click();
+      await new Promise((res) => setTimeout(res, 350));   // loadCrossBoard 대기
+      document.querySelector('#pItem .ptab[data-tab="rel"]').click();
+      await new Promise((res) => setTimeout(res, 80));
+      const opts = document.querySelectorAll('#i-same .fl-opt').length;
+      document.querySelector('#pItem [data-close]').click();
       return {
         count: events.length,
-        hasBoard: events.some((e) => e.kind === 'board'),   // 프로젝트도 후보
+        hasBoard: events.some((e) => e.kind === 'board'),
         hasCard: events.some((e) => e.kind === 'card'),
+        hasTrack: events.some((e) => e.kind === 'track'),
         hasBoardIds: events.every((e) => e.boardIds != null),
+        pickerOpts: opts,
       };
     })()`);
     console.log('[smoke] same-card ' + JSON.stringify(sameCheck));
@@ -1359,7 +1369,8 @@ async function runSmoke(target) {
     && titleFit?.shrank === true && titleFit?.fits === true
     && fixedH?.mapGrew === true && fixedH?.hasTopGrip === true && fixedH?.datesUnchanged === true && fixedH?.dragChanged === true
     && cornerCheck?.widthChanged === true && cornerCheck?.heightChanged === true && cornerCheck?.topGrew === true
-    && sameCheck?.count > 0 && sameCheck?.hasBoard === true && sameCheck?.hasCard === true && sameCheck?.hasBoardIds === true
+    && sameCheck?.count > 0 && sameCheck?.hasBoard === true && sameCheck?.hasCard === true
+    && sameCheck?.hasTrack === true && sameCheck?.hasBoardIds === true && sameCheck?.pickerOpts > 0
     && progressCheck?.half === true
     && spanForce?.spanUnderForce === true && spanForce?.hasWidthGrip === true
     && trim?.trimmed === true && trim?.shrank === true

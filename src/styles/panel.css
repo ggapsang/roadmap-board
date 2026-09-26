@@ -144,6 +144,14 @@ body.panel-open{--panel-w:var(--panel-size)}
 .task-text.linklike{cursor:pointer;text-align:left;background:none;border:1px solid transparent}
 .task-text.linklike:hover{background:var(--bg-hover);text-decoration:underline}
 
+/* 상태 점 (프로젝트 소속 카드 목록) */
+.st-dot{width:8px;height:8px;border-radius:50%;flex:none;margin:0 var(--u1);background:var(--text-tertiary)}
+.st-dot.st-plan{background:var(--state-plan)}
+.st-dot.st-run{background:var(--state-run)}
+.st-dot.st-done{background:var(--state-done)}
+.st-dot.st-late{background:var(--state-late)}
+.st-dot.st-hold{background:var(--state-hold)}
+
 /* 태스크(순서 없는 할 일) 목록 */
 .muted{color:var(--text-tertiary);font-weight:400;font-size:11px}
 .btn.sm{height:var(--u6);padding:0 var(--u2-5);font-size:12px;margin-top:var(--u2)}

@@ -73,7 +73,16 @@ export class BoardRepository {
       WHERE b.root_event_id IS NOT NULL
     `).all().map((r) => ({ ...r, kind: 'board' }));
 
-    return [...boards, ...cards];
+    // 트랙도 이벤트다(§3.2) — 동일 이벤트로 묶는 후보에 함께 나온다.
+    const tracks = this.db.prepare(`
+      SELECT e.id, e.title, e.type AS ty, e.start_date AS s, e.end_date AS e,
+             e.status AS st, e.org AS og, e.progress AS pg, e.note,
+             b.name AS boardNames, CAST(t.board_id AS TEXT) AS boardIds, t.board_id AS boardId
+      FROM track t JOIN event e ON e.id = t.event_id JOIN board b ON b.id = t.board_id
+      WHERE t.event_id IS NOT NULL
+    `).all().map((r) => ({ ...r, kind: 'track' }));
+
+    return [...boards, ...tracks, ...cards];
   }
 
   /**
