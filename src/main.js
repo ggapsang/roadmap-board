@@ -88,7 +88,8 @@ async function boot() {
   });
 
   tabs = new BoardTabs({
-    mount: $('tabbar'), launcher, openProject,
+    mount: $('tabbar'), launcher, openProject, adoptCached,
+    getDoc: () => store.doc,
     boardName: () => store.meta.name,
   });
 
@@ -138,17 +139,16 @@ async function boot() {
     if (['replace', 'undo', 'redo', 'adopt'].includes(reason)) rebuild();
     else refresh();
     tabs?.syncActiveName();   // 보드 이름이 바뀌었으면 탭 이름도 맞춘다
+    // 실시간 반영 — 같은 이벤트(다중 소속·동일 관계)를 열려 있는 다른 탭에도 즉시 퍼뜨린다.
+    if (reason !== 'adopt') tabs?.syncFromActive();
     if (panels.current === 'pData') $('d-json').value = store.toJSON();
   });
   view.on('change', () => refresh());
 
   // ── 프로젝트 열기 ───────────────────────────────────────
 
-  async function openProject(id) {
-    const raw = await adapter.openProject(id);
-    const { doc, warnings, error } = prepare(raw ?? emptyDoc());
-    if (error) throw new Error(error);
-
+  /** adopt 뒤 화면 상태를 초기화하고 스크롤을 오늘로. (DB 접근 없음) */
+  function applyOpenedDoc(doc) {
     store.adopt(doc);
     view.selectedItem = null;
     view.selectedTrack = null;
@@ -156,17 +156,38 @@ async function boot() {
     view.orgFilter.clear();
     view.query = '';
     $('q').value = '';
-
     panels.close();
     board.scrollToToday($('scroll'));
-
-    // 문서 마이그레이션 결과를 저장소에 반영해 둔다
-    if ((raw?.version ?? 0) !== doc.version) store.commit('스키마 갱신', () => {});
-    if (warnings.length) {
-      console.warn('문서 보정:', warnings);
-      toast(`문서를 보정했습니다 (${warnings.length}건) · 콘솔 참고`, 'warn');
-    }
     updateStorageNote();
+  }
+
+  /** DB에서 읽어 연다. 반환한 doc은 탭 캐시가 들고 있으면서 다시 열 때 즉시 쓴다. */
+  async function openProject(id) {
+    const loading = $('boardLoading');
+    if (loading) loading.hidden = false;      // 빈 보드 대신 로딩 표시
+    try {
+      const raw = await adapter.openProject(id);
+      const { doc, warnings, error } = prepare(raw ?? emptyDoc());
+      if (error) throw new Error(error);
+
+      applyOpenedDoc(doc);
+
+      // 문서 마이그레이션 결과를 저장소에 반영해 둔다
+      if ((raw?.version ?? 0) !== doc.version) store.commit('스키마 갱신', () => {});
+      if (warnings.length) {
+        console.warn('문서 보정:', warnings);
+        toast(`문서를 보정했습니다 (${warnings.length}건) · 콘솔 참고`, 'warn');
+      }
+      return store.doc;   // adopt 후의 실제 문서(참조) — 탭 캐시가 이걸 들고 있는다
+    } finally {
+      if (loading) loading.hidden = true;
+    }
+  }
+
+  /** 이미 메모리에 있는 문서로 즉시 전환 — DB를 다시 읽지 않는다(리로드 없음). */
+  function adoptCached(doc, id) {
+    adapter.selectProject(id);   // 저장 대상을 이 보드로 (안 하면 이후 저장이 엉뚱한 보드로 간다)
+    applyOpenedDoc(doc);
   }
 
   // ── 전역 키 ─────────────────────────────────────────────

@@ -24,3 +24,17 @@
   width:var(--u7);height:var(--tab-h);border:0;background:none;color:var(--text-secondary);
   cursor:pointer}
 .tab-add:hover{background:var(--bg-hover);color:var(--text-primary)}
+
+/* ── 보드 로딩 (빈 보드 대신) ─────────────────────────── */
+.loading{position:fixed;top:var(--tab-h);left:0;right:0;bottom:0;z-index:85;
+  background:var(--bg-canvas);display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:var(--u4);color:var(--text-secondary);font-size:13px}
+.loading[hidden]{display:none}
+.loading-mk{display:flex;gap:var(--u1-5)}
+.loading-mk span{width:var(--u2);height:var(--u2);border-radius:var(--r-pill);
+  background:var(--accent);opacity:.35;animation:load-b 1s ease-in-out infinite}
+.loading-mk span:nth-child(2){animation-delay:.15s}
+.loading-mk span:nth-child(3){animation-delay:.3s}
+@keyframes load-b{0%,100%{opacity:.25;transform:translateY(0)}
+  40%{opacity:1;transform:translateY(-4px)}}
+@media (prefers-reduced-motion:reduce){.loading-mk span{animation:none;opacity:.6}}

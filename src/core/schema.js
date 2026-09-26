@@ -530,8 +530,13 @@ export function reidentify(doc) {
     map.set(it.id, nu);
     it.id = nu;
   }
+  // 트랙도 새 식별 — 복제본이 원본 트랙 id('track:{원본}:…')를 물고 가면, 저장 때 접두가
+  // 겹치고 원본 보드의 포함까지 건드린다. 트랙 id를 새로 주고 place.t 참조를 함께 옮긴다.
+  const tmap = new Map();
+  for (const t of doc.tracks ?? []) { const nu = fresh('t'); tmap.set(t.id, nu); t.id = nu; }
   for (const it of doc.items ?? []) {
     if (it.parent) it.parent = map.get(it.parent) ?? null;
+    if (it.place && tmap.has(it.place.t)) it.place.t = tmap.get(it.place.t);
     for (const t of (Array.isArray(it.tasks) ? it.tasks : [])) t.id = fresh('k');
   }
   doc.relations = (Array.isArray(doc.relations) ? doc.relations : [])

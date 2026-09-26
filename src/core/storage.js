@@ -26,6 +26,8 @@ export class StorageAdapter {
   async listProjects() { return []; }
   async listEvents() { return []; }
   async openProject() { return null; }
+  /** 활성 보드만 바꾼다(문서는 안 읽음). 캐시된 탭으로 즉시 전환할 때 저장 대상을 맞춘다. */
+  selectProject(id) { this.projectId = id; }
   async createProject() { throw new Error('지원하지 않습니다.'); }
   async renameProject() {}
   async duplicateProject() { throw new Error('지원하지 않습니다.'); }
@@ -53,6 +55,12 @@ export class ElectronAdapter extends StorageAdapter {
     const doc = await this.api.openProject(id);
     this.projectId = id;
     return doc;
+  }
+
+  /** 활성 보드만 바꾼다 — repo.boardId를 맞춰 이후 save가 이 보드로 가게 한다. 문서는 안 읽음. */
+  selectProject(id) {
+    this.projectId = id;               // 즉시 (save는 renderer projectId를 안 보지만 일관성 유지)
+    this.api.selectProject(id);        // repo.open IPC — 이후 save 이전에 순서대로 도착
   }
 
   async createProject(doc, name) { return this.api.createProject(doc, name); }

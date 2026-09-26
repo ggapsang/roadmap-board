@@ -1462,10 +1462,44 @@ async function runSmoke(target) {
     console.log('[smoke] tabs ' + JSON.stringify(tabsCheck));
   }
 
+  // 실시간 반영 — 활성 보드에서 동일(same)로 묶은 이벤트를 고치면, 열린 다른 탭 문서에도 바로 퍼진다.
+  let syncCheck = null;
+  if (wrote) {
+    syncCheck = await target.webContents.executeJavaScript(`(async () => {
+      const run = (async () => {
+        const r = window.__roadmap;
+        const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+        const b1 = r.adapter.projectId;
+        const id2 = await r.adapter.duplicateProject(b1, '싱크 테스트 보드');
+        await r.tabs.openBoard(id2); await sleep(350);    // B 활성 (새 탭, DB에서 로드)
+        const bCount = r.store.items.length;
+        const bItemId = r.store.items[0] && r.store.items[0].id;
+        await r.tabs.openBoard(b1); await sleep(350);     // A 활성
+        const aCount = r.store.items.length;
+        const aItemId = r.store.items[0] && r.store.items[0].id;
+        if (!aItemId || !bItemId) { return { error: 'no items', aCount, bCount }; }
+        r.store.commit('smoke same', (doc) => { doc.relations.push({ id: 'r_sync', type: 'same', from: aItemId, to: bItemId }); });
+        await sleep(60);
+        r.store.commit('smoke edit', (doc) => { const it = doc.items.find((x) => x.id === aItemId); it.ti = 'SYNC-OK'; });
+        await sleep(80);
+        const bDoc = r.tabs.docs.get(id2);
+        const bItem = bDoc && bDoc.items.find((x) => x.id === bItemId);
+        const reflected = bItem ? bItem.ti : null;
+        r.tabs.boardClosed(id2); await sleep(60);
+        await r.adapter.deleteProject(id2);
+        return { reflected, aCount, bCount };
+      })();
+      const guard = new Promise((res) => setTimeout(() => res({ error: 'timeout' }), 12000));
+      return Promise.race([run.catch((e) => ({ error: String(e) })), guard]);
+    })()`);
+    console.log('[smoke] sync ' + JSON.stringify(syncCheck));
+  }
+
   const ok = !result.error && !opened?.error && !renamed?.error
     && shared === true && boardEvent === true && trackEvent === true && taskEvent === true
     && tabsCheck?.tabCount === 2 && tabsCheck?.hasAdd === true && tabsCheck?.name2 === '탭 테스트 보드'
     && tabsCheck?.nameBack === tabsCheck?.name1 && tabsCheck?.afterClose === 1
+    && syncCheck?.reflected === 'SYNC-OK'
     && relCheck?.allDep === true && relCheck?.added === true && relCheck?.removed === true
     && orderCheck?.topoOk === true && orderCheck?.edges > 0 && orderCheck?.maxRank > 0
     && orderMode?.hasOrderAxis === true && orderMode?.ordered === true && orderMode?.cards > 0 && orderMode?.back === true
@@ -1619,6 +1653,8 @@ function registerIpc() {
     repo.touchOpened(id);
     return repo.load();
   }));
+  // 활성 보드만 바꾼다(문서는 안 읽음). 탭 캐시에서 즉시 전환할 때 저장 대상을 맞춘다.
+  ipcMain.handle('project:select', guard((_e, id) => { repo.open(id); repo.touchOpened(id); return true; }));
   ipcMain.handle('project:create', guard((_e, doc, name) => repo.createProject(doc, name)));
   ipcMain.handle('project:rename', guard((_e, id, name) => { repo.renameProject(id, name); return true; }));
   ipcMain.handle('project:duplicate', guard((_e, id, name) => repo.duplicateProject(id, name)));

@@ -403,6 +403,12 @@ export class BoardRepository {
       let root = boardRow?.root_event_id;
       if (!root) root = `board:${this.boardId}`;
 
+      // 트랙 이벤트 id는 보드마다 유일해야 한다 — 빈 보드가 모두 't0'을 쓰기 때문.
+      // 보드 접두를 붙이되 멱등하게(이미 이 보드 접두면 그대로). 복제본은 원본의 트랙 id
+      // ('track:{원본}:...')를 물고 오므로 반드시 이 보드 접두로 바꿔야 원본 데이터를 안 건드린다.
+      const tkey = (raw) => (typeof raw === 'string' && raw.startsWith(`track:${this.boardId}:`))
+        ? raw : `track:${this.boardId}:${raw}`;
+
       this.db.prepare(`
         INSERT INTO board (id, name, start_date, end_date, doc_version, root_event_id)
         VALUES (@id, @name, @start, @end, @docVersion, @root)
@@ -419,7 +425,9 @@ export class BoardRepository {
       // 이 보드가 여는 구조가 부모로 삼는 이벤트들(옛/새)을 모아, 그 아래 포함·표시를 비운다.
       // 이벤트 본질은 공유될 수 있어 지우지 않는다(§3.4).
       const oldParents = new Set([root, ...this.#descendants(root)]);
-      const newParents = new Set([root, ...doc.tracks.map((t) => t.id), ...doc.items.map((it) => it.id)]);
+      // 트랙은 반드시 tkey로 — doc.tracks[].id가 복제 원본의 id일 수 있어, 그대로 지우면
+      // 원본 보드의 포함이 날아간다. (이게 복제 시 원본이 비던 버그의 원인이었다.)
+      const newParents = new Set([root, ...doc.tracks.map((t) => tkey(t.id)), ...doc.items.map((it) => it.id)]);
       const clearParents = new Set([...oldParents, ...newParents]);
       if (clearParents.size) {
         const ph = [...clearParents].map(() => '?').join(',');
@@ -463,11 +471,6 @@ export class BoardRepository {
         'INSERT INTO band (board_id, id, ord, from_date, to_date, label, scale) VALUES (?, ?, ?, ?, ?, ?, ?)',
       );
       const insOrg = this.db.prepare('INSERT INTO org (board_id, ord, name) VALUES (?, ?, ?)');
-
-      // 트랙 이벤트 id는 보드마다 유일해야 한다 — 빈 보드가 모두 't0'을 쓰기 때문.
-      // 보드 접두를 붙이되 멱등하게(이미 붙어 있으면 그대로) — load↔save 왕복에 안전.
-      const tkey = (raw) => (typeof raw === 'string' && raw.startsWith(`track:${this.boardId}:`))
-        ? raw : `track:${this.boardId}:${raw}`;
 
       (doc.bands ?? []).forEach((b, i) =>
         insBand.run(this.boardId, b.id, i, b.from, b.to, b.label ?? '', b.scale ?? 1));

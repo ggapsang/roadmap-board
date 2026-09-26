@@ -1,32 +1,43 @@
 /**
  * 보드 탭 — 여러 보드를 동시에 열어 두고 오간다 (브라우저 탭 구성).
  *
- * 한 번에 하나의 보드만 그려지므로 Store/Board를 여럿 두지 않는다. 탭은 '열린 보드
- * 목록 + 활성 탭'일 뿐이고, 탭을 바꾸면 그 보드를 openProject(=store.adopt)로 갈아끼운다
- * (규칙 12). boardId가 null인 탭은 '보드 선택' 화면(런처)을 띄운다.
+ * 한 번에 하나의 보드만 그려지므로 Store/Board를 여럿 두지 않는다. 대신 열린 보드의
+ * 문서(doc)를 **메모리에 그대로 들고** 있다가, 탭을 바꾸면 DB를 다시 읽지 않고 그 문서로
+ * 즉시 갈아끼운다(리로드 없음 → 빠르고, 만지던 상태가 날아가지 않는다). 규칙 12.
+ *
+ * 실시간 반영: 같은 이벤트가 여러 보드에 있거나 동일(same) 관계로 묶이면, 활성 보드에서
+ * 바꾼 본질을 열려 있는 다른 탭의 문서에도 즉시 퍼뜨린다(협업 도구의 공유 상태처럼).
  *
  *   +          새 보드 선택 탭
- *   탭 클릭    그 보드로 전환
+ *   탭 클릭    그 보드로 전환 (캐시가 있으면 즉시)
  *   탭 ×       탭 닫기 (마지막 하나면 선택 화면으로)
  */
 import { $, el, clear, icon, ICONS } from './dom.js';
+
+/** 본질(공유되는 것). 별칭·좌표·부모는 배치라 제외. */
+const ESSENCE = ['ti', 's', 'e', 'ty', 'st', 'og', 'pg', 'note'];
 
 export class BoardTabs {
   /**
    * @param {object} o
    * @param {HTMLElement} o.mount        탭줄 컨테이너 (#tabbar)
    * @param {import('./launcher.js').Launcher} o.launcher
-   * @param {(id:number)=>Promise<void>} o.openProject  보드 문서를 adopt+렌더
-   * @param {()=>string} o.boardName     현재 열린 보드 이름
+   * @param {(id:number)=>Promise<object>} o.openProject  DB에서 열고 adopt, 그 문서를 반환
+   * @param {(doc:object)=>void} o.adoptCached           메모리 문서로 즉시 전환(DB 안 읽음)
+   * @param {()=>object} o.getDoc         현재 활성 문서
+   * @param {()=>string} o.boardName      현재 열린 보드 이름
    */
-  constructor({ mount, launcher, openProject, boardName }) {
+  constructor({ mount, launcher, openProject, adoptCached, getDoc, boardName }) {
     this.mount = mount;
     this.launcher = launcher;
     this.openProject = openProject;
+    this.adoptCached = adoptCached;
+    this.getDoc = getDoc;
     this.boardName = boardName;
     this.tabs = [];        // [{ key, boardId:number|null, name }]
     this.active = -1;
     this.seq = 0;
+    this.docs = new Map();  // boardId -> 메모리 문서(살아 있는 참조)
   }
 
   /** 처음엔 보드 선택 탭 하나. */
@@ -38,51 +49,71 @@ export class BoardTabs {
 
   #cur() { return this.tabs[this.active]; }
 
+  /** 활성 탭을 떠나기 전, 그 보드의 현재 문서를 캐시에 붙들어 둔다. */
+  #stash() {
+    const t = this.#cur();
+    if (t && t.boardId != null) this.docs.set(t.boardId, this.getDoc());
+  }
+
   /** 활성 탭 상태에 맞춰 런처를 띄우거나 보드를 보인다. */
   async #apply() {
     const t = this.#cur();
     if (!t || t.boardId == null) {
       this.launcher.show({ closable: false });
-    } else {
-      await this.openProject(t.boardId);
-      t.name = this.boardName() || t.name;
-      this.launcher.hide();
+      this.render();
+      return;
     }
+    const cached = this.docs.get(t.boardId);
+    if (cached) {
+      this.adoptCached(cached, t.boardId);    // 즉시 — DB 안 읽음, 저장 대상만 맞춘다
+    } else {
+      this.launcher.hide();                   // 런처를 먼저 내리고 로딩 표시(빈 보드 대신)
+      const doc = await this.openProject(t.boardId);
+      this.docs.set(t.boardId, doc);
+    }
+    t.name = this.boardName() || t.name;
+    this.launcher.hide();
     this.render();
   }
 
   async activate(i) {
-    if (i < 0 || i >= this.tabs.length || i === this.active) { if (i === this.active) return; }
+    if (i < 0 || i >= this.tabs.length) return;
+    if (i === this.active) return;
+    this.#stash();
     this.active = i;
     await this.#apply();
   }
 
   /** '+' — 새 보드 선택 탭. */
   newLauncherTab() {
+    this.#stash();
     this.tabs.push({ key: (this.seq += 1), boardId: null, name: '보드 선택' });
-    this.activate(this.tabs.length - 1);
+    this.active = this.tabs.length - 1;
+    this.#apply();
   }
 
   /**
    * 보드를 연다. 이미 열려 있으면 그 탭으로, 활성 탭이 선택 화면이면 그 자리에서,
-   * 아니면 새 탭으로. (런처에서 고르거나, 카드에서 링크된 보드로 드릴인할 때 쓴다.)
+   * 아니면 새 탭으로. (런처에서 고르거나, 카드에서 링크된 보드로 드릴인할 때.)
    */
   async openBoard(id) {
     const found = this.tabs.findIndex((t) => t.boardId === id);
     if (found >= 0) { await this.activate(found); return; }
+    this.#stash();
     const cur = this.#cur();
     if (cur && cur.boardId == null) {
       cur.boardId = id;
-      await this.activate(this.active);
     } else {
       this.tabs.push({ key: (this.seq += 1), boardId: id, name: '보드' });
-      await this.activate(this.tabs.length - 1);
+      this.active = this.tabs.length - 1;
     }
+    await this.#apply();
   }
 
   closeTab(i) {
     if (i < 0 || i >= this.tabs.length) return;
-    this.tabs.splice(i, 1);
+    const [gone] = this.tabs.splice(i, 1);
+    if (gone && gone.boardId != null) this.docs.delete(gone.boardId);
     if (!this.tabs.length) {
       this.tabs.push({ key: (this.seq += 1), boardId: null, name: '보드 선택' });
       this.active = 0;
@@ -92,8 +123,9 @@ export class BoardTabs {
     this.#apply();
   }
 
-  /** 보드가 삭제되면 그 탭도 닫는다. */
+  /** 보드가 삭제되면 그 탭도 닫고 캐시도 버린다. */
   boardClosed(id) {
+    this.docs.delete(id);
     const i = this.tabs.findIndex((t) => t.boardId === id);
     if (i >= 0) this.closeTab(i);
   }
@@ -109,6 +141,49 @@ export class BoardTabs {
   syncActiveName() {
     const t = this.#cur();
     if (t && t.boardId != null) { t.name = this.boardName() || t.name; this.render(); }
+  }
+
+  /**
+   * 실시간 반영 — 활성 보드에서 바뀐 이벤트 본질을, 열려 있는 다른 탭의 문서에도 퍼뜨린다.
+   * 같은 id(다중 소속)와 동일(same) 관계로 묶인 짝을 모두 맞춘다. 별칭·좌표는 배치라 놔둔다.
+   */
+  syncFromActive() {
+    const src = this.getDoc();
+    if (!src || !Array.isArray(src.items)) return;
+    const cur = this.#cur();
+    const activeBoardId = cur ? cur.boardId : null;
+
+    // 활성 문서의 본질 사전 + 동일(same) 짝 사전
+    const essenceById = new Map();
+    for (const it of src.items) essenceById.set(it.id, it);
+    const sameOf = new Map();   // id -> Set(짝 id들)
+    for (const r of (src.relations ?? [])) {
+      if (r?.type !== 'same') continue;
+      if (!sameOf.has(r.from)) sameOf.set(r.from, new Set());
+      if (!sameOf.has(r.to)) sameOf.set(r.to, new Set());
+      sameOf.get(r.from).add(r.to);
+      sameOf.get(r.to).add(r.from);
+    }
+
+    for (const [boardId, doc] of this.docs) {
+      if (boardId === activeBoardId || !doc || !Array.isArray(doc.items)) continue;
+      let changed = false;
+      for (const it of doc.items) {
+        // 같은 이벤트(같은 id) — 본질을 그대로.
+        let srcItem = essenceById.get(it.id);
+        // 아니면 동일(same) 짝 중 활성 문서에 있는 것.
+        if (!srcItem && sameOf.has(it.id)) {
+          for (const mate of sameOf.get(it.id)) {
+            if (essenceById.has(mate)) { srcItem = essenceById.get(mate); break; }
+          }
+        }
+        if (!srcItem) continue;
+        for (const k of ESSENCE) {
+          if (it[k] !== srcItem[k]) { it[k] = srcItem[k]; changed = true; }
+        }
+      }
+      void changed;   // 캐시 문서를 그 자리에서 고쳤으니, 그 탭으로 전환하면 그대로 보인다
+    }
   }
 
   render() {

@@ -321,17 +321,28 @@ export class ItemPanel {
   #renderSame(item) {
     this._sameOptions = new Map();
     const events = this._allEvents ?? [];
+    const byId = new Map(events.map((e) => [e.id, e]));
     const kindLabel = { board: '프로젝트', track: '트랙', card: '카드' };
     const excluded = this.#sameExcluded(item);
+    const linked = this.#linkedTargets();
     const options = [];
-    for (const ev of events) {
-      if (excluded.has(ev.id)) continue;
+    const push = (ev) => {
       this._sameOptions.set(ev.id, ev);
       options.push({
         id: ev.id,
         label: ev.title || '(제목 없음)',
         sub: `${kindLabel[ev.kind] || ''}${ev.boardNames ? ' · ' + ev.boardNames : ''}`,
       });
+    };
+    // 지금 이어진 대상은 무조건 먼저, 보이게 — 그래야 확인하고 풀 수 있다(#2).
+    for (const id of linked) {
+      const ev = byId.get(id);
+      if (ev) push(ev);
+      else { this._sameOptions.set(id, { id, title: '(다른 곳의 이벤트)' }); options.push({ id, label: '(다른 곳의 이벤트)', sub: '연결됨' }); }
+    }
+    for (const ev of events) {
+      if (linked.has(ev.id) || excluded.has(ev.id)) continue;
+      push(ev);
     }
     this.sameList.render(options);
   }
@@ -413,6 +424,10 @@ export class ItemPanel {
       $('i-aliasname').value = this.item.alias ?? '';
       $(F.title).value = this.item.ti ?? '';
       autogrow($(F.title));
+      // 매핑을 바꾸면 진행도 탭도 다시 그린다(#4) — 별칭·본질·하위가 바뀌었을 수 있다.
+      this.#renderTasks(this.item);
+      this.#renderChildren(this.item);
+      this.#syncProgUI(this.item);
     }
   }
 
@@ -585,59 +600,18 @@ export class ItemPanel {
     item.pg = Math.round((tasks.filter((t) => t.done).length / tasks.length) * 100);
   }
 
-  /** 이 카드가 어떤 보드(프로젝트)와 같은 이벤트면 그 보드 id, 아니면 null. */
-  #linkedBoard(item) {
-    const ev = (this._allEvents ?? []).find((e) => e.kind === 'board' && e.id === item?.id);
-    return ev ? ev.boardId : null;
-  }
-
-  /** 이 보드에 속한(그 보드에 배치된) 카드들. */
-  #boardCards(boardId) {
-    return (this._allEvents ?? []).filter((e) => e.kind === 'card'
-      && String(e.boardIds ?? '').split(',').map(Number).includes(boardId));
-  }
-
+  /** 진행도 바 — 태스크 완료율. (매핑된 다른 보드의 카드를 하위로 끌어오지 않는다.) */
   #syncProgUI(item) {
-    const boardId = this.#linkedBoard(item);
-    let pct = 0; let label;
-    if (boardId != null) {
-      // 이 카드는 그 프로젝트다 — 진행도는 그 보드에 속한 카드들의 완료율.
-      const cards = this.#boardCards(boardId);
-      const done = cards.filter((c) => c.st === 'done').length;
-      pct = cards.length ? Math.round((done / cards.length) * 100) : 0;
-      label = cards.length ? `${done}/${cards.length} 카드` : '보드에 카드 없음';
-    } else {
-      const tasks = Array.isArray(item.tasks) ? item.tasks : [];
-      pct = tasks.length ? Math.round((tasks.filter((t) => t.done).length / tasks.length) * 100) : 0;
-      label = tasks.length ? `${pct}%` : '태스크로 계산';
-    }
-    $('i-progpct').textContent = label;
+    const tasks = Array.isArray(item.tasks) ? item.tasks : [];
+    const pct = tasks.length ? Math.round((tasks.filter((t) => t.done).length / tasks.length) * 100) : 0;
+    $('i-progpct').textContent = tasks.length ? `${pct}%` : '태스크로 계산';
     $('i-progfill').style.width = `${pct}%`;
   }
 
-  /**
-   * 하위 카드 목록 — 투두 형태. 이 카드가 프로젝트(보드)와 같은 이벤트면 그 보드에 속한
-   * 카드들이 나온다(펼치면 그 보드니까). 아니면 이 카드의 로컬 하위 카드.
-   */
+  /** 하위 카드 목록 — 이 카드의 실제 하위 카드(순서 있는 포함)만. */
   #renderChildren(item) {
     const box = $('i-children');
     clear(box);
-    const boardId = this.#linkedBoard(item);
-    if (boardId != null) {
-      $('i-childadd').hidden = true;
-      const cards = this.#boardCards(boardId);
-      if (!cards.length) { box.append(el('div.empty', { text: '그 보드에 카드가 없습니다.' })); return; }
-      for (const c of cards) {
-        const name = el('button.task-text.linklike', {
-          type: 'button', text: c.title || '(제목 없음)', title: '그 보드 열기',
-          on: { click: () => this.openProject?.(boardId) },
-        });
-        const row = el('label.task', {}, [el('span.st-dot', { className: 'st-dot st-' + c.st }), name]);
-        if (c.st === 'done') row.classList.add('done');
-        box.append(row);
-      }
-      return;
-    }
     $('i-childadd').hidden = false;
     const kids = this.store.items.filter((x) => x.parent === item.id);
     if (!kids.length) { box.append(el('div.empty', { text: '하위 카드가 없습니다.' })); return; }
