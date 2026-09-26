@@ -46,14 +46,18 @@ export class BoardRepository {
    * root에서 구조적 포함(순서 있음=1, 태스크=0)을 따라 도달하는 모든 이벤트(루트 제외).
    * 조합(ordered=2)은 다른 보드의 부품을 가리키는 관계라 서브트리에 끌어오지 않는다.
    */
-  #descendants(root, kids = this.#childMap()) {
+  #descendants(root, kids = this.#childMap(), stop = null) {
     const seen = new Set();
     const stack = [root];
     while (stack.length) {
       const n = stack.pop();
       for (const c of (kids.get(n) ?? [])) {
         if (c.ordered === 2) continue;
-        if (!seen.has(c.child_id)) { seen.add(c.child_id); stack.push(c.child_id); }
+        if (!seen.has(c.child_id)) {
+          seen.add(c.child_id);
+          // stop(다른 보드 구조)에 닿으면 잎으로만 넣고 그 아래로는 안 내려간다.
+          if (!stop || !stop.has(c.child_id)) stack.push(c.child_id);
+        }
       }
     }
     return seen;
@@ -486,13 +490,22 @@ export class BoardRepository {
         docVersion: doc.version ?? 1, root,
       });
 
-      // 이 보드가 여는 구조가 부모로 삼는 이벤트들(옛/새)을 모아, 그 아래 포함·표시를 비운다.
-      // 이벤트 본질은 공유될 수 있어 지우지 않는다(§3.4).
-      const oldParents = new Set([root, ...this.#descendants(root)]);
-      // 트랙은 반드시 tkey로 — doc.tracks[].id가 복제 원본의 id일 수 있어, 그대로 지우면
-      // 원본 보드의 포함이 날아간다. (이게 복제 시 원본이 비던 버그의 원인이었다.)
-      const newParents = new Set([root, ...doc.tracks.map((t) => tkey(t.id)), ...doc.items.map((it) => it.id)]);
-      const clearParents = new Set([...oldParents, ...newParents]);
+      // 다른 보드의 구조 이벤트(그 보드의 루트·트랙)는 이 보드에선 '접힌 참조 잎'이다.
+      // 그 자식(= 그 보드의 카드들)은 그 보드 소유라 이 보드 저장이 지우면 안 된다.
+      const kids0 = this.#childMap();
+      const foreign = new Set();
+      for (const b of this.db.prepare('SELECT root_event_id FROM board WHERE root_event_id IS NOT NULL').all()) {
+        const r = b.root_event_id;
+        if (r === root) continue;
+        foreign.add(r);
+        for (const c of (kids0.get(r) ?? [])) if (c.ordered === 1) foreign.add(c.child_id);
+      }
+      // 이 보드가 부모로 삼는 이벤트들(옛/새)을 모아 그 아래 포함·표시를 비운다. 단 남의 보드
+      // 구조(foreign)는 부모로 치지 않는다 — 걸 자식은 남의 것이므로 건드리지 않는다.
+      const oldParents = this.#descendants(root, kids0, foreign);   // foreign에서 더 안 내려간다
+      const newParents = [root, ...doc.tracks.map((t) => tkey(t.id)), ...doc.items.map((it) => it.id)];
+      const clearParents = new Set();
+      for (const id of [...oldParents, ...newParents]) if (id === root || !foreign.has(id)) clearParents.add(id);
       if (clearParents.size) {
         const ph = [...clearParents].map(() => '?').join(',');
         this.db.prepare(`DELETE FROM containment WHERE parent_id IN (${ph})`).run(...clearParents);
