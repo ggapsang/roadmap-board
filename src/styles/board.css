@@ -1,5 +1,15 @@
 /* ── 캘린더 그리드 ────────────────────────────────── */
 .scroll{flex:1;overflow:auto;background:var(--bg-canvas)}
+
+/* 펼침 경로 (드릴다운 브레드크럼) — 카드를 펼쳐 들어가면 나온다. 클릭해 접어 나온다. */
+.crumbs{display:flex;align-items:center;gap:var(--u1);padding:var(--u2) var(--u4);flex:none;
+  background:var(--bg-header);border-bottom:1px solid var(--border-subtle);overflow-x:auto}
+.crumbs[hidden]{display:none}
+.crumb{appearance:none;border:0;background:none;cursor:pointer;color:var(--text-secondary);
+  padding:var(--u1) var(--u1-5);border-radius:var(--u1);font-size:12px;white-space:nowrap}
+.crumb:hover{background:var(--bg-hover);color:var(--text-primary)}
+.crumb:last-of-type{color:var(--text-primary);font-weight:600}
+.crumb-sep{color:var(--text-tertiary);font-size:12px}
 /* 평소엔 내용 폭대로(제목이 짤리지 않게). 오른쪽 패널이 열려 본문이 좁아지면
    내용 폭 강제를 풀어 컬럼이 함께 좁아지게 한다 — 가로 스크롤 대신 축소. */
 .cal{min-width:max-content}

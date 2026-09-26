@@ -193,6 +193,7 @@ async function runSmoke(target) {
   let containCheck = null;
   let taskCheck = null;
   let idCheck = null;
+  let drill = null;
   let cornerCheck = null;
   let trackResize = null;
   let spanEdit = null;
@@ -770,6 +771,37 @@ async function runSmoke(target) {
     })()`);
     console.log('[smoke] container-align ' + JSON.stringify(containerAlign));
 
+    // 펼치기(드릴다운) — 자식을 품은 카드를 펼치면 그 자식들이 보드가 된다 (PDF §8)
+    drill = await target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const container = r.store.items.find((i) => r.store.items.some((c) => c.parent === i.id));
+      const id = container.id;
+      const kids = r.store.items.filter((c) => c.parent === id).map((c) => c.id);
+      r.view.setFocus(id);
+      await new Promise((res) => setTimeout(res, 200));
+      const crumbsVisible = !document.getElementById('crumbs').hidden;
+      const topInCols = [...document.querySelectorAll('.col > .ev')].map((n) => n.dataset.id);
+      const childrenShown = kids.every((k) => topInCols.includes(k));
+      const containerNotTop = !topInCols.includes(id);   // 펼친 카드 자신은 루트라 컬럼에 없다
+      r.view.setFocus(null);
+      await new Promise((res) => setTimeout(res, 150));
+      const restored = document.getElementById('crumbs').hidden
+        && [...document.querySelectorAll('.col > .ev')].some((n) => n.dataset.id === id);
+      return { kids: kids.length, crumbsVisible, childrenShown, containerNotTop, restored };
+    })()`);
+    console.log('[smoke] drill ' + JSON.stringify(drill));
+    if (shotDir()) {
+      await target.webContents.executeJavaScript(`(async () => {
+        const r = window.__roadmap;
+        const c = r.store.items.find((i) => r.store.items.some((x) => x.parent === i.id));
+        r.view.setFocus(c.id);
+      })()`);
+      await new Promise((res) => setTimeout(res, 300));
+      await capture(target, 'board-drill');
+      await target.webContents.executeJavaScript('window.__roadmap.view.setFocus(null)');
+      await new Promise((res) => setTimeout(res, 150));
+    }
+
     // 제목이 카드를 넘치면 폰트가 줄어 잘리지 않는가 — 짧은 카드 e33에 긴 제목
     titleFit = await target.webContents.executeJavaScript(`(async () => {
       const r = window.__roadmap;
@@ -1225,6 +1257,8 @@ async function runSmoke(target) {
     && reorder?.moved === true && reorder?.restored === true
     && delKey?.existsBefore === true && delKey?.survivedWhileTyping === true && delKey?.deleted === true
     && containerAlign?.jc === 'flex-end' && containerAlign?.cBottom === true && containerAlign?.isContainer === true
+    && drill?.kids > 0 && drill?.crumbsVisible === true && drill?.childrenShown === true
+    && drill?.containerNotTop === true && drill?.restored === true
     && titleFit?.shrank === true && titleFit?.fits === true
     && fixedH?.mapGrew === true && fixedH?.hasTopGrip === true && fixedH?.datesUnchanged === true && fixedH?.dragChanged === true
     && cornerCheck?.widthChanged === true && cornerCheck?.heightChanged === true && cornerCheck?.topGrew === true

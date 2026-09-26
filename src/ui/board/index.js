@@ -205,6 +205,28 @@ export class Board {
 
   /** 순서 모드 — 축이 달력이 아니라 rank(선행 순서). DIRECTION #4-c (초안). */
   get orderMode() { return this.store.meta.display?.axis === 'order'; }
+
+  /** 펼쳐 들어간 이벤트 id (드릴다운). 순서 모드에선 쓰지 않는다. */
+  get focus() { return this.orderMode ? null : (this.view.focus ?? null); }
+
+  /**
+   * 펼침 범위 — focus의 자손 id 집합. focus가 없으면 null(전체). focus의 직속 자식이
+   * 최상위가 되고, 그 아래는 중첩으로 그려진다.
+   */
+  #focusScope() {
+    const f = this.focus;
+    if (!f) return null;
+    const childrenBy = new Map();
+    for (const it of this.store.items) {
+      const p = it.parent ?? null;
+      if (!childrenBy.has(p)) childrenBy.set(p, []);
+      childrenBy.get(p).push(it.id);
+    }
+    const out = new Set();
+    const walk = (id) => { for (const c of (childrenBy.get(id) ?? [])) { if (!out.has(c)) { out.add(c); walk(c); } } };
+    walk(f);
+    return out;
+  }
   /** 순서 모드의 한 rank 행 높이(px). 확대 배율을 그대로 쓴다. */
   get rowH() { return this.view.weekHeight; }
 
@@ -251,6 +273,37 @@ export class Board {
     // 축은 옛 범위라 서로 어긋난다.
     if (!this.#columnsMatchTracks() || this.#rangeChanged()) this.#renderSkeleton();
     this.renderCards();
+    this.#renderCrumbs();
+  }
+
+  /** 펼침 경로 — [보드] › 조상… › 지금. 클릭하면 그 층으로 접어 나온다 (PDF §8). */
+  #renderCrumbs() {
+    const bar = document.getElementById('crumbs');
+    if (!bar) return;
+    const focus = this.focus;
+    if (!focus) { bar.hidden = true; bar.replaceChildren(); return; }
+    const byId = new Map(this.store.items.map((i) => [i.id, i]));
+    const path = [];
+    let cur = byId.get(focus);
+    let guard = 0;
+    while (cur && guard++ < 64) { path.unshift(cur); cur = cur.parent ? byId.get(cur.parent) : null; }
+
+    const crumb = (label, id) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'crumb';
+      b.textContent = label;
+      b.addEventListener('click', () => this.view.setFocus(id));
+      return b;
+    };
+    const sep = () => { const s = document.createElement('span'); s.className = 'crumb-sep'; s.textContent = '›'; return s; };
+
+    bar.replaceChildren();
+    bar.append(crumb(this.store.meta.name || '보드', null));
+    for (const it of path) {
+      bar.append(sep(), crumb(it.ti || '(제목 없음)', it.id));
+    }
+    bar.hidden = false;
   }
 
   /** 마지막으로 축을 그린 범위와 지금 범위가 다른가 */
@@ -276,8 +329,11 @@ export class Board {
       this._layout = { placement, trackLanes: new Map(), childrenOf: new Map(), depthOf: new Map() };
       return;
     }
+    // 펼침(드릴다운)이면 focus의 자식이 최상위가 되고 자손만 보인다.
+    this._scope = this.#focusScope();
+    const visible = (i) => this.view.isVisible(i) && (this._scope === null || this._scope.has(i.id));
     this._layout = computeLayout(
-      this.store.tracks, this.store.items, this.origin, (i) => this.view.isVisible(i),
+      this.store.tracks, this.store.items, this.origin, visible, this.focus,
     );
   }
 
@@ -375,11 +431,15 @@ export class Board {
       (a, b) => (depthOf.get(a.id) ?? 0) - (depthOf.get(b.id) ?? 0),
     );
 
+    const focus = this.focus;
     for (const item of ordered) {
       if (!this.view.isVisible(item)) continue;
+      if (this._scope && !this._scope.has(item.id)) continue;   // 펼침 범위 밖은 숨긴다
 
       // 순서 모드(초안)는 중첩을 펼쳐(flatten) 모두 트랙의 한 카드로 다룬다.
-      const parent = this.orderMode ? null : (item.parent ? byId.get(item.parent) : null);
+      // 펼쳐 들어간 이벤트(focus)의 직속 자식은 최상위처럼 트랙 컬럼에 놓는다.
+      const pid = (item.parent && item.parent !== focus) ? item.parent : null;
+      const parent = this.orderMode ? null : (pid ? byId.get(pid) : null);
       // 상위 카드가 안 그려졌으면(숨김/필터) 자식도 놓을 자리가 없다
       const host = parent ? cardEls.get(parent.id) : this.columns.get(item.place.t);
       if (!host) continue;
@@ -459,7 +519,15 @@ export class Board {
           const item = this.store.item(card.dataset.id);
           if (item) { item.place.x = null; item.place.w = null; }
         });
+        return;
       }
+      // 자식을 품은 카드를 더블클릭하면 펼친다 — 그 자식들이 하나의 보드로 (PDF §8).
+      if (this.orderMode) return;
+      const card = ev.target.closest('.ev');
+      if (!card) return;
+      const id = card.dataset.id;
+      const hasChildren = this.store.items.some((i) => i.parent === id);
+      if (hasChildren) { ev.stopPropagation(); this.view.setFocus(id); }
     });
 
     this.#attachCreate();

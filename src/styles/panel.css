@@ -3,8 +3,8 @@
    가로 스크롤로 되찾기 번거롭다. --panel-w는 패널이 열릴 때만 채워진다. */
 body{--panel-w:0px;--panel-size:360px}
 body.panel-open{--panel-w:var(--panel-size)}
-.bar,.status,.scroll{margin-right:var(--panel-w);transition:margin-right .16s ease}
-@media (prefers-reduced-motion:reduce){.bar,.status,.scroll{transition:none}}
+.bar,.status,.scroll,.crumbs{margin-right:var(--panel-w);transition:margin-right .16s ease}
+@media (prefers-reduced-motion:reduce){.bar,.status,.scroll,.crumbs{transition:none}}
 
 .panel{position:fixed;top:0;right:0;bottom:0;width:var(--panel-size);background:var(--bg-panel);
   border-left:1px solid var(--border-subtle);z-index:60;

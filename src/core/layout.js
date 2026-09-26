@@ -71,7 +71,7 @@ function assignLanes(siblings, origin, placement, { includeMilestones = false } 
  * @param {(item) => boolean} isVisible
  * @returns {{placement: Map, trackLanes: Map, childrenOf: Map, depthOf: Map}}
  */
-export function computeLayout(tracks, items, origin, isVisible = () => true) {
+export function computeLayout(tracks, items, origin, isVisible = () => true, rootId = null) {
   const placement = new Map();
   const trackLanes = new Map();
 
@@ -84,8 +84,9 @@ export function computeLayout(tracks, items, origin, isVisible = () => true) {
     childrenOf.get(parent).push(item);
   }
 
-  // 트랙마다 최상위 일정들로 레인을 나눈다
-  const roots = childrenOf.get(null) ?? [];
+  // 트랙마다 최상위 일정들로 레인을 나눈다. 펼쳐 들어갔으면(rootId) 그 이벤트의
+  // 자식들이 최상위가 된다 (PDF §8: 카드를 펼치면 자식들이 보드로).
+  const roots = childrenOf.get(rootId) ?? [];
   for (const track of tracks) {
     const own = roots.filter((i) => i.place.t === track.id && isVisible(i));
     trackLanes.set(track.id, assignLanes(own, origin, placement));

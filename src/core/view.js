@@ -18,6 +18,17 @@ export class ViewState extends Emitter {
     this.selectedTrack = null;
     /** 카드 글자를 긁어 복사할 수 있는 모드. 켜면 드래그 이동이 멈춘다. */
     this.textSelect = false;
+    /**
+     * 펼쳐 들어간 이벤트 id (드릴다운). null이면 보드 최상위.
+     * 카드를 펼치면 그 이벤트의 자식들이 하나의 보드로 나타난다 (PDF §8: 접기/펼치기).
+     */
+    this.focus = null;
+  }
+
+  /** 펼침(드릴다운) 이동 — 화면 상태다(문서·되돌리기와 무관). */
+  setFocus(id) {
+    this.focus = id ?? null;
+    this.emit('change', { reason: 'focus' });
   }
 
   /** px per day */

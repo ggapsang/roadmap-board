@@ -140,6 +140,7 @@ async function boot() {
     store.adopt(doc);
     view.selectedItem = null;
     view.selectedTrack = null;
+    view.focus = null;                 // 새 프로젝트를 열면 펼침(드릴다운) 초기화
     view.orgFilter.clear();
     view.query = '';
     $('q').value = '';
