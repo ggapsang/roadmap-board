@@ -65,10 +65,14 @@ export class BoardRepository {
   }
 
   deleteProject(id) {
-    // board의 자식(placement 등)은 ON DELETE CASCADE. 루트 이벤트는 배치가 없어 직접 지운다.
+    // board의 자식(placement·track 등)은 ON DELETE CASCADE. 배치가 없는 이벤트(보드 루트·
+    // 트랙 이벤트)는 배치로 안 걸리므로 직접 지운다.
     const b = this.db.prepare('SELECT root_event_id FROM board WHERE id = ?').get(id);
+    const trackEvents = this.db.prepare('SELECT event_id FROM track WHERE board_id = ? AND event_id IS NOT NULL')
+      .all(id).map((r) => r.event_id);
     this.db.prepare('DELETE FROM board WHERE id = ?').run(id);
     if (b?.root_event_id) this.db.prepare('DELETE FROM event WHERE id = ?').run(b.root_event_id);
+    for (const ev of trackEvents) this.db.prepare('DELETE FROM event WHERE id = ?').run(ev);
     if (this.boardId === id) this.boardId = null;
   }
 
@@ -222,9 +226,10 @@ export class BoardRepository {
       (doc.orgs ?? []).forEach((o, i) => insOrg.run(this.boardId, i, o));
 
       const insTrack = this.db.prepare(
-        'INSERT INTO track (board_id, id, ord, lab, name, width) VALUES (?, ?, ?, ?, ?, ?)',
+        'INSERT INTO track (board_id, id, ord, lab, name, width, event_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
       );
-      doc.tracks.forEach((t, i) => insTrack.run(this.boardId, t.id, i, t.lab ?? '', t.name, t.w ?? null));
+      doc.tracks.forEach((t, i) =>
+        insTrack.run(this.boardId, t.id, i, t.lab ?? '', t.name, t.w ?? null, `track:${this.boardId}:${t.id}`));
 
       // 이벤트 본질은 UPSERT — 같은 이벤트가 여러 보드에 있어도 하나의 본질을 공유한다(§3.4).
       const upEvent = this.db.prepare(`
@@ -276,6 +281,14 @@ export class BoardRepository {
         type: 'bar', status: 'plan', org: '', pg: 0, note: '',
       });
 
+      // 트랙도 이벤트다 — 각 트랙의 배킹 이벤트 본질을 트랙 이름에 맞춘다(§3.2).
+      for (const t of doc.tracks) {
+        upEvent.run({
+          id: `track:${this.boardId}:${t.id}`, title: t.name ?? '', s: doc.meta.start, e: doc.meta.end,
+          type: 'bar', status: 'plan', org: '', pg: 0, note: '',
+        });
+      }
+
       // 선행 관계('dep')만 relation 테이블에. 포함(contain)은 placement.parent_id에서 파생.
       // 정규화 전 문서(item.dp만 있는 경우)도 관대하게 받는다.
       if (Array.isArray(doc.relations)) {
@@ -294,6 +307,7 @@ export class BoardRepository {
       this.db.prepare(`
         DELETE FROM event WHERE id NOT IN (SELECT event_id FROM placement)
           AND id NOT IN (SELECT root_event_id FROM board WHERE root_event_id IS NOT NULL)
+          AND id NOT IN (SELECT event_id FROM track WHERE event_id IS NOT NULL)
       `).run();
 
       this.#maybeRevision(doc, label);

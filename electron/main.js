@@ -1178,8 +1178,19 @@ async function runSmoke(target) {
     } catch (err) { console.log('[smoke] board-is-event FAIL ' + err); boardEvent = false; }
   }
 
+  // 트랙도 이벤트다 — 각 트랙에 배킹 이벤트가 있고 본질이 트랙 이름에 맞춰진다 (§3.2)
+  let trackEvent = null;
+  if (wrote) {
+    try {
+      const tr = db.prepare('SELECT id, name, event_id FROM track WHERE board_id = ? ORDER BY ord LIMIT 1').get(opened.opened);
+      const ev = tr?.event_id ? db.prepare('SELECT title FROM event WHERE id = ?').get(tr.event_id) : null;
+      trackEvent = !!ev && ev.title === tr.name;
+      console.log('[smoke] track-is-event ' + JSON.stringify({ trackEvent, event: tr?.event_id, title: ev?.title }));
+    } catch (err) { console.log('[smoke] track-is-event FAIL ' + err); trackEvent = false; }
+  }
+
   const ok = !result.error && !opened?.error && !renamed?.error
-    && shared === true && boardEvent === true
+    && shared === true && boardEvent === true && trackEvent === true
     && relCheck?.allDep === true && relCheck?.added === true && relCheck?.removed === true
     && orderCheck?.topoOk === true && orderCheck?.edges > 0 && orderCheck?.maxRank > 0
     && orderMode?.hasOrderAxis === true && orderMode?.ordered === true && orderMode?.cards > 0 && orderMode?.back === true
