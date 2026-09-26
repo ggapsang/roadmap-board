@@ -99,7 +99,17 @@
   <div class="body2">
     <!-- 속성 -->
     <section class="ptab-panel" data-panel="attr">
-      <div class="fld"><label for="i-title">제목</label><textarea id="i-title" rows="1" title="줄바꿈은 Shift+Enter"></textarea></div>
+      <div class="fld">
+        <label for="i-title">제목</label>
+        <div class="title-wrap">
+          <textarea id="i-title" rows="1" title="줄바꿈은 Shift+Enter · 검색하면 같은 카드로 연결 제안"></textarea>
+          <div class="title-drop" id="i-title-drop" hidden></div>
+        </div>
+      </div>
+      <div class="fld">
+        <label for="i-aliasname">별칭 <span class="muted">이 보드에서 부를 다른 이름 (비우면 제목대로)</span></label>
+        <input id="i-aliasname" type="text" placeholder="(없음)">
+      </div>
       <div class="fld"><label>상태</label><div class="pick" id="i-status"></div></div>
       <div class="two">
         <div class="fld"><label for="i-track">트랙</label><select id="i-track"></select></div>
@@ -126,6 +136,10 @@
       <div class="fld">
         <label>상위 일정 <span class="muted">이 카드를 품는 일정 · 하나</span></label>
         <div id="i-parent"></div>
+      </div>
+      <div class="fld">
+        <label>동일 카드 <span class="muted">같은 이벤트로 묶을 카드 · 여럿 (본질 공유)</span></label>
+        <div id="i-same"></div>
       </div>
     </section>
 

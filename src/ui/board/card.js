@@ -85,8 +85,10 @@ export function renderCard(item, ctx) {
    * 두 칸 폭과 같지도 않다. 그래서 걸치는 카드만 실제 컬럼 너비로 px를 잡는다.
    */
   const setBox = (node) => {
-    // 강제 모드에서는 가로를 비율로 직접 잡으므로 spanBox(px)를 쓰지 않는다.
-    if (spanBox && !forced) {
+    // 여러 트랙에 걸치는 카드는 크기 강제 여부와 무관하게 실제 컬럼 너비(px)로 잡아
+    // 걸침을 유지한다. 강제 모드가 트랙 걸침을 한 칸으로 무너뜨리지 않게 한다.
+    // (강제는 세로 길이 hd로만 작동하고, sp=1일 때만 가로를 비율 x/w로 자유 조절한다.)
+    if (spanBox) {
       node.style.left = `${spanBox.left + 4}px`;
       node.style.width = `${Math.max(24, spanBox.width - 8)}px`;
     } else {
@@ -110,10 +112,10 @@ export function renderCard(item, ctx) {
     }
     node.append(
       el('span.dia'),
-      el('span.t', { text: item.ti }),
+      el('span.t', { text: item.alias || item.ti }),
       el('span.meta', { text: shortMD(item.s) }),
     );
-    node.title = `${item.ti} · ${item.s} · ${item.og}`;
+    node.title = `${item.alias || item.ti} · ${item.s} · ${item.og}`;
     // 최상위 점 마일스톤만 트랙 걸침 손잡이. 상위에 든 것은 폭 손잡이.
     addHorizontalGrips(node, { span: !parent });
     return node;
@@ -157,7 +159,9 @@ export function renderCard(item, ctx) {
   // 보통 카드는 낮으면 메타를 통째로 숨기고, 보류는 항상 숨긴다.
   if ((height < LAYOUT.metaHideHeight && !isShort) || item.st === 'hold') meta.classList.add('hidden');
 
-  node.append(el('div.t', { text: item.ti }), meta);
+  // 별칭이 있으면 이 보드에선 그 이름으로 보인다(§3.5). 같은 이벤트라도 맥락별 이름.
+  const label = item.alias || item.ti;
+  node.append(el('div.t', { text: label }), meta);
 
   if (item.place?.showNote && item.note) {
     node.append(el('div.card-note', { text: item.note }));
@@ -170,10 +174,11 @@ export function renderCard(item, ctx) {
   // 자유롭게 늘리고 줄인다(위로도, 아래로도).
   node.append(el('div.grip-top', { attrs: { 'aria-hidden': 'true' } }));
   node.append(el('div.grip', { attrs: { 'aria-hidden': 'true' } }));
-  // 자식·강제 모드 → 좌우 폭 손잡이(x/w). 강제 아닌 최상위 → 트랙 걸침 손잡이.
-  const widthGrips = forced || !!parent;
+  // 자식 → 좌우 폭 손잡이(x/w). 강제라도 여러 트랙에 걸치면(spanBox) 걸침 손잡이를 유지해
+  // 트랙을 넘나든다. 강제이면서 한 트랙(sp=1)일 때만 좌우 폭 손잡이.
+  const widthGrips = (forced && !spanBox) || !!parent;
   addHorizontalGrips(node, { span: !widthGrips });
-  node.title = `${item.ti}\n${item.s} – ${item.e} · ${item.og}${item.pg ? ' · ' + item.pg + '%' : ''}`;
+  node.title = `${label}${item.alias ? ` (${item.ti})` : ''}\n${item.s} – ${item.e} · ${item.og}${item.pg ? ' · ' + item.pg + '%' : ''}`;
   return node;
 }
 

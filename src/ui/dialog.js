@@ -70,3 +70,41 @@ export function askText({ title, label = '', value = '', placeholder = '', confi
     input.select();
   });
 }
+
+/**
+ * 예/아니오 확인. window.confirm은 스모크·자동화를 막으므로 인앱 다이얼로그로 한다.
+ * @returns {Promise<boolean>}
+ */
+export function askConfirm({ title, message = '', confirmLabel = '확인', danger = false }) {
+  const scrim = ensureHost();
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (ok) => {
+      if (settled) return;
+      settled = true;
+      scrim.hidden = true;
+      scrim.replaceChildren();
+      document.removeEventListener('keydown', onKey, true);
+      resolve(ok);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
+      if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); finish(true); }
+    };
+    document.addEventListener('keydown', onKey, true);
+
+    const box = el('div.dlg', { on: { click: (e) => e.stopPropagation() } }, [
+      el('h2', { text: title }),
+      message ? el('p.note', { text: message }) : null,
+      el('div.dlg-actions', {}, [
+        el('button.btn.outline', { type: 'button', text: '취소', on: { click: () => finish(false) } }),
+        el(`button.btn.${danger ? 'danger' : 'cta'}`, {
+          type: 'button', text: confirmLabel, on: { click: () => finish(true) },
+        }),
+      ]),
+    ]);
+    scrim.replaceChildren(box);
+    scrim.hidden = false;
+    scrim.onclick = () => finish(false);
+  });
+}

@@ -129,7 +129,7 @@ export class BoardRepository {
     // 이 보드의 배치 + 각 배치가 가리키는 이벤트 본질. item = event(본질) + placement(배치).
     const rows = this.db.prepare(`
       SELECT e.id AS id, e.title, e.start_date, e.end_date, e.type, e.status, e.org, e.progress, e.note,
-             p.track_id, p.span, p.pos_x, p.pos_w, p.height_days, p.align, p.show_note, p.parent_id
+             p.track_id, p.span, p.pos_x, p.pos_w, p.height_days, p.align, p.show_note, p.parent_id, p.alias
       FROM placement p JOIN event e ON e.id = p.event_id
       WHERE p.board_id = ? ORDER BY p.ord
     `).all(this.boardId);
@@ -169,6 +169,7 @@ export class BoardRepository {
         ti: r.title, ty: r.type, st: r.status,
         og: r.org, pg: r.progress, note: r.note,
         parent: r.parent_id ?? null,
+        alias: r.alias ?? null,
         tasks: tasksByEvent.get(r.id) ?? [],
         place: {
           t: r.track_id, sp: r.span,
@@ -241,8 +242,8 @@ export class BoardRepository {
       `);
       const insPlace = this.db.prepare(`
         INSERT INTO placement (board_id, event_id, track_id, ord, span,
-                               pos_x, pos_w, height_days, align, show_note, parent_id)
-        VALUES (@board, @id, @track, @ord, @span, @x, @w, @hd, @align, @showNote, @parent)
+                               pos_x, pos_w, height_days, align, show_note, parent_id, alias)
+        VALUES (@board, @id, @track, @ord, @span, @x, @w, @hd, @align, @showNote, @parent, @alias)
       `);
       const insTask = this.db.prepare(
         'INSERT OR REPLACE INTO event_task (id, event_id, ord, text, done) VALUES (?, ?, ?, ?, ?)',
@@ -262,6 +263,7 @@ export class BoardRepository {
           board: this.boardId, id: it.id, track: p.t, ord: i, span: p.sp ?? 1,
           x: p.x ?? null, w: p.w ?? null, hd: p.hd ?? null,
           align: p.align ?? 'middle', showNote: p.showNote ? 1 : 0, parent: it.parent ?? null,
+          alias: it.alias ?? null,
         });
         // 태스크는 이벤트 뒤에 (FK 충족). 태스크도 이벤트다 — 배킹 이벤트를 함께 둔다(§3.3).
         // event_task는 '이 이벤트가 태스크를 순서 없이 담는다'는 링크. 순서가 생기면 카드로 승격.
@@ -295,12 +297,12 @@ export class BoardRepository {
         });
       }
 
-      // 선행 관계('dep')만 relation 테이블에. 포함(contain)은 placement.parent_id에서 파생.
+      // 선행(dep)·동일(same) 관계를 relation 테이블에. 포함(contain)은 parent_id에서 파생이라 저장 안 함.
       // 정규화 전 문서(item.dp만 있는 경우)도 관대하게 받는다.
       if (Array.isArray(doc.relations)) {
         for (const rel of doc.relations) {
-          if (rel.type !== 'dep') continue;
-          insRel.run(this.boardId, rel.id || `r_${rel.from}_${rel.to}`, 'dep', rel.from, rel.to);
+          if (rel.type !== 'dep' && rel.type !== 'same') continue;
+          insRel.run(this.boardId, rel.id || `r_${rel.from}_${rel.to}`, rel.type, rel.from, rel.to);
         }
       } else {
         for (const it of doc.items) {

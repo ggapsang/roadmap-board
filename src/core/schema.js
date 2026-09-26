@@ -15,7 +15,7 @@ import {
   RELATION_TYPES, RELATION_KEYS, AXIS_KINDS, AXIS_DIRS,
 } from '../config/index.js';
 
-export const SCHEMA_VERSION = 14;
+export const SCHEMA_VERSION = 15;
 
 /**
  * v0 = P0 시안 문서(version 필드 없음).
@@ -179,6 +179,16 @@ function v13_to_v14(doc) {
   return doc;
 }
 
+function v14_to_v15(doc) {
+  // 별칭(alias) — 같은 이벤트를 이 보드 맥락의 다른 이름으로 부르는 표시명(§3.5). 없으면 null.
+  // (옛 board-pointer alias(숫자)는 문자열이 아니라 자연히 버려진다.)
+  for (const it of doc.items ?? []) {
+    it.alias = typeof it.alias === 'string' ? it.alias : null;
+  }
+  doc.version = 15;
+  return doc;
+}
+
 const MIGRATIONS = {
   0: v0_to_v1,
   1: v1_to_v2,
@@ -194,6 +204,7 @@ const MIGRATIONS = {
   11: v11_to_v12,
   12: v12_to_v13,
   13: v13_to_v14,
+  14: v14_to_v15,
 };
 
 export const ALIGNS = ['top', 'middle', 'bottom'];
@@ -311,7 +322,9 @@ export function normalize(doc) {
     n.dp = Array.isArray(n.dp) ? n.dp.filter((d) => typeof d === 'string') : [];
     n.parent = typeof n.parent === 'string' && n.parent ? n.parent : null;
 
-    delete n.alias;   // (철회) 잘못된 '카드→보드 포인터' 흔적 제거
+    // 별칭 — 이 카드를 이 보드 맥락의 다른 이름으로 표시(§3.5). 문자열 아니면 없음(null).
+    // (옛 board-pointer alias(숫자)는 자연히 버려진다.)
+    n.alias = typeof it.alias === 'string' && it.alias.trim() ? it.alias.trim() : null;
 
     // 순서 없는 태스크(액션 아이템). 이벤트 본질이라 place가 아니라 item에 직접 둔다.
     n.tasks = (Array.isArray(it.tasks) ? it.tasks : []).filter(isObj).map((t) => {
@@ -400,6 +413,7 @@ export function normalize(doc) {
 /** 관계 목록 정규화 — 종류 허용, 끝점 존재, 자기순환 금지, 중복 제거, 순환 금지 종류는 사이클 차단. */
 function normalizeRelations(doc, itemIds) {
   const acyclic = new Set(RELATION_TYPES.filter((r) => r.acyclic).map((r) => r.key));
+  const symmetric = new Set(RELATION_TYPES.filter((r) => r.symmetric).map((r) => r.key));
   const src = [];
   // 관계는 doc.relations에서 받는다. 단 포함(contain)은 item.parent가 authoritative라
   // 입력의 contain은 버리고 item.parent에서 다시 만든다(중복·불일치 방지).
@@ -429,7 +443,10 @@ function normalizeRelations(doc, itemIds) {
     const { from, to } = r;
     if (typeof from !== 'string' || typeof to !== 'string') continue;
     if (from === to || !itemIds.has(from) || !itemIds.has(to)) continue;
-    const key = `${type}|${from}|${to}`;
+    // 대칭 관계(동일)는 (a,b)와 (b,a)가 같다 — 끝점을 정렬해 중복을 없앤다.
+    const key = symmetric.has(type)
+      ? `${type}|${[from, to].sort().join('|')}`
+      : `${type}|${from}|${to}`;
     if (seen.has(key)) continue;
     if (acyclic.has(type) && reaches(type, to, from)) continue;   // from→to가 순환을 만들면 버린다
     seen.add(key);
@@ -514,4 +531,42 @@ export function reidentify(doc) {
     .map((r) => ({ ...r, id: fresh('r'), from: map.get(r.from), to: map.get(r.to) }))
     .filter((r) => r.from && r.to);            // 끝점을 못 옮긴 관계는 버린다
   return doc;
+}
+
+/**
+ * 'same'(동일) 관계로 이어진 이벤트 무리 — 주어진 id와 같은 이벤트로 묶인 다른 id들.
+ * 대칭·이행적이라 연결 요소(BFS)로 구한다.
+ */
+export function sameGroupOf(relations, id) {
+  const adj = new Map();
+  for (const r of (relations ?? [])) {
+    if (r?.type !== 'same') continue;
+    if (!adj.has(r.from)) adj.set(r.from, new Set());
+    if (!adj.has(r.to)) adj.set(r.to, new Set());
+    adj.get(r.from).add(r.to);
+    adj.get(r.to).add(r.from);
+  }
+  const out = new Set();
+  const stack = [id];
+  const vis = new Set([id]);
+  while (stack.length) {
+    const n = stack.pop();
+    for (const m of (adj.get(n) ?? [])) if (!vis.has(m)) { vis.add(m); out.add(m); stack.push(m); }
+  }
+  return out;   // 자기 자신은 포함하지 않는다
+}
+
+/**
+ * 같은 이벤트로 묶인 카드들끼리 본질(제목·상태·기간·유형·담당·진척·비고)을 맞춘다.
+ * 별칭(alias)은 카드별 표시명이라 맞추지 않는다(§3.5). 태스크는 링크(고유 id) 특성상 제외.
+ */
+export function propagateSame(doc, sourceId) {
+  const src = doc.items.find((i) => i.id === sourceId);
+  if (!src) return;
+  const group = sameGroupOf(doc.relations, sourceId);
+  for (const it of doc.items) {
+    if (!group.has(it.id)) continue;
+    it.ti = src.ti; it.s = src.s; it.e = src.e; it.ty = src.ty;
+    it.st = src.st; it.og = src.og; it.pg = src.pg; it.note = src.note;
+  }
 }

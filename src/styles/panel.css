@@ -45,7 +45,20 @@ body.panel-open{--panel-w:var(--panel-size)}
 .ptab[aria-selected="true"]{color:var(--text-primary);font-weight:600;border-bottom-color:var(--accent)}
 .ptab-panel[hidden]{display:none}
 
-/* ── 필터 리스트 — 선행·상위·별칭을 하나의 "검색 + 목록"으로 통일 ── */
+/* ── 제목 검색 → "같은 카드로 연결" 드롭다운 (평상시 숨김, 입력 시에만) ── */
+.title-wrap{position:relative}
+.title-drop{position:absolute;left:0;right:0;top:100%;z-index:10;margin-top:2px;
+  background:var(--bg-elevated);border:1px solid var(--border-default);border-radius:var(--r-control);
+  box-shadow:var(--shadow-dialog);max-height:220px;overflow:auto;padding:var(--u1)}
+.title-drop[hidden]{display:none}
+.title-drop-opt{display:flex;align-items:center;gap:var(--u2);width:100%;text-align:left;
+  appearance:none;border:0;background:none;cursor:pointer;padding:var(--u1-5) var(--u2);
+  border-radius:var(--u1);font-size:13px;color:var(--text-primary)}
+.title-drop-opt:hover{background:var(--bg-hover)}
+.tdo-name{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.title-drop-opt em{font-style:normal;font-size:11px;color:var(--text-tertiary)}
+
+/* ── 필터 리스트 — 선행·상위·동일을 하나의 "검색 + 목록"으로 통일 ── */
 .filter-list{border:1px solid var(--border-default);border-radius:var(--r-control);overflow:hidden;background:var(--bg-input)}
 .fl-search{display:flex;align-items:center;gap:var(--u1-5);padding:0 var(--u2-5);
   border-bottom:1px solid var(--border-subtle);background:var(--bg-panel)}

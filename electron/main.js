@@ -195,6 +195,8 @@ async function runSmoke(target) {
   let idCheck = null;
   let drill = null;
   let panelFit = null;
+  let sameCheck = null;
+  let spanForce = null;
   let cornerCheck = null;
   let trackResize = null;
   let spanEdit = null;
@@ -922,6 +924,64 @@ async function runSmoke(target) {
     })()`), 20000, 'corner');
     console.log('[smoke] resize4 ' + JSON.stringify(cornerCheck));
 
+    // 동일 카드 — 두 카드를 같은 이벤트로 묶으면 본질 공유, 별칭은 카드별 (§3.4·§3.5)
+    sameCheck = await target.webContents.executeJavaScript(`(async () => {
+      const { prepare, propagateSame, sameGroupOf } = await import('./src/core/schema.js');
+      const r = window.__roadmap;
+      const a = r.store.items[0], b = r.store.items[1];
+      r.store.commit('smoke-same', (doc) => {
+        doc.relations.push({ id: 'rSame1', type: 'same', from: a.id, to: b.id });
+        r.store.item(a.id).alias = '별칭A';
+        propagateSame(doc, a.id);
+      });
+      const A = r.store.item(a.id), B = r.store.item(b.id);
+      const essenceShared = B.ti === A.ti && B.st === A.st && B.s === A.s && B.e === A.e;
+      const aliasIndependent = A.alias === '별칭A' && B.alias !== '별칭A';
+      const { doc } = prepare(structuredClone(r.store.doc));
+      const sameCount = doc.relations.filter((x) => x.type === 'same').length;
+      const grouped = sameGroupOf(doc.relations, A.id).has(B.id);
+      r.store.commit('원복', (doc) => {
+        doc.relations = doc.relations.filter((x) => x.type !== 'same');
+        r.store.item(a.id).alias = null;
+      });
+      return { essenceShared, aliasIndependent, sameCount, grouped };
+    })()`);
+    console.log('[smoke] same-card ' + JSON.stringify(sameCheck));
+
+    // 걸침 카드에 크기 강제해도 트랙을 넘나든다 — 강제 상태에서 sp=2가 sp=1보다 넓어야.
+    spanForce = await target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const card = document.querySelector('.col > .ev:not(.ms)');
+      const id = card.dataset.id;
+      const it = () => r.store.item(id);
+      const sp0 = it().place.sp, hd0 = it().place.hd;
+      const w = () => document.querySelector('[data-id="' + id + '"]').getBoundingClientRect().width;
+      const home = r.store.tracks.findIndex((t) => t.id === it().place.t);
+      const w0 = r.store.tracks.map((t) => t.w);
+      // 걸칠 두 트랙을 고정폭 200으로 (결정적). sp=1 강제 → 한 칸.
+      r.store.commit('세팅', () => {
+        it().place.hd = 20; it().place.x = null; it().place.w = null; it().place.sp = 1;
+        if (r.store.tracks[home]) r.store.tracks[home].w = 200;
+        if (r.store.tracks[home + 1]) r.store.tracks[home + 1].w = 200;
+      });
+      r.board.rebuild();
+      await new Promise((res) => setTimeout(res, 200));
+      const w1 = w();
+      // 강제 유지 + sp=2 → 두 칸으로 넓어져야 한다(강제가 걸침을 막지 않음)
+      r.store.commit('걸침', () => { it().place.sp = 2; });
+      r.board.render();
+      await new Promise((res) => setTimeout(res, 200));
+      const w2 = w();
+      const hasSpanGrip = !!document.querySelector('[data-id="' + id + '"] .grip-span');
+      r.store.commit('원복', () => {
+        it().place.sp = sp0; it().place.hd = hd0;
+        r.store.tracks.forEach((t, i) => { t.w = w0[i]; });
+      });
+      r.board.rebuild();
+      return { w1: Math.round(w1), w2: Math.round(w2), spanUnderForce: w2 > w1 + 120, hasSpanGrip };
+    })()`);
+    console.log('[smoke] span-force ' + JSON.stringify(spanForce));
+
     // 여백 자르기 — 표시 기간을 일정 범위에 맞춰 맨 뒤 빈 구간을 없앤다
     trim = await target.webContents.executeJavaScript(`(async () => {
       const r = window.__roadmap;
@@ -1281,6 +1341,9 @@ async function runSmoke(target) {
     && titleFit?.shrank === true && titleFit?.fits === true
     && fixedH?.mapGrew === true && fixedH?.hasTopGrip === true && fixedH?.datesUnchanged === true && fixedH?.dragChanged === true
     && cornerCheck?.widthChanged === true && cornerCheck?.heightChanged === true && cornerCheck?.topGrew === true
+    && sameCheck?.essenceShared === true && sameCheck?.aliasIndependent === true
+    && sameCheck?.sameCount === 1 && sameCheck?.grouped === true
+    && spanForce?.spanUnderForce === true && spanForce?.hasSpanGrip === true
     && trim?.trimmed === true && trim?.shrank === true
     && monthResize?.made === true && monthResize?.scale < 1 && monthResize?.shrank === true
     && ctxDelete?.hadMenu === true && ctxDelete?.hadBtn === true && ctxDelete?.trimmed === true && ctxDelete?.menuClosed === true
