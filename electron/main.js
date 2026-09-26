@@ -1480,44 +1480,39 @@ async function runSmoke(target) {
     console.log('[smoke] tabs ' + JSON.stringify(tabsCheck));
   }
 
-  // 실시간 반영 — 활성 보드에서 동일(same)로 묶은 이벤트를 고치면, 열린 다른 탭 문서에도 바로 퍼진다.
-  let syncCheck = null;
+  // 매핑은 관계만 만들고 본질을 복사하지 않는다 — 트랙 이름을 바꿔도 남의 이벤트 제목을
+  // 덮지 않는지 확인한다(데이터 보존). same로 묶은 뒤 한쪽 제목을 바꿔도 반대쪽은 그대로여야.
+  let nondestr = null;
   if (wrote) {
-    syncCheck = await target.webContents.executeJavaScript(`(async () => {
+    nondestr = await target.webContents.executeJavaScript(`(async () => {
       const run = (async () => {
         const r = window.__roadmap;
         const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
-        const b1 = r.adapter.projectId;
-        const id2 = await r.adapter.duplicateProject(b1, '싱크 테스트 보드');
-        await r.tabs.openBoard(id2); await sleep(350);    // B 활성 (새 탭, DB에서 로드)
-        const bCount = r.store.items.length;
-        const bItemId = r.store.items[0] && r.store.items[0].id;
-        await r.tabs.openBoard(b1); await sleep(350);     // A 활성
-        const aCount = r.store.items.length;
-        const aItemId = r.store.items[0] && r.store.items[0].id;
-        if (!aItemId || !bItemId) { return { error: 'no items', aCount, bCount }; }
-        r.store.commit('smoke same', (doc) => { doc.relations.push({ id: 'r_sync', type: 'same', from: aItemId, to: bItemId }); });
-        await sleep(60);
-        r.store.commit('smoke edit', (doc) => { const it = doc.items.find((x) => x.id === aItemId); it.ti = 'SYNC-OK'; });
-        await sleep(80);
-        const bDoc = r.tabs.docs.get(id2);
-        const bItem = bDoc && bDoc.items.find((x) => x.id === bItemId);
-        const reflected = bItem ? bItem.ti : null;
-        r.tabs.boardClosed(id2); await sleep(60);
-        await r.adapter.deleteProject(id2);
-        return { reflected, aCount, bCount };
+        const a = r.store.items[0].id;
+        const b = r.store.items[1].id;
+        const snapRel = JSON.parse(JSON.stringify(r.store.relations));
+        const aTi0 = r.store.item(a).ti; const bTi0 = r.store.item(b).ti;
+        r.store.commit('smoke same', (doc) => { doc.relations.push({ id: 'r_nd', type: 'same', from: a, to: b }); });
+        await sleep(40);
+        // same로 이어도 a·b 제목은 그대로여야(덮어쓰기 없음)
+        const keptOnLink = r.store.item(a).ti === aTi0 && r.store.item(b).ti === bTi0;
+        r.store.commit('smoke rename', (doc) => { doc.items.find((x) => x.id === a).ti = 'ND-CHANGED'; });
+        await sleep(40);
+        const bUntouched = r.store.item(b).ti === bTi0;   // a를 바꿔도 b는 그대로
+        r.store.commit('원복', (doc) => { doc.relations = snapRel; doc.items.find((x) => x.id === a).ti = aTi0; });
+        return { keptOnLink, bUntouched };
       })();
-      const guard = new Promise((res) => setTimeout(() => res({ error: 'timeout' }), 12000));
+      const guard = new Promise((res) => setTimeout(() => res({ error: 'timeout' }), 8000));
       return Promise.race([run.catch((e) => ({ error: String(e) })), guard]);
     })()`);
-    console.log('[smoke] sync ' + JSON.stringify(syncCheck));
+    console.log('[smoke] non-destructive ' + JSON.stringify(nondestr));
   }
 
   const ok = !result.error && !opened?.error && !renamed?.error
     && shared === true && boardEvent === true && trackEvent === true && taskEvent === true
     && tabsCheck?.tabCount === 2 && tabsCheck?.hasAdd === true && tabsCheck?.name2 === '탭 테스트 보드'
     && tabsCheck?.nameBack === tabsCheck?.name1 && tabsCheck?.afterClose === 1
-    && syncCheck?.reflected === 'SYNC-OK'
+    && nondestr?.keptOnLink === true && nondestr?.bUntouched === true
     && relCheck?.allDep === true && relCheck?.added === true && relCheck?.removed === true
     && orderCheck?.topoOk === true && orderCheck?.edges > 0 && orderCheck?.maxRank > 0
     && orderMode?.hasOrderAxis === true && orderMode?.ordered === true && orderMode?.cards > 0 && orderMode?.back === true

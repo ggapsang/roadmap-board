@@ -153,36 +153,18 @@ export class BoardTabs {
     const cur = this.#cur();
     const activeBoardId = cur ? cur.boardId : null;
 
-    // 활성 문서의 본질 사전 + 동일(same) 짝 사전
+    // '진짜 같은 이벤트'(같은 id로 여러 보드에 놓인 것)만 맞춘다. 동일(same) 관계는 서로 다른
+    // 이벤트를 잇는 것이라 본질을 복사하지 않는다 — 각자 제목을 지킨다(덮어쓰기 금지).
     const essenceById = new Map();
     for (const it of src.items) essenceById.set(it.id, it);
-    const sameOf = new Map();   // id -> Set(짝 id들)
-    for (const r of (src.relations ?? [])) {
-      if (r?.type !== 'same') continue;
-      if (!sameOf.has(r.from)) sameOf.set(r.from, new Set());
-      if (!sameOf.has(r.to)) sameOf.set(r.to, new Set());
-      sameOf.get(r.from).add(r.to);
-      sameOf.get(r.to).add(r.from);
-    }
 
     for (const [boardId, doc] of this.docs) {
       if (boardId === activeBoardId || !doc || !Array.isArray(doc.items)) continue;
-      let changed = false;
       for (const it of doc.items) {
-        // 같은 이벤트(같은 id) — 본질을 그대로.
-        let srcItem = essenceById.get(it.id);
-        // 아니면 동일(same) 짝 중 활성 문서에 있는 것.
-        if (!srcItem && sameOf.has(it.id)) {
-          for (const mate of sameOf.get(it.id)) {
-            if (essenceById.has(mate)) { srcItem = essenceById.get(mate); break; }
-          }
-        }
-        if (!srcItem) continue;
-        for (const k of ESSENCE) {
-          if (it[k] !== srcItem[k]) { it[k] = srcItem[k]; changed = true; }
-        }
+        const srcItem = essenceById.get(it.id);   // 오직 같은 id
+        if (!srcItem || srcItem === it) continue;
+        for (const k of ESSENCE) if (it[k] !== srcItem[k]) it[k] = srcItem[k];
       }
-      void changed;   // 캐시 문서를 그 자리에서 고쳤으니, 그 탭으로 전환하면 그대로 보인다
     }
   }
 

@@ -181,6 +181,8 @@ export class ItemPanel {
     for (const s of $('pItem').querySelectorAll('.ptab-panel')) {
       s.hidden = s.dataset.panel !== name;
     }
+    // 매핑·상세 탭을 열 때마다 다른 보드 이벤트를 다시 읽어 최신 이름을 보여 준다(실시간 반영).
+    if ((name === 'rel' || name === 'task') && this.item) this.#loadCrossBoard(this.item);
   }
 
   open(id) {
@@ -387,56 +389,29 @@ export class ItemPanel {
   }
 
   /**
-   * 고른 대상 수로 뜻이 갈린다(사용자 규칙).
-   *   1개 → 같은 이벤트(동일). 대상 본질을 물려받고, 이 보드 이름은 별칭으로 남긴다(§3.5).
-   *   2개+ → 이 이벤트가 그것들의 합(조합, §3.7). combine로 각각을 품는다.
-   *   0개 → 아무 연결도 없다.
-   * 본질 공유는 저장 계층이 same 무리끼리 맞춰 준다(보드를 넘어).
+   * 매핑은 **관계만** 만든다 — 본질(제목·기간 등)은 절대 건드리지 않는다.
+   * 남의 이벤트 이름을 이 카드에 덮어쓰던 옛 동작이 데이터를 망가뜨렸다.
+   *   1개 → 같은 이벤트(same 관계).  2개+ → 그것들의 합(combine 관계).  0개 → 연결 없음.
+   * 각 카드는 자기 제목을 그대로 지킨다. 이 보드에서 다른 이름으로 부르고 싶으면 별칭을 쓴다.
    */
   #applyLinks(targets) {
     const item = this.item;
     if (!item) return;
     const id = item.id;
-    const origName = item.ti;
     this.store.commit('동일·조합', (doc) => {
-      const it = doc.items.find((x) => x.id === id) ?? item;
-      // 이 이벤트가 걸어 둔 same·combine를 전부 걷어낸다 (다시 만든다)
       doc.relations = (doc.relations ?? []).filter((r) => {
         if (r.type === 'same' && (r.from === id || r.to === id)) return false;
         if (r.type === 'combine' && r.from === id) return false;
         return true;
       });
       if (targets.length === 1) {
-        // 동일 — 이 카드가 그 이벤트다. 대상 본질을 물려받고, 이 보드 이름은 별칭으로 남긴다.
-        const t = targets[0];
-        const ev = this._sameOptions?.get(t);
-        doc.relations.push({ id: newId('r'), type: 'same', from: id, to: t });
-        if (ev) {
-          if (!it.alias && origName && origName !== (ev.title ?? '')) it.alias = origName;
-          it.ti = ev.title ?? it.ti; it.s = ev.s ?? it.s; it.e = ev.e ?? it.e;
-          it.ty = ev.ty ?? it.ty; it.st = ev.st ?? it.st; it.og = ev.og ?? it.og;
-          it.pg = ev.pg ?? it.pg; it.note = ev.note ?? it.note;
-        }
+        doc.relations.push({ id: newId('r'), type: 'same', from: id, to: targets[0] });
       } else if (targets.length >= 2) {
-        // 조합이 되는 순간 이건 부품 하나가 아니라 '그것들의 합'인 별개 이벤트다.
-        // 동일 때 물려받은 이름(별칭에 원래 이름 보관)을 되돌려 제 정체성을 회복한다.
-        if (it.alias) { it.ti = it.alias; it.alias = null; }
         for (const t of targets) doc.relations.push({ id: newId('r'), type: 'combine', from: id, to: t });
-      } else if (it.alias) {
-        // 0개 — 다시 독립 이벤트. 물려받아 가려졌던 원래 이름을 되돌린다.
-        it.ti = it.alias; it.alias = null;
       }
     });
     this.#renderSame(item);
-    if (this.item) {
-      $('i-aliasname').value = this.item.alias ?? '';
-      $(F.title).value = this.item.ti ?? '';
-      autogrow($(F.title));
-      // 매핑을 바꾸면 진행도 탭도 다시 그린다(#4) — 별칭·본질·하위가 바뀌었을 수 있다.
-      this.#renderTasks(this.item);
-      this.#renderChildren(this.item);
-      this.#syncProgUI(this.item);
-    }
+    if (this.item) this.#renderChildren(this.item);   // 동일·조합 모두 '구성'에 반영
   }
 
   /** 제목으로 검색하면 뜨는 "같은 카드로 연결" 후보(모든 보드). 평상시엔 숨김. */
@@ -657,18 +632,19 @@ export class ItemPanel {
     const own = this.store.items.filter((x) => x.parent === item.id);
     for (const c of own) renderKid(c, box);
 
-    // (2) 조합한 이벤트 — 부품마다 접기 그룹. 자식 카드는 그 부품 칸에 채운다(순서·자리 보존).
-    const parts = this.#combineParts(item);
-    for (const pid of parts) {
-      const pev = (this._allEvents ?? []).find((e) => e.id === pid);
+    // (2) 매핑한 이벤트 — 동일(same)과 조합(combine) 둘 다. 부품마다 접기 그룹, 자식 카드는
+    //     그 부품 칸에 채운다(순서·자리 보존).
+    const parts = this.#mappedParts(item);
+    for (const p of parts) {
+      const pev = (this._allEvents ?? []).find((e) => e.id === p.id);
       const partBoard = pev?.boardId ?? (Number(String(pev?.boardIds ?? '').split(',')[0]) || null);
       const { row, kids } = node({
-        title: pev?.title || '(이벤트)', status: pev?.st ?? 'plan', tag: '조합', hasKids: true,
+        title: pev?.title || '(이벤트)', status: pev?.st ?? 'plan', tag: p.kind, hasKids: true,
         onOpen: partBoard ? () => this.openProject?.(partBoard) : null,
       });
       box.append(row);
       kids.append(el('div.empty', { text: '불러오는 중…' }));
-      this.adapter?.eventCards?.(pid).then((cards) => {
+      this.adapter?.eventCards?.(p.id).then((cards) => {
         if (this._detailGen !== gen || this.item?.id !== item.id) return;
         clear(kids);
         if (!(cards && cards.length)) { kids.append(el('div.empty', { text: '하위 일정 없음' })); return; }
@@ -683,11 +659,19 @@ export class ItemPanel {
     if (!own.length && !parts.length) box.append(el('div.empty', { text: '구성이 없습니다.' }));
   }
 
-  /** 이 이벤트가 조합(combine)으로 품은 대상 id들. */
-  #combineParts(item) {
+  /** 이 이벤트가 매핑한 대상들 — 동일(same, 대칭)과 조합(combine). {id, kind}. */
+  #mappedParts(item) {
     const id = item?.id;
     if (!id) return [];
-    return this.store.relations.filter((r) => r.type === 'combine' && r.from === id).map((r) => r.to);
+    const out = [];
+    const seen = new Set();
+    for (const r of this.store.relations) {
+      let pid = null; let kind = null;
+      if (r.type === 'same' && (r.from === id || r.to === id)) { pid = r.from === id ? r.to : r.from; kind = '동일'; }
+      else if (r.type === 'combine' && r.from === id) { pid = r.to; kind = '조합'; }
+      if (pid && !seen.has(pid)) { seen.add(pid); out.push({ id: pid, kind }); }
+    }
+    return out;
   }
 
   /** 다른 보드의 이벤트(카드·트랙·프로젝트)를 받아 동일 후보·구성 일정·진행도를 갱신. */

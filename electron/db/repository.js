@@ -608,21 +608,9 @@ export class BoardRepository {
             insCont.run(rel.from, rel.to, 2, 0);
           }
         }
-        // 동일(same)로 묶인 이벤트끼리 본질을 맞춘다 — 보드를 넘어 공유(§3.4). 편집한 이 보드가
-        // 원본이라, 이 보드의 이벤트 본질을 반대쪽(다른 보드일 수 있음)에 복사한다. 별칭은 배치라 제외.
-        // 트랙·보드(루트)도 이벤트라 원본이 될 수 있다 — 트랙 이름을 바꾸면 동일 카드에 반영된다(§3.2).
-        const essenceIds = new Set([...itemIds, root, ...doc.tracks.map((t) => tkey(t.id))]);
-        const getEss = this.db.prepare(
-          'SELECT title, start_date AS s, end_date AS e, type, status, org, progress AS pg, note FROM event WHERE id = ?',
-        );
-        for (const rel of doc.relations) {
-          if (rel.type !== 'same') continue;
-          const src = essenceIds.has(rel.from) ? rel.from : (essenceIds.has(rel.to) ? rel.to : null);
-          const dst = src === rel.from ? rel.to : rel.from;
-          if (!src || src === dst) continue;
-          const e = getEss.get(src);
-          if (e) upEvent.run({ id: dst, title: e.title, s: e.s, e: e.e, type: e.type, status: e.status, org: e.org, pg: e.pg, note: e.note });
-        }
+        // 동일(same)은 관계만 기록한다 — 한쪽 본질을 다른 쪽에 복사하지 않는다.
+        // (옛 '본질 공유' 복사가 사용자가 직접 지은 트랙·카드 이름을 덮어써 데이터를 망가뜨렸다.)
+        // 각 이벤트는 자기 제목을 지키고, 이름은 관계로 잇되 값은 각자 유지한다.
       } else {
         for (const it of doc.items) {
           for (const dep of it.dp ?? []) insRel.run(`r_${dep}_${it.id}`, 'dep', dep, it.id);
