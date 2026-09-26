@@ -56,7 +56,7 @@ body.panel-open{--panel-w:var(--panel-size)}
   border-radius:var(--u1);cursor:pointer}
 .fl-opt:hover{background:var(--bg-hover)}
 .fl-opt.sel{background:var(--accent-soft)}
-.fl-check{width:var(--u4);height:var(--u4);flex:none;display:flex;align-items:center;justify-content:center;color:var(--accent)}
+.fl-box{width:16px;height:16px;flex:none;accent-color:var(--accent);margin:0}
 .fl-label{flex:1;min-width:0;font-size:13px;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .fl-label em{font-style:normal;font-size:11px;color:var(--text-tertiary);margin-left:var(--u1-5)}
 .fl-empty{color:var(--text-tertiary);font-size:12px;padding:var(--u2)}

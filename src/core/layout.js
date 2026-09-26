@@ -124,11 +124,11 @@ export function laneWidthFactor(lanes) {
 export function gridTemplate(tracks, trackLanes) {
   const cols = tracks
     .map((t) => {
-      if (t.w) return `${t.w}px`;
+      // 지정 너비 트랙도 minmax(0, Npx) — 자리가 넉넉하면 Npx를 다 쓰고, 패널이 열려
+      // 좁아지면 함께 줄어든다(가로 스크롤 대신 축소). 자동 너비 트랙은 남는 공간을
+      // 비율(f)로 나눠 채운다. 어느 쪽이든 최소 0이라 본문이 늘 오른쪽 패널에 맞춰 준다.
+      if (t.w) return `minmax(0,${t.w}px)`;
       const f = laneWidthFactor(trackLanes.get(t.id) ?? 1).toFixed(2);
-      // 폭이 정해지지 않은 트랙은 남는 공간을 비율(f)로 나눠 채운다. 최소를 0으로 둬
-      // 패널이 열려 폭이 줄면 가로 스크롤을 만들지 않고 함께 좁아진다. 폭이 꼭 필요하면
-      // 트랙별 너비(t.w)를 지정한다 — 그때만 스크롤이 생긴다.
       return `minmax(0,${f}fr)`;
     })
     .join(' ');

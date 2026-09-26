@@ -50,13 +50,17 @@ export function createFilterList({ mode = 'single', placeholder = '검색…', e
         dataset: { id: o.id }, attrs: { role: 'option', 'aria-selected': String(on) },
       });
       if (on) row.classList.add('sel');
-      row.append(el('span.fl-check', {}, on ? [icon(ICONS.check)] : []));
+      // 실제 네모 체크박스. 행 클릭이 토글을 담당하므로 입력은 표시용(pointer-events 없음).
+      const box = el('input.fl-box', { type: 'checkbox', checked: on, tabIndex: -1 });
+      box.style.pointerEvents = 'none';
+      row.append(box);
       row.append(el('span.fl-label', {}, [
         document.createTextNode(o.label),
         o.sub ? el('em', { text: o.sub }) : null,
       ]));
+      // 다중이든 단일이든 클릭하면 토글 — 켜진 걸 다시 누르면 꺼진다(=없음).
       row.addEventListener('click', () => {
-        onChange(o.id, mode === 'multi' ? !on : true);
+        onChange(o.id, !on);
         paint();
       });
       listBox.append(row);

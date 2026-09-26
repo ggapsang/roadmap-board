@@ -194,6 +194,7 @@ async function runSmoke(target) {
   let taskCheck = null;
   let idCheck = null;
   let drill = null;
+  let panelFit = null;
   let cornerCheck = null;
   let trackResize = null;
   let spanEdit = null;
@@ -442,6 +443,28 @@ async function runSmoke(target) {
       return { before, after, stored, grew: after > before + 80, reset };
     })()`), 20000, 'track-resize');
     console.log('[smoke] track-resize ' + JSON.stringify(trackResize));
+
+    // 지정 너비 트랙이 있어도 오른쪽 패널이 열리면 본문이 함께 좁아진다(가로 스크롤 없음)
+    panelFit = await withTimeout(target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      r.store.commit('넓은 트랙', () => { for (const t of r.store.tracks) t.w = 320; });
+      r.board.rebuild();
+      await new Promise((res) => setTimeout(res, 200));
+      const scroll = document.getElementById('scroll');
+      document.querySelector('.col > .ev')?.click();     // 패널 열기
+      await new Promise((res) => setTimeout(res, 350));
+      const panelOpen = document.body.classList.contains('panel-open');
+      const cal = document.querySelector('.cal');
+      const calW = Math.round(cal.getBoundingClientRect().width);
+      const scrollW = Math.round(scroll.clientWidth);
+      const fits = calW <= scrollW + 2;                  // 본문이 좁아진 영역에 들어간다
+      document.querySelector('#pItem [data-close]').click();
+      r.store.commit('원복', () => { for (const t of r.store.tracks) t.w = null; });
+      r.board.rebuild();
+      await new Promise((res) => setTimeout(res, 150));
+      return { panelOpen, calW, scrollW, fits };
+    })()`), 20000, 'panel-fit');
+    console.log('[smoke] panel-fit ' + JSON.stringify(panelFit));
 
     // 트랙 걸침(sp) — 오른쪽 패널에서 조절되는가
     spanEdit = await withTimeout(target.webContents.executeJavaScript(`(async () => {
@@ -1238,6 +1261,7 @@ async function runSmoke(target) {
     && idCheck?.relOk === true && idCheck?.parentOk === true && idCheck?.relKept === true
     && layout?.panelOpen === true && layout?.shrunk > 280 && layout?.selectable === 'text'
     && trackResize?.grew === true && trackResize?.reset === null
+    && panelFit?.panelOpen === true && panelFit?.fits === true
     && spanEdit?.after?.sp === 3 && spanEdit?.after?.px > spanEdit?.before?.px
     && newTrack?.after === newTrack?.before + 1 && newTrack?.hasColumn === true
     && newTrack?.drawn === true && spanDrag?.sp === 3

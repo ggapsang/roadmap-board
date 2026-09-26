@@ -81,8 +81,8 @@ export class ItemPanel {
     });
     this.parentList = createFilterList({
       mode: 'single', placeholder: '상위 일정 검색…', emptyText: '품을 수 있는 일정이 없습니다.',
-      isSelected: (id) => (this.item?.parent ?? '') === id,
-      onChange: (id) => this.#setParent(id || null),
+      isSelected: (id) => this.item?.parent === id,
+      onChange: (id, next) => this.#setParent(next ? id : null),
     });
     $('i-deps').append(this.depsList.root);
     $('i-parent').append(this.parentList.root);
@@ -227,10 +227,10 @@ export class ItemPanel {
     });
   }
 
-  /** 상위 일정 후보 — 자기·자손·마일스톤을 뺀 것 + '없음'. */
+  /** 상위 일정 후보 — 자기·자손·마일스톤을 뺀 것. 체크가 없으면 상위 없음(트랙에 직접). */
   #renderParents(item) {
     const descendants = this.#descendantsOf(item.id);
-    const options = [{ id: '', label: '— 없음 (트랙에 직접) —' }];
+    const options = [];
     for (const other of this.store.items) {
       if (other.id === item.id || descendants.has(other.id) || other.ty === 'ms') continue;
       options.push({ id: other.id, label: other.ti || '(제목 없음)', sub: this.store.track(other.place.t)?.name ?? '' });
