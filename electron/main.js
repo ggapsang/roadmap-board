@@ -978,11 +978,11 @@ async function runSmoke(target) {
         const cntComb = () => r.store.relations.filter((x) => x.type === 'combine' && x.from === id).length;
         const opts = () => [...document.querySelectorAll('#i-same .fl-opt')];
         opts()[0].click(); await sleep(150);
-        const one = { same: cntSame(), combine: cntComb() };   // 하나 골라도 동일 아님 → combine 1
+        const one = { same: cntSame(), combine: cntComb() };   // 신선한 1개 = 동일(same)
         opts()[1].click(); await sleep(150);
-        const two = { same: cntSame(), combine: cntComb() };   // 둘이면 combine 2
+        const two = { same: cntSame(), combine: cntComb() };   // 2개 = 조합(combine 2)
         const sel = opts().filter((o) => o.getAttribute('aria-selected') === 'true');
-        sel[sel.length - 1].click(); await sleep(150);          // 하나 해제 → combine 1 (동일로 안 바뀜)
+        sel[sel.length - 1].click(); await sleep(150);          // 조합 부품 하나 해제 → 남은 것도 조합 부품이라 combine 유지(동일 아님)
         const backToOne = { same: cntSame(), combine: cntComb() };
         document.querySelector('#pItem [data-close]').click();
         r.store.commit('smoke 원복', (doc) => {
@@ -1546,7 +1546,7 @@ async function runSmoke(target) {
     && sameCheck?.count > 0 && sameCheck?.hasBoard === true && sameCheck?.hasCard === true
     && sameCheck?.hasTrack === true && sameCheck?.hasBoardIds === true && sameCheck?.pickerOpts > 0
     && sameCheck?.ownTrackExcluded === true
-    && combineCheck?.one?.same === 0 && combineCheck?.one?.combine === 1
+    && combineCheck?.one?.same === 1 && combineCheck?.one?.combine === 0
     && combineCheck?.two?.same === 0 && combineCheck?.two?.combine === 2
     && combineCheck?.backToOne?.same === 0 && combineCheck?.backToOne?.combine === 1
     && xition?.promoted?.isCard === true && xition?.promoted?.notTask === true

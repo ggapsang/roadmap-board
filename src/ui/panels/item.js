@@ -85,11 +85,10 @@ export class ItemPanel {
       isSelected: (id) => this.item?.parent === id,
       onChange: (id, next) => this.#setParent(next ? id : null),
     });
-    // 조합 = 이 이벤트가 '어떤 이벤트들의 합'인가. 서로 다른 이벤트를 부품으로 고른다(합성물←부품).
-    // 동일(같은 이벤트)은 여기서 만들지 않는다 — 같은 이벤트를 여러 보드에 두면 자동이다.
-    // 개수로 뜻이 바뀌지 않는다: 하나를 고르든 여럿을 고르든 '조합(구성원)'이다.
+    // 1개=동일(같은 이벤트), 2개+=조합(그 합). 단, 구조상 이미 '서로 다른 이벤트'로 증명된 것
+    // (조합 부품·트랙·상하위)은 후보에서 빠지고 동일이 될 수 없다 — 모순 방지.
     this.sameList = createFilterList({
-      mode: 'multi', placeholder: '구성원으로 넣을 이벤트 검색…', emptyText: '고를 이벤트가 없습니다.',
+      mode: 'multi', placeholder: '다른 보드의 카드·트랙·프로젝트 검색…', emptyText: '이을 이벤트가 없습니다.',
       isSelected: (id) => this.#linkedTargets().has(id),
       onChange: (id, next) => this.#toggleSame(id, next),
     });
@@ -357,7 +356,11 @@ export class ItemPanel {
     this.sameList.render(options);
   }
 
-  /** 동일·조합 후보에서 뺄 것: 자기 자신·자기가 걸친 트랙·조상(상위 일정)·자손. */
+  /**
+   * 동일이 될 수 없는(= 구조상 이미 '서로 다른 이벤트'로 증명된) 대상들.
+   * 자기 자신·자기가 걸친 트랙·조상·자손, 그리고 조합으로 엮인 것들(부품/합성물).
+   * 조합은 "이 이벤트 = 그것들의 합"이라 부품과는 절대 동일일 수 없다(모순).
+   */
   #sameExcluded(item) {
     const out = new Set([item.id]);
     const home = this.store.trackIndex(item.place.t);
@@ -366,16 +369,22 @@ export class ItemPanel {
     let p = item.parent;
     while (p && !out.has(p)) { out.add(p); p = this.store.item(p)?.parent; }
     for (const d of this.#descendantsOf(item.id)) out.add(d);
+    // 조합 관계(부품·합성물)는 서로 다른 이벤트임이 증명됨 → 동일 불가
+    for (const r of this.store.relations) {
+      if (r.type === 'combine' && r.from === item.id) out.add(r.to);
+      if (r.type === 'combine' && r.to === item.id) out.add(r.from);
+    }
     return out;
   }
 
-  /** 이 이벤트가 조합(combine)으로 품은 구성원 id 집합. 피커 선택 상태의 진실. */
+  /** 이 이벤트가 동일(same)·조합(combine)으로 이은 대상 id 집합. 피커 선택 상태의 진실. */
   #linkedTargets() {
     const id = this.item?.id;
     const set = new Set();
     if (!id) return set;
     for (const r of this.store.relations) {
-      if (r.type === 'combine' && r.from === id) set.add(r.to);
+      if (r.type === 'same' && (r.from === id || r.to === id)) set.add(r.from === id ? r.to : r.from);
+      else if (r.type === 'combine' && r.from === id) set.add(r.to);
     }
     return set;
   }
@@ -388,17 +397,27 @@ export class ItemPanel {
   }
 
   /**
-   * 조합만 만든다 — 이 이벤트가 고른 이벤트들의 '합'임을 combine 관계로 기록한다. 개수와
-   * 무관(하나든 여럿이든 조합). 본질(제목 등)은 절대 안 건드린다. 서로 다른 두 이벤트를
-   * '동일'로 선언하지 않는다(그건 모순) — 동일은 같은 이벤트를 여러 보드에 두면 자동이다.
+   * 1개=동일(same), 2개+=조합(combine). 단, 하나여도 그 대상이 구조상 '서로 다른 이벤트'로
+   * 증명된 것(조합 부품·트랙·상하위)이면 동일이 될 수 없으므로 조합으로 둔다(모순 방지).
+   * 관계만 만들고 본질(제목 등)은 절대 안 건드린다 — 각 카드는 자기 제목을 지킨다.
    */
   #applyLinks(targets) {
     const item = this.item;
     if (!item) return;
     const id = item.id;
-    this.store.commit('조합', (doc) => {
-      doc.relations = (doc.relations ?? []).filter((r) => !(r.type === 'combine' && r.from === id));
-      for (const t of targets) doc.relations.push({ id: newId('r'), type: 'combine', from: id, to: t });
+    const excl = this.#sameExcluded(item);
+    const asSame = targets.length === 1 && !excl.has(targets[0]);
+    this.store.commit('동일·조합', (doc) => {
+      doc.relations = (doc.relations ?? []).filter((r) => {
+        if (r.type === 'same' && (r.from === id || r.to === id)) return false;
+        if (r.type === 'combine' && r.from === id) return false;
+        return true;
+      });
+      if (asSame) {
+        doc.relations.push({ id: newId('r'), type: 'same', from: id, to: targets[0] });
+      } else {
+        for (const t of targets) doc.relations.push({ id: newId('r'), type: 'combine', from: id, to: t });
+      }
     });
     this.#renderSame(item);
     if (this.item) this.#renderChildren(this.item);
@@ -649,14 +668,17 @@ export class ItemPanel {
     if (!own.length && !parts.length) box.append(el('div.empty', { text: '구성이 없습니다.' }));
   }
 
-  /** 이 이벤트가 조합(combine)으로 품은 구성원들. {id, kind:'조합'}. */
+  /** 이 이벤트가 매핑한 대상들 — 동일(same, 대칭)과 조합(combine). {id, kind}. */
   #mappedParts(item) {
     const id = item?.id;
     if (!id) return [];
     const out = [];
     const seen = new Set();
     for (const r of this.store.relations) {
-      if (r.type === 'combine' && r.from === id && !seen.has(r.to)) { seen.add(r.to); out.push({ id: r.to, kind: '조합' }); }
+      let pid = null; let kind = null;
+      if (r.type === 'same' && (r.from === id || r.to === id)) { pid = r.from === id ? r.to : r.from; kind = '동일'; }
+      else if (r.type === 'combine' && r.from === id) { pid = r.to; kind = '조합'; }
+      if (pid && !seen.has(pid)) { seen.add(pid); out.push({ id: pid, kind }); }
     }
     return out;
   }
