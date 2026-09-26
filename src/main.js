@@ -21,6 +21,7 @@ import { initTheme } from './ui/theme.js';
 import { toast } from './ui/toast.js';
 import { exportPng, exportPdf } from './ui/export.js';
 import { Launcher } from './ui/launcher.js';
+import { BoardTabs } from './ui/tabs.js';
 import { Board } from './ui/board/index.js';
 import { initToolbar } from './ui/toolbar.js';
 import { renderStatusBar } from './ui/statusbar.js';
@@ -39,6 +40,9 @@ async function boot() {
   // 문서는 프로젝트를 열 때 채워진다. 그 전까지는 빈 껍데기.
   const store = new Store({ adapter, doc: emptyDoc() });
   store.on('error', (message) => toast(message, 'warn'));
+
+  // 보드 탭 — 여러 보드를 오간다. launcher·itemPanel·toolbar가 참조하므로 먼저 선언만.
+  let tabs;
 
   // ── 화면 조립 ───────────────────────────────────────────
 
@@ -64,7 +68,7 @@ async function boot() {
     },
   });
 
-  const itemPanel = new ItemPanel({ store, view, panels, adapter, openProject });
+  const itemPanel = new ItemPanel({ store, view, panels, adapter, openProject: (id) => tabs.openBoard(id) });
   const configPanel = new ConfigPanel({ store, view, panels });
   const dataPanel = new DataPanel({
     store, view, panels, adapter,
@@ -73,12 +77,19 @@ async function boot() {
 
   const launcher = new Launcher({
     adapter,
-    onOpen: openProject,
-    // 열려 있는 프로젝트의 이름이 바뀌면 화면의 문서도 맞춰 저장한다.
+    onOpen: (id) => tabs.openBoard(id),
+    // 열려 있는 프로젝트의 이름이 바뀌면 화면의 문서도 맞춰 저장하고, 탭 이름도 갱신한다.
     // 그러지 않으면 다음 저장 때 store의 옛 meta.name이 DB를 덮어쓴다.
     onRenamed: (id, name) => {
       if (adapter.projectId === id) store.commit('이름 변경', (doc) => { doc.meta.name = name; });
+      tabs.renameBoard(id, name);
     },
+    onDeleted: (id) => tabs.boardClosed(id),
+  });
+
+  tabs = new BoardTabs({
+    mount: $('tabbar'), launcher, openProject,
+    boardName: () => store.meta.name,
   });
 
   const toolbar = initToolbar({
@@ -92,7 +103,7 @@ async function boot() {
       nudgeFont: (d) => nudgeFont(d),
       exportPng: () => { panels.close(); return exportPng(adapter, store); },
       exportPdf: () => { panels.close(); return exportPdf(adapter, store); },
-      openProjects: () => { panels.close(); launcher.show({ closable: true }); },
+      openProjects: () => { panels.close(); tabs.newLauncherTab(); },
       toggleTextSelect: () => {
         view.textSelect = !view.textSelect;
         toast(view.textSelect ? '텍스트 선택 모드 — 드래그 이동이 멈춥니다' : '텍스트 선택 모드 해제');
@@ -126,6 +137,7 @@ async function boot() {
     // 기간·트랙 구성이 통째로 바뀌는 변경은 골격부터 다시 그린다
     if (['replace', 'undo', 'redo', 'adopt'].includes(reason)) rebuild();
     else refresh();
+    tabs?.syncActiveName();   // 보드 이름이 바뀌었으면 탭 이름도 맞춘다
     if (panels.current === 'pData') $('d-json').value = store.toJSON();
   });
   view.on('change', () => refresh());
@@ -239,7 +251,7 @@ async function boot() {
     } catch { /* 목록/생성 실패는 조용히 무시 — 앱 실행은 계속 */ }
   }
 
-  await launcher.show({ closable: false });
+  tabs.init();
 
   const foot = $('l-foot');
   if (adapter.info) {
@@ -260,7 +272,7 @@ async function boot() {
   }
 
   // 개발자 도구에서 바로 만질 수 있게
-  Object.assign(globalThis, { __roadmap: { store, view, board, adapter, launcher, openProject } });
+  Object.assign(globalThis, { __roadmap: { store, view, board, adapter, launcher, tabs, openProject } });
 }
 
 /** 프로젝트를 열기 전의 빈 문서 */

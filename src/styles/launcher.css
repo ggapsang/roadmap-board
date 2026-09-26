@@ -1,5 +1,6 @@
 /* ── 프로젝트 목록 (첫 화면) ──────────────────────── */
-.launcher{position:fixed;inset:0;z-index:90;background:var(--bg-canvas);
+/* 탭 아래에서 시작 — 보드 선택 화면도 하나의 탭이라 탭줄은 늘 보여야 한다 */
+.launcher{position:fixed;top:var(--tab-h);left:0;right:0;bottom:0;z-index:90;background:var(--bg-canvas);
   display:flex;flex-direction:column;overflow:auto;
   padding-top:env(safe-area-inset-top,0px)}
 .launcher[hidden]{display:none}

@@ -26,6 +26,9 @@
   --u1:4px; --u1-5:6px; --u2:8px; --u2-5:10px; --u3:12px; --u4:16px;
   --u5:20px; --u6:24px; --u7:28px; --u8:32px; --u10:40px;
 
+  /* 보드 탭줄 높이 (launcher가 이 아래에서 시작한다) */
+  --tab-h:38px;
+
   /* ── 모서리 (가이드 §10 / §15 — 과도하게 둥근 SaaS 스타일 회피) ── */
   --r-control:6px; --r-card:8px; --r-panel:8px; --r-dialog:12px; --r-pill:9999px;
 

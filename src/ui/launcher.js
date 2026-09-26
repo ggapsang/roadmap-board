@@ -40,10 +40,11 @@ export class Launcher {
    * @param {import('../core/storage.js').StorageAdapter} opts.adapter
    * @param {(id:number) => Promise<void>} opts.onOpen
    */
-  constructor({ adapter, onOpen, onRenamed }) {
+  constructor({ adapter, onOpen, onRenamed, onDeleted }) {
     this.adapter = adapter;
     this.onOpen = onOpen;
     this.onRenamed = onRenamed;
+    this.onDeleted = onDeleted;
     this.root = $('launcher');
     this._query = '';
     this._sort = 'recent';       // recent | name | manual
@@ -222,6 +223,7 @@ export class Launcher {
     });
     if (!ok) return;
     await this.adapter.deleteProject(p.id);
+    this.onDeleted?.(p.id);
     await this.render();
     toast('삭제했습니다');
   }
