@@ -1125,8 +1125,10 @@ async function runSmoke(target) {
   if (!result.error) {
     try {
       const mark = await target.webContents.executeJavaScript(writeProbe);
+      // 이벤트는 이제 event(본질) + placement(배치)에 저장된다.
       const row = db.prepare(
-        'SELECT title FROM item WHERE board_id = ? ORDER BY ord LIMIT 1',
+        `SELECT e.title FROM placement p JOIN event e ON e.id = p.event_id
+         WHERE p.board_id = ? ORDER BY p.ord LIMIT 1`,
       ).get(opened.opened);
       wrote = row?.title === mark;
       console.log('[smoke] write round-trip ' + (wrote ? 'ok' : `FAIL (DB=${row?.title})`));
@@ -1136,7 +1138,37 @@ async function runSmoke(target) {
     }
   }
 
+  // 이벤트를 보드 밖으로 뺀 핵심 검증 — 같은 이벤트를 두 보드에 배치하면 본질이 공유된다 (§3.4)
+  let shared = null;
+  if (wrote) {
+    try {
+      const bid = opened.opened;
+      const first = db.prepare('SELECT event_id FROM placement WHERE board_id = ? ORDER BY ord LIMIT 1').get(bid);
+      const eventId = first.event_id;
+      const b2 = db.prepare(
+        "INSERT INTO board (name, start_date, end_date, doc_version) VALUES ('공유 테스트','2026-09-21','2027-04-04',14)",
+      ).run();
+      const b2id = Number(b2.lastInsertRowid);
+      // 같은 이벤트를 두 번째 보드에도 배치
+      db.prepare(
+        "INSERT INTO placement (board_id, event_id, track_id, ord, span, align, show_note) VALUES (?, ?, 't0', 0, 1, 'middle', 0)",
+      ).run(b2id, eventId);
+      // 이벤트 본질을 한 번 바꾸면 두 보드가 함께 반영되는가
+      db.prepare("UPDATE event SET status = 'done' WHERE id = ?").run(eventId);
+      const q = db.prepare(
+        'SELECT e.status FROM placement p JOIN event e ON e.id = p.event_id WHERE p.board_id = ? AND p.event_id = ?',
+      );
+      const inB1 = q.get(bid, eventId)?.status;
+      const inB2 = q.get(b2id, eventId)?.status;
+      const places = db.prepare('SELECT count(*) c FROM placement WHERE event_id = ?').get(eventId).c;
+      shared = inB1 === 'done' && inB2 === 'done' && places === 2;
+      db.prepare('DELETE FROM board WHERE id = ?').run(b2id);   // 정리 (placement CASCADE)
+      console.log('[smoke] shared-event ' + JSON.stringify({ shared, places, inB1, inB2 }));
+    } catch (err) { console.log('[smoke] shared-event FAIL ' + err); shared = false; }
+  }
+
   const ok = !result.error && !opened?.error && !renamed?.error
+    && shared === true
     && relCheck?.allDep === true && relCheck?.added === true && relCheck?.removed === true
     && orderCheck?.topoOk === true && orderCheck?.edges > 0 && orderCheck?.maxRank > 0
     && orderMode?.hasOrderAxis === true && orderMode?.ordered === true && orderMode?.cards > 0 && orderMode?.back === true

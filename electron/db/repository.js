@@ -32,8 +32,8 @@ export class BoardRepository {
     return this.db.prepare(`
       SELECT b.id, b.name, b.start_date AS start, b.end_date AS end,
              b.updated_at AS updatedAt, b.opened_at AS openedAt,
-             (SELECT count(*) FROM item  WHERE board_id = b.id) AS items,
-             (SELECT count(*) FROM track WHERE board_id = b.id) AS tracks
+             (SELECT count(*) FROM placement WHERE board_id = b.id) AS items,
+             (SELECT count(*) FROM track     WHERE board_id = b.id) AS tracks
       FROM board b
       ORDER BY COALESCE(b.opened_at, b.updated_at) DESC, b.id DESC
     `).all();
@@ -120,27 +120,32 @@ export class BoardRepository {
     ).all(this.boardId)
       .map((r) => ({ id: r.id, from: r.from_date, to: r.to_date, label: r.label, scale: r.scale }));
 
-    const rows = this.db.prepare(
-      'SELECT * FROM item WHERE board_id = ? ORDER BY ord',
-    ).all(this.boardId);
+    // 이 보드의 배치 + 각 배치가 가리키는 이벤트 본질. item = event(본질) + placement(배치).
+    const rows = this.db.prepare(`
+      SELECT e.id AS id, e.title, e.start_date, e.end_date, e.type, e.status, e.org, e.progress, e.note,
+             p.track_id, p.span, p.pos_x, p.pos_w, p.height_days, p.align, p.show_note, p.parent_id
+      FROM placement p JOIN event e ON e.id = p.event_id
+      WHERE p.board_id = ? ORDER BY p.ord
+    `).all(this.boardId);
 
-    const deps = this.db.prepare(
-      'SELECT item_id, depends_on FROM dependency WHERE board_id = ?',
-    ).all(this.boardId);
-
-    // 순서 없는 태스크 — item_id로 묶어 각 일정에 붙인다.
-    const taskRows = this.db.prepare(
-      'SELECT id, item_id, text, done FROM task WHERE board_id = ? ORDER BY ord',
-    ).all(this.boardId);
-    const tasksByItem = new Map();
-    for (const t of taskRows) {
-      if (!tasksByItem.has(t.item_id)) tasksByItem.set(t.item_id, []);
-      tasksByItem.get(t.item_id).push({ id: t.id, text: t.text, done: t.done === 1 });
+    // 순서 없는 태스크 — 이벤트에 딸린다(보드 무관). 이 보드의 이벤트 것만 모은다.
+    const eventIds = rows.map((r) => r.id);
+    const tasksByEvent = new Map();
+    if (eventIds.length) {
+      const ph = eventIds.map(() => '?').join(',');
+      const taskRows = this.db.prepare(
+        `SELECT id, event_id, text, done FROM event_task WHERE event_id IN (${ph}) ORDER BY ord`,
+      ).all(...eventIds);
+      for (const t of taskRows) {
+        if (!tasksByEvent.has(t.event_id)) tasksByEvent.set(t.event_id, []);
+        tasksByEvent.get(t.event_id).push({ id: t.id, text: t.text, done: t.done === 1 });
+      }
     }
 
-    // 선행(dependency) 테이블 = 'dep' 종류의 관계. from=선행(depends_on), to=후행(item_id).
-    const relations = deps.map((d) => ({ id: `r_${d.item_id}_${d.depends_on}`, type: 'dep', from: d.depends_on, to: d.item_id }));
-    // 포함(contain)은 item.parent_id에서 노출한다 (렌더는 item.parent를 그대로 쓴다).
+    // 선행(dep)은 relation 테이블에서, 포함(contain)은 배치의 parent_id에서 파생한다.
+    const relations = this.db.prepare(
+      'SELECT id, type, from_id, to_id FROM relation WHERE board_id = ?',
+    ).all(this.boardId).map((r) => ({ id: r.id, type: r.type, from: r.from_id, to: r.to_id }));
     for (const r of rows) {
       if (r.parent_id) relations.push({ id: `c_${r.id}`, type: 'contain', from: r.parent_id, to: r.id });
     }
@@ -158,7 +163,7 @@ export class BoardRepository {
         ti: r.title, ty: r.type, st: r.status,
         og: r.org, pg: r.progress, note: r.note,
         parent: r.parent_id ?? null,
-        tasks: tasksByItem.get(r.id) ?? [],
+        tasks: tasksByEvent.get(r.id) ?? [],
         place: {
           t: r.track_id, sp: r.span,
           align: r.align, showNote: r.show_note === 1, hd: r.height_days ?? null, x: r.pos_x, w: r.pos_w,
@@ -189,11 +194,19 @@ export class BoardRepository {
         docVersion: doc.version ?? 1,
       });
 
-      // 자식 테이블을 비우고 다시 채운다. FK CASCADE가 dependency까지 정리한다.
-      this.db.prepare('DELETE FROM item WHERE board_id = ?').run(this.boardId);
+      // 이 보드의 배치·관계·구성을 비운다. 이벤트 본질은 공유될 수 있어 지우지 않고
+      // 아래에서 UPSERT한다(§3.4). 이 보드가 갖고 있던 이벤트의 태스크는 함께 정리한다.
+      const oldEventIds = this.db.prepare('SELECT event_id FROM placement WHERE board_id = ?')
+        .all(this.boardId).map((r) => r.event_id);
+      this.db.prepare('DELETE FROM placement WHERE board_id = ?').run(this.boardId);
+      this.db.prepare('DELETE FROM relation  WHERE board_id = ?').run(this.boardId);
       this.db.prepare('DELETE FROM track WHERE board_id = ?').run(this.boardId);
-      this.db.prepare('DELETE FROM org WHERE board_id = ?').run(this.boardId);
-      this.db.prepare('DELETE FROM band WHERE board_id = ?').run(this.boardId);
+      this.db.prepare('DELETE FROM org   WHERE board_id = ?').run(this.boardId);
+      this.db.prepare('DELETE FROM band  WHERE board_id = ?').run(this.boardId);
+      if (oldEventIds.length) {
+        const ph = oldEventIds.map(() => '?').join(',');
+        this.db.prepare(`DELETE FROM event_task WHERE event_id IN (${ph})`).run(...oldEventIds);
+      }
 
       const insBand = this.db.prepare(
         'INSERT INTO band (board_id, id, ord, from_date, to_date, label, scale) VALUES (?, ?, ?, ?, ?, ?, ?)',
@@ -211,46 +224,58 @@ export class BoardRepository {
       );
       doc.tracks.forEach((t, i) => insTrack.run(this.boardId, t.id, i, t.lab ?? '', t.name, t.w ?? null));
 
-      const insItem = this.db.prepare(`
-        INSERT INTO item (board_id, id, track_id, ord, span, start_date, end_date,
-                          title, type, status, org, progress, note,
-                          parent_id, pos_x, pos_w, height_days, align, show_note)
-        VALUES (@board, @id, @track, @ord, @span, @s, @e, @title, @type, @status, @org, @pg, @note,
-                @parent, @x, @w, @hd, @align, @showNote)
+      // 이벤트 본질은 UPSERT — 같은 이벤트가 여러 보드에 있어도 하나의 본질을 공유한다(§3.4).
+      const upEvent = this.db.prepare(`
+        INSERT INTO event (id, title, start_date, end_date, type, status, org, progress, note)
+        VALUES (@id, @title, @s, @e, @type, @status, @org, @pg, @note)
+        ON CONFLICT(id) DO UPDATE SET
+          title = @title, start_date = @s, end_date = @e, type = @type,
+          status = @status, org = @org, progress = @pg, note = @note
       `);
-      const insDep = this.db.prepare(
-        'INSERT OR IGNORE INTO dependency (board_id, item_id, depends_on) VALUES (?, ?, ?)',
-      );
+      const insPlace = this.db.prepare(`
+        INSERT INTO placement (board_id, event_id, track_id, ord, span,
+                               pos_x, pos_w, height_days, align, show_note, parent_id)
+        VALUES (@board, @id, @track, @ord, @span, @x, @w, @hd, @align, @showNote, @parent)
+      `);
       const insTask = this.db.prepare(
-        'INSERT INTO task (board_id, id, item_id, ord, text, done) VALUES (?, ?, ?, ?, ?, ?)',
+        'INSERT OR REPLACE INTO event_task (id, event_id, ord, text, done) VALUES (?, ?, ?, ?, ?)',
+      );
+      const insRel = this.db.prepare(
+        'INSERT OR IGNORE INTO relation (board_id, id, type, from_id, to_id) VALUES (?, ?, ?, ?, ?)',
       );
 
       doc.items.forEach((it, i) => {
         // place(정규화된 배치) 또는 flat(정규화 전) 둘 다 받는다.
         const p = it.place ?? it;
-        insItem.run({
-          board: this.boardId, id: it.id, track: p.t, ord: i, span: p.sp ?? 1,
-          s: it.s, e: it.e, title: it.ti ?? '', type: it.ty ?? 'bar',
+        upEvent.run({
+          id: it.id, title: it.ti ?? '', s: it.s, e: it.e, type: it.ty ?? 'bar',
           status: it.st ?? 'plan', org: it.og ?? '', pg: it.pg ?? 0, note: it.note ?? '',
-          parent: it.parent ?? null, x: p.x ?? null, w: p.w ?? null,
-          hd: p.hd ?? null,
-          align: p.align ?? 'middle', showNote: p.showNote ? 1 : 0,
         });
-        // 태스크는 item 뒤에 (FK 충족). item DELETE가 CASCADE로 옛 태스크를 이미 지웠다.
+        insPlace.run({
+          board: this.boardId, id: it.id, track: p.t, ord: i, span: p.sp ?? 1,
+          x: p.x ?? null, w: p.w ?? null, hd: p.hd ?? null,
+          align: p.align ?? 'middle', showNote: p.showNote ? 1 : 0, parent: it.parent ?? null,
+        });
+        // 태스크는 이벤트 뒤에 (FK 충족).
         (Array.isArray(it.tasks) ? it.tasks : []).forEach((t, ti) =>
-          insTask.run(this.boardId, t.id, it.id, ti, t.text ?? '', t.done ? 1 : 0));
+          insTask.run(t.id, it.id, ti, t.text ?? '', t.done ? 1 : 0));
       });
-      // 선행 관계는 모든 item이 들어간 뒤에 (FK 충족). relations의 'dep' 종류를 저장.
+
+      // 선행 관계('dep')만 relation 테이블에. 포함(contain)은 placement.parent_id에서 파생.
       // 정규화 전 문서(item.dp만 있는 경우)도 관대하게 받는다.
       if (Array.isArray(doc.relations)) {
         for (const rel of doc.relations) {
-          if (rel.type === 'dep') insDep.run(this.boardId, rel.to, rel.from);
+          if (rel.type !== 'dep') continue;
+          insRel.run(this.boardId, rel.id || `r_${rel.from}_${rel.to}`, 'dep', rel.from, rel.to);
         }
       } else {
         for (const it of doc.items) {
-          for (const dep of it.dp ?? []) insDep.run(this.boardId, it.id, dep);
+          for (const dep of it.dp ?? []) insRel.run(this.boardId, `r_${dep}_${it.id}`, 'dep', dep, it.id);
         }
       }
+
+      // 어느 보드에도 놓이지 않은 이벤트는 정리한다(지금은 배치 없는 이벤트가 의미 없다).
+      this.db.prepare('DELETE FROM event WHERE id NOT IN (SELECT event_id FROM placement)').run();
 
       this.#maybeRevision(doc, label);
     });
