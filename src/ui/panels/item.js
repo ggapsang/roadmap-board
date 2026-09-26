@@ -6,7 +6,7 @@
  *   태스크 순서 없는 할 일
  */
 import { shortMD, dayIndex, parseDate, inclusiveDays } from '../../core/dates.js';
-import { newId, ALIGNS, propagateSame } from '../../core/schema.js';
+import { newId, ALIGNS } from '../../core/schema.js';
 import { STATUSES, ITEM_TYPES } from '../../config/index.js';
 import { $, el, clear, icon, ICONS } from '../dom.js';
 import { createFilterList } from '../components/filter-list.js';
@@ -85,10 +85,12 @@ export class ItemPanel {
       isSelected: (id) => this.item?.parent === id,
       onChange: (id, next) => this.#setParent(next ? id : null),
     });
+    // 동일 카드 = 같은 이벤트(공유 정체성). 보드를 넘어 모든 보드의 카드·프로젝트가 후보다.
+    // 고르면 이 카드가 그 이벤트가 된다(다중 배치) — 본질 공유, 위치·별칭은 보드별.
     this.sameList = createFilterList({
-      mode: 'multi', placeholder: '동일 카드 검색…', emptyText: '묶을 다른 일정이 없습니다.',
-      isSelected: (id) => this.#isSame(id),
-      onChange: (id) => this.#toggleSame(id),
+      mode: 'single', placeholder: '다른 보드의 카드·프로젝트 검색…', emptyText: '다른 보드의 카드가 없습니다.',
+      isSelected: (id) => this.item?.id === id,
+      onChange: (id, next) => { if (next) this.#confirmLink(id); else this.#unlinkSame(); },
     });
     $('i-deps').append(this.depsList.root);
     $('i-parent').append(this.parentList.root);
@@ -104,10 +106,7 @@ export class ItemPanel {
     $(F.title).addEventListener('input', () => {
       const item = this.item;
       if (!item) return;
-      this.store.commit('제목 수정', (doc) => {
-        item.ti = $(F.title).value;
-        propagateSame(doc, item.id);
-      });
+      this.store.commit('제목 수정', () => { item.ti = $(F.title).value; });
       autogrow($(F.title));
       this.#renderTitleDrop();
     });
@@ -139,8 +138,15 @@ export class ItemPanel {
       if (!item) return;
       const next = $('i-fixedh').getAttribute('aria-pressed') !== 'true';
       this.store.commit('크기 강제', () => {
-        if (next) { item.place.hd = Math.max(1, inclusiveDays(item.s, item.e)); }
-        else { item.place.hd = null; item.place.x = null; item.place.w = null; }
+        if (next) {
+          item.place.hd = Math.max(1, inclusiveDays(item.s, item.e));
+          // 걸치던 칸 수(sp)만큼 폭을 잡아 둔다 — 강제해도 한 칸으로 안 무너진다.
+          // w는 컬럼 기준 비율이라 1보다 크면 옆 트랙까지 넘나든다.
+          item.place.x = 0;
+          item.place.w = Math.max(1, item.place.sp ?? 1);
+        } else {
+          item.place.hd = null; item.place.x = null; item.place.w = null;
+        }
       });
       $('i-fixedh').setAttribute('aria-pressed', String(next));
     });
@@ -205,7 +211,7 @@ export class ItemPanel {
   #setStatus(key) {
     const item = this.item;
     if (!item) return;
-    this.store.commit('상태 변경', (doc) => { item.st = key; propagateSame(doc, item.id); });
+    this.store.commit('상태 변경', () => { item.st = key; });
     this.#syncStatus(item);
   }
 
@@ -251,76 +257,115 @@ export class ItemPanel {
     });
   }
 
-  // ── 동일 카드 (same) — 두 카드가 같은 이벤트. 본질을 공유한다 (§3.4) ──
+  // ── 동일 카드 = 같은 이벤트(공유 정체성, 보드를 넘나든다) (§3.2 다중 소속·§3.4) ──
 
-  #isSame(otherId) {
-    const id = this.item?.id;
-    return this.store.relations.some((r) => r.type === 'same'
-      && ((r.from === otherId && r.to === id) || (r.to === otherId && r.from === id)));
-  }
-
-  /** 동일 카드 후보 — 자기 뺀 모든 카드(별칭이 있으면 별칭으로 보인다). */
-  #renderSame(item) {
-    const options = this.store.items
-      .filter((x) => x.id !== item.id)
-      .map((x) => ({ id: x.id, label: x.alias || x.ti || '(제목 없음)', sub: this.store.track(x.place.t)?.name ?? '' }));
+  /**
+   * 동일 카드 후보 — 모든 보드의 카드 + 모든 프로젝트(보드). 단 이 보드에만 있는
+   * 카드/자기 자신은 뺀다(같은 보드엔 한 이벤트가 한 번만 놓인다). listEvents는 비동기.
+   */
+  async #renderSame(item) {
+    this.sameList.render([]);
+    this._sameOptions = new Map();
+    let events = [];
+    try { events = (await this.adapter?.listEvents?.()) ?? []; } catch { events = []; }
+    if (this.item?.id !== item.id) return;
+    const cur = this.adapter?.projectId;
+    const options = [];
+    for (const ev of events) {
+      const ids = String(ev.boardIds ?? '').split(',').map((s) => Number(s));
+      const crossBoard = ev.kind === 'board' ? ev.boardId !== cur : ids.some((b) => b !== cur);
+      if (!crossBoard) continue;                     // 이 보드에만 있는 건 후보 아님
+      if (this.store.item(ev.id) && ev.id !== item.id) continue;  // 이미 이 보드에 있으면 이중 배치 불가
+      this._sameOptions.set(ev.id, ev);
+      options.push({
+        id: ev.id,
+        label: ev.title || '(제목 없음)',
+        sub: ev.kind === 'board' ? '프로젝트' : (ev.boardNames || ''),
+      });
+    }
     this.sameList.render(options);
   }
 
-  /** other를 이 카드와 같은 이벤트로 묶거나 푼다. 묶을 땐 other의 본질을 이 카드가 물려받는다. */
-  #toggleSame(otherId) {
+  /** 이 카드를 target 이벤트로 만든다(다중 배치). 본질을 물려받고 참조를 옮긴다. */
+  #linkSame(targetId) {
     const item = this.item;
     if (!item) return;
-    const link = (r) => r.type === 'same'
-      && ((r.from === otherId && r.to === item.id) || (r.to === otherId && r.from === item.id));
-    this.store.commit('동일 카드', (doc) => {
-      if (doc.relations.some(link)) {
-        doc.relations = doc.relations.filter((r) => !link(r));
-      } else {
-        doc.relations.push({ id: newId('r'), type: 'same', from: otherId, to: item.id });
-        propagateSame(doc, otherId);   // 기존 카드(other)의 본질을 묶인 무리(=이 카드)로 맞춘다
+    const ev = this._sameOptions?.get(targetId);
+    if (!ev) return;
+    if (this.store.item(targetId)) { toast('이미 이 보드에 있는 이벤트입니다'); return; }
+    const old = item.id;
+    this.store.commit('동일 카드 연결', (doc) => {
+      const it = doc.items.find((x) => x.id === old);
+      it.id = targetId;
+      it.ti = ev.title ?? ''; it.s = ev.s; it.e = ev.e; it.ty = ev.ty ?? 'bar';
+      it.st = ev.st ?? 'plan'; it.og = ev.og ?? ''; it.pg = ev.pg ?? 0; it.note = ev.note ?? '';
+      for (const r of doc.relations) {
+        if (r.from === old) r.from = targetId;
+        if (r.to === old) r.to = targetId;
       }
+      for (const x of doc.items) { if (x.parent === old) x.parent = targetId; }
     });
-    this.open(item.id);   // 본질이 바뀌었을 수 있어 폼을 다시 채운다
+    this.view.selectedItem = targetId;
+    this.open(targetId);
+    toast('같은 이벤트로 연결했습니다 — 보드를 넘어 본질이 공유됩니다');
   }
 
-  /** 제목으로 검색하면 뜨는 "같은 카드로 연결" 후보 드롭다운. 평상시엔 숨김. */
+  /** 연결 해제 — 이 보드만의 독립 카드로 분리(새 이벤트 id, 본질은 유지). */
+  #unlinkSame() {
+    const item = this.item;
+    if (!item) return;
+    const old = item.id;
+    const fresh = newId('e');
+    this.store.commit('동일 카드 해제', (doc) => {
+      const it = doc.items.find((x) => x.id === old);
+      it.id = fresh;
+      for (const r of doc.relations) {
+        if (r.from === old) r.from = fresh;
+        if (r.to === old) r.to = fresh;
+      }
+      for (const x of doc.items) { if (x.parent === old) x.parent = fresh; }
+    });
+    this.view.selectedItem = fresh;
+    this.open(fresh);
+    toast('연결을 해제했습니다 — 이 보드만의 카드로 분리');
+  }
+
+  /** 제목으로 검색하면 뜨는 "같은 카드로 연결" 후보(모든 보드). 평상시엔 숨김. */
   #renderTitleDrop() {
     const drop = $('i-title-drop');
     drop.replaceChildren();
     const item = this.item;
     const q = $(F.title).value.trim().toLowerCase();
-    if (!item || !q) { drop.hidden = true; return; }
-    const matches = this.store.items
-      .filter((x) => x.id !== item.id && !this.#isSame(x.id)
-        && (x.alias || x.ti || '').toLowerCase().includes(q))
+    if (!item || !q || !this._sameOptions) { drop.hidden = true; return; }
+    const matches = [...this._sameOptions.values()]
+      .filter((ev) => ev.id !== item.id && (ev.title || '').toLowerCase().includes(q))
       .slice(0, 8);
     if (!matches.length) { drop.hidden = true; return; }
     for (const m of matches) {
       const row = el('button.title-drop-opt', {
         type: 'button',
-        // mousedown(포커스 유지) + preventDefault로 textarea blur 전에 처리
         on: { mousedown: (e) => { e.preventDefault(); this.#confirmLink(m.id); } },
       }, [
-        el('span.tdo-name', { text: m.alias || m.ti || '(제목 없음)' }),
-        el('em', { text: this.store.track(m.place.t)?.name ?? '' }),
+        el('span.tdo-name', { text: m.title || '(제목 없음)' }),
+        el('em', { text: m.kind === 'board' ? '프로젝트' : (m.boardNames || '') }),
       ]);
       drop.append(row);
     }
     drop.hidden = false;
   }
 
-  async #confirmLink(otherId) {
+  async #confirmLink(targetId) {
     const item = this.item;
     if (!item) return;
     $('i-title-drop').hidden = true;
-    const other = this.store.item(otherId);
-    const name = other?.alias || other?.ti || '(제목 없음)';
+    const ev = this._sameOptions?.get(targetId);
+    const name = ev?.title || '(제목 없음)';
+    const where = ev?.kind === 'board' ? '프로젝트' : (ev?.boardNames || '다른 보드');
     const ok = await askConfirm({
-      title: '같은 카드로 연결', confirmLabel: '연결',
-      message: `'${name}' 카드와 같은 것으로 연결하시겠습니까? 두 카드가 본질(제목·상태·기간 등)을 공유합니다.`,
+      title: '같은 이벤트로 연결', confirmLabel: '연결',
+      message: `'${name}' (${where})와(과) 같은 이벤트로 연결하시겠습니까? 이 카드가 그 이벤트가 되어 보드를 넘어 본질을 공유합니다.`,
     });
-    if (ok) this.#toggleSame(otherId);
+    if (ok) this.#linkSame(targetId);
   }
 
   /** 상위 일정 후보 — 자기·자손·마일스톤을 뺀 것. 체크가 없으면 상위 없음(트랙에 직접). */
@@ -426,7 +471,7 @@ export class ItemPanel {
     const item = this.item;
     if (!item) return;
 
-    this.store.commit('일정 편집', (doc) => {
+    this.store.commit('일정 편집', () => {
       item.ti = $(F.title).value;
       item.place.t = $(F.track).value;
       item.ty = $(F.type).value;
@@ -441,7 +486,6 @@ export class ItemPanel {
       item.pg = Math.min(100, Math.max(0, Math.round(Number($(F.prog).value) || 0)));
       item.og = $(F.org).value;
       item.note = $(F.note).value;
-      propagateSame(doc, item.id);   // 같은 이벤트로 묶인 카드들에 본질을 맞춘다
     });
 
     $(F.end).value = item.e;

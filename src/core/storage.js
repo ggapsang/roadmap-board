@@ -24,6 +24,7 @@ export class StorageAdapter {
   get hasHistory() { return false; }
 
   async listProjects() { return []; }
+  async listEvents() { return []; }
   async openProject() { return null; }
   async createProject() { throw new Error('지원하지 않습니다.'); }
   async renameProject() {}
@@ -46,6 +47,7 @@ export class ElectronAdapter extends StorageAdapter {
   }
 
   async listProjects() { return this.api.listProjects(); }
+  async listEvents() { return this.api.listEvents ? this.api.listEvents() : []; }
 
   async openProject(id) {
     const doc = await this.api.openProject(id);

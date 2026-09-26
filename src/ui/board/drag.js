@@ -89,9 +89,12 @@ export function attachDrag(grid, {
       store.commit('가로 폭', () => {
         const item = store.item(drag.id);
         if (!item) return;
+        // 자식은 부모 안(≤1)으로 가둔다. 최상위 강제 카드는 트랙 여러 개까지(≤트랙 수)
+        // 넓힐 수 있어 옆 트랙을 넘나든다 — w>1이면 컬럼을 넘어 걸친다.
+        const max = item.parent ? 1 : store.tracks.length;
         if (drag.mode === 'hw-right') {
           item.place.x = drag.x0;
-          item.place.w = Math.min(1 - drag.x0, Math.max(MIN, drag.w0 + ratio));
+          item.place.w = Math.max(MIN, Math.min(max - drag.x0, drag.w0 + ratio));
         } else {
           const right = drag.x0 + drag.w0;
           const nextX = Math.min(right - MIN, Math.max(0, drag.x0 + ratio));

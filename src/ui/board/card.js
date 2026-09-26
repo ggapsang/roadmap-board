@@ -72,11 +72,23 @@ export function renderCard(item, ctx) {
    * 가로 위치·폭을 비율(x, w)로 직접 잡을 수 있다. 값이 없으면 겹침 계산이 정한다.
    * 최상위 카드는 트랙 걸침으로 폭을 정하므로 이 비율을 쓰지 않는다.
    */
-  // 가로 위치·폭을 비율(x/w)로 잡는 경우: 자식은 늘, 최상위는 '크기 강제' 모드일 때만.
-  // 강제가 아닌 최상위는 자동(레인 폭 / sp 걸침)이라 비율을 쓰지 않는다.
-  const manual = (parent || forced) && (item.place?.x != null || item.place?.w != null);
-  const left = manual ? (item.place.x ?? 0) * 100 : (lane * 100) / lanes;
-  const width = manual ? (item.place.w ?? 1 / lanes) * 100 : 100 / lanes;
+  // 가로 위치·폭(%) 결정. 좌표는 컬럼 기준 비율이라 w가 1을 넘으면 옆 트랙까지 넘나든다.
+  let left, width;
+  if (parent) {
+    // 자식: 상위 카드 안에서의 비율(x/w). 없으면 겹침 계산(레인).
+    const manual = item.place?.x != null || item.place?.w != null;
+    left = (manual ? (item.place.x ?? 0) : lane / lanes) * 100;
+    width = (manual ? (item.place.w ?? 1 / lanes) : 1 / lanes) * 100;
+  } else if (forced) {
+    // 크기 강제 최상위: 비율 x/w로 자유 조절. 폭 비율이 없으면 걸침 칸수(sp)만큼을 기본으로
+    // 둬 강제해도 트랙 걸침이 무너지지 않는다. 드래그로 트랙 너머까지(w>1) 넓힐 수 있다.
+    left = (item.place?.x ?? 0) * 100;
+    width = (item.place?.w ?? (item.place?.sp ?? 1)) * 100;
+  } else {
+    // 자동 최상위: 레인 분할(걸침은 spanBox가 px로 처리).
+    left = (lane * 100) / lanes;
+    width = 100 / lanes;
+  }
 
   /**
    * 여러 트랙에 걸치는 일정은 퍼센트로 잡을 수 없다.
@@ -85,10 +97,10 @@ export function renderCard(item, ctx) {
    * 두 칸 폭과 같지도 않다. 그래서 걸치는 카드만 실제 컬럼 너비로 px를 잡는다.
    */
   const setBox = (node) => {
-    // 여러 트랙에 걸치는 카드는 크기 강제 여부와 무관하게 실제 컬럼 너비(px)로 잡아
-    // 걸침을 유지한다. 강제 모드가 트랙 걸침을 한 칸으로 무너뜨리지 않게 한다.
-    // (강제는 세로 길이 hd로만 작동하고, sp=1일 때만 가로를 비율 x/w로 자유 조절한다.)
-    if (spanBox) {
+    // 자동(강제 아님) 걸침 카드는 실제 컬럼 너비(px)로. 강제 모드는 비율 x/w로 잡아
+    // 좌·우 가장자리를 자유롭게 끈다 — 이때 w는 컬럼 기준 비율이라 1을 넘으면(예 2.0)
+    // 옆 트랙까지 넘나든다(자유롭게 트랙을 가로지른다).
+    if (spanBox && !forced) {
       node.style.left = `${spanBox.left + 4}px`;
       node.style.width = `${Math.max(24, spanBox.width - 8)}px`;
     } else {
@@ -174,9 +186,9 @@ export function renderCard(item, ctx) {
   // 자유롭게 늘리고 줄인다(위로도, 아래로도).
   node.append(el('div.grip-top', { attrs: { 'aria-hidden': 'true' } }));
   node.append(el('div.grip', { attrs: { 'aria-hidden': 'true' } }));
-  // 자식 → 좌우 폭 손잡이(x/w). 강제라도 여러 트랙에 걸치면(spanBox) 걸침 손잡이를 유지해
-  // 트랙을 넘나든다. 강제이면서 한 트랙(sp=1)일 때만 좌우 폭 손잡이.
-  const widthGrips = (forced && !spanBox) || !!parent;
+  // 자식·강제 → 좌우 폭 손잡이(x/w). 강제 모드는 폭을 트랙 너머로도 끌 수 있다(w>1).
+  // 강제 아닌 최상위 → 트랙 걸침 손잡이(칸 단위).
+  const widthGrips = forced || !!parent;
   addHorizontalGrips(node, { span: !widthGrips });
   node.title = `${label}${item.alias ? ` (${item.ti})` : ''}\n${item.s} – ${item.e} · ${item.og}${item.pg ? ' · ' + item.pg + '%' : ''}`;
   return node;

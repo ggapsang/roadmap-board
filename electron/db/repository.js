@@ -40,6 +40,35 @@ export class BoardRepository {
   }
 
   /**
+   * 모든 보드를 통틀어 이벤트 목록. '동일 카드(같은 이벤트)' 연결 후보용.
+   * 카드(placement가 있는 이벤트)는 이벤트당 한 번(어느 보드에 있든), 프로젝트(보드)는
+   * 그 루트 이벤트로 함께 낸다. 본질(제목·기간·상태 등)도 실어 보내 바로 물려받게 한다.
+   * @returns {{id, title, kind, boards, s, e, ty, st, og, pg, note}[]}
+   */
+  listEvents() {
+    const cards = this.db.prepare(`
+      SELECT e.id, e.title, e.type AS ty, e.start_date AS s, e.end_date AS e,
+             e.status AS st, e.org AS og, e.progress AS pg, e.note,
+             group_concat(DISTINCT b.name) AS boardNames,
+             group_concat(DISTINCT b.id)   AS boardIds
+      FROM placement p
+      JOIN event e ON e.id = p.event_id
+      JOIN board b ON b.id = p.board_id
+      GROUP BY e.id
+    `).all().map((r) => ({ ...r, kind: 'card' }));
+
+    const boards = this.db.prepare(`
+      SELECT e.id, e.title, e.type AS ty, e.start_date AS s, e.end_date AS e,
+             e.status AS st, e.org AS og, e.progress AS pg, e.note,
+             b.name AS boardNames, CAST(b.id AS TEXT) AS boardIds, b.id AS boardId
+      FROM board b JOIN event e ON e.id = b.root_event_id
+      WHERE b.root_event_id IS NOT NULL
+    `).all().map((r) => ({ ...r, kind: 'board' }));
+
+    return [...boards, ...cards];
+  }
+
+  /**
    * 새 보드를 만들고 문서를 채운다.
    * @returns {number} 새 보드 id
    */

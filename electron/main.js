@@ -924,27 +924,16 @@ async function runSmoke(target) {
     })()`), 20000, 'corner');
     console.log('[smoke] resize4 ' + JSON.stringify(cornerCheck));
 
-    // 동일 카드 — 두 카드를 같은 이벤트로 묶으면 본질 공유, 별칭은 카드별 (§3.4·§3.5)
+    // 동일 카드 후보 목록 — 보드를 넘어 모든 보드의 카드 + 프로젝트(보드)가 나온다 (§3.2·§3.4)
     sameCheck = await target.webContents.executeJavaScript(`(async () => {
-      const { prepare, propagateSame, sameGroupOf } = await import('./src/core/schema.js');
       const r = window.__roadmap;
-      const a = r.store.items[0], b = r.store.items[1];
-      r.store.commit('smoke-same', (doc) => {
-        doc.relations.push({ id: 'rSame1', type: 'same', from: a.id, to: b.id });
-        r.store.item(a.id).alias = '별칭A';
-        propagateSame(doc, a.id);
-      });
-      const A = r.store.item(a.id), B = r.store.item(b.id);
-      const essenceShared = B.ti === A.ti && B.st === A.st && B.s === A.s && B.e === A.e;
-      const aliasIndependent = A.alias === '별칭A' && B.alias !== '별칭A';
-      const { doc } = prepare(structuredClone(r.store.doc));
-      const sameCount = doc.relations.filter((x) => x.type === 'same').length;
-      const grouped = sameGroupOf(doc.relations, A.id).has(B.id);
-      r.store.commit('원복', (doc) => {
-        doc.relations = doc.relations.filter((x) => x.type !== 'same');
-        r.store.item(a.id).alias = null;
-      });
-      return { essenceShared, aliasIndependent, sameCount, grouped };
+      const events = await r.adapter.listEvents();
+      return {
+        count: events.length,
+        hasBoard: events.some((e) => e.kind === 'board'),   // 프로젝트도 후보
+        hasCard: events.some((e) => e.kind === 'card'),
+        hasBoardIds: events.every((e) => e.boardIds != null),
+      };
     })()`);
     console.log('[smoke] same-card ' + JSON.stringify(sameCheck));
 
@@ -972,13 +961,14 @@ async function runSmoke(target) {
       r.board.render();
       await new Promise((res) => setTimeout(res, 200));
       const w2 = w();
-      const hasSpanGrip = !!document.querySelector('[data-id="' + id + '"] .grip-span');
+      // 강제 카드는 좌우 폭 손잡이로 트랙을 넘나든다(걸침 손잡이 아님).
+      const hasWidthGrip = !!document.querySelector('[data-id="' + id + '"] .grip-he');
       r.store.commit('원복', () => {
         it().place.sp = sp0; it().place.hd = hd0;
         r.store.tracks.forEach((t, i) => { t.w = w0[i]; });
       });
       r.board.rebuild();
-      return { w1: Math.round(w1), w2: Math.round(w2), spanUnderForce: w2 > w1 + 120, hasSpanGrip };
+      return { w1: Math.round(w1), w2: Math.round(w2), spanUnderForce: w2 > w1 + 120, hasWidthGrip };
     })()`);
     console.log('[smoke] span-force ' + JSON.stringify(spanForce));
 
@@ -1341,9 +1331,8 @@ async function runSmoke(target) {
     && titleFit?.shrank === true && titleFit?.fits === true
     && fixedH?.mapGrew === true && fixedH?.hasTopGrip === true && fixedH?.datesUnchanged === true && fixedH?.dragChanged === true
     && cornerCheck?.widthChanged === true && cornerCheck?.heightChanged === true && cornerCheck?.topGrew === true
-    && sameCheck?.essenceShared === true && sameCheck?.aliasIndependent === true
-    && sameCheck?.sameCount === 1 && sameCheck?.grouped === true
-    && spanForce?.spanUnderForce === true && spanForce?.hasSpanGrip === true
+    && sameCheck?.count > 0 && sameCheck?.hasBoard === true && sameCheck?.hasCard === true && sameCheck?.hasBoardIds === true
+    && spanForce?.spanUnderForce === true && spanForce?.hasWidthGrip === true
     && trim?.trimmed === true && trim?.shrank === true
     && monthResize?.made === true && monthResize?.scale < 1 && monthResize?.shrank === true
     && ctxDelete?.hadMenu === true && ctxDelete?.hadBtn === true && ctxDelete?.trimmed === true && ctxDelete?.menuClosed === true
@@ -1451,6 +1440,7 @@ function registerIpc() {
 
   // 프로젝트
   ipcMain.handle('project:list', guard(() => repo.listProjects()));
+  ipcMain.handle('event:list', guard(() => repo.listEvents()));
   ipcMain.handle('project:open', guard((_e, id) => {
     repo.open(id);
     repo.touchOpened(id);

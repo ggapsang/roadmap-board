@@ -19,6 +19,8 @@ contextBridge.exposeInMainWorld('roadmapDB', {
 
   // 프로젝트 — 첫 화면의 목록
   listProjects: () => call('project:list'),
+  // 모든 보드를 통틀어 이벤트 목록 — '동일 카드(같은 이벤트)' 연결 후보
+  listEvents: () => call('event:list'),
   openProject: (id) => call('project:open', id),
   createProject: (doc, name) => call('project:create', doc, name),
   renameProject: (id, name) => call('project:rename', id, name),
