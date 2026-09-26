@@ -119,27 +119,34 @@ export class BoardRepository {
       }
     }
 
-    const essence = this.db.prepare(
-      `SELECT id, title, type AS ty, start_date AS s, end_date AS e,
-              status AS st, org AS og, progress AS pg, note FROM event WHERE id = ?`,
-    );
+    // 본질은 한 번에 모아 읽는다(이벤트마다 쿼리하지 않는다 — 카드 열 때마다 호출되므로 속도).
+    const need = new Set([...rootIds, ...trackIds, ...member.keys()]);
+    const essById = new Map();
+    if (need.size) {
+      const ids = [...need];
+      const ph = ids.map(() => '?').join(',');
+      for (const e of this.db.prepare(
+        `SELECT id, title, type AS ty, start_date AS s, end_date AS e,
+                status AS st, org AS og, progress AS pg, note FROM event WHERE id IN (${ph})`,
+      ).all(...ids)) essById.set(e.id, e);
+    }
     const memNames = (ev) => { const m = member.get(ev); return m ? [...m.names].join(',') : ''; };
     const memIds = (ev) => { const m = member.get(ev); return m ? [...m.ids].join(',') : ''; };
 
     const boards = boardRows.map((b) => {
-      const e = essence.get(b.root_event_id) ?? { id: b.root_event_id, title: b.name };
+      const e = essById.get(b.root_event_id) ?? { id: b.root_event_id, title: b.name };
       return { ...e, boardNames: b.name, boardIds: String(b.id), boardId: b.id, kind: 'board' };
     });
 
     const tracks = [...trackIds].map((ev) => {
-      const e = essence.get(ev);
+      const e = essById.get(ev);
       return e ? { ...e, boardNames: memNames(ev), boardIds: memIds(ev), kind: 'track' } : null;
     }).filter(Boolean);
 
     const cards = [];
     for (const ev of member.keys()) {
       if (rootIds.has(ev) || trackIds.has(ev)) continue;
-      const e = essence.get(ev);
+      const e = essById.get(ev);
       if (!e || e.ty === 'task') continue;   // 태스크는 후보에서 뺀다
       cards.push({ ...e, boardNames: memNames(ev), boardIds: memIds(ev), kind: 'card' });
     }
@@ -285,8 +292,14 @@ export class BoardRepository {
       }
     }
 
+    // 표시는 이 보드의 부모(루트+서브트리) 것만 읽는다 — 전역 disp를 다 훑지 않는다(속도).
     const dispBy = new Map();
-    for (const d of this.db.prepare('SELECT * FROM disp').all()) dispBy.set(d.parent_id + SEP + d.child_id, d);
+    if (evIds.length) {
+      const ph = evIds.map(() => '?').join(',');
+      for (const d of this.db.prepare(`SELECT * FROM disp WHERE parent_id IN (${ph})`).all(...evIds)) {
+        dispBy.set(d.parent_id + SEP + d.child_id, d);
+      }
+    }
 
     const tracks = trackEdges.map((c) => {
       const ev = evById.get(c.child_id) ?? {};
