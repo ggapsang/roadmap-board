@@ -341,13 +341,32 @@ export function normalize(doc) {
       warnings.push(`'${n.ti || id}'의 트랙(${t})을 찾을 수 없어 첫 트랙으로 옮겼습니다.`);
       t = trackIds[0];
     }
-    const ti = trackIndex.get(t);             // 병합 폭(sp)은 트랙 경계를 넘지 못한다
+    // 소속 트랙(다중, 비연속 허용). place.tracks가 있으면 그걸(존재하는 것만, 트랙 순서로),
+    // 없으면 옛 t+sp(연속)로 유도한다. 사이의 트랙을 자동으로 채우지 않는다.
+    let members;
+    if (Array.isArray(pl.tracks) && pl.tracks.length) {
+      const set = new Set(pl.tracks.filter((x) => trackIndex.has(x)));
+      set.add(t);
+      members = trackIds.filter((id2) => set.has(id2));
+    } else {
+      const ti0 = trackIndex.get(t);
+      const spRaw = clampInt(pl.sp ?? it.sp, 1, doc.tracks.length - ti0, 1);
+      members = [];
+      for (let k = 0; k < spRaw && ti0 + k < trackIds.length; k += 1) members.push(trackIds[ti0 + k]);
+    }
+    if (!members.length) members = [t];
+    const homeId = members[0];
+    let run = 1;                              // 홈부터 연속 칸 수 (레거시 sp)
+    const mi = members.map((id2) => trackIndex.get(id2));
+    for (let k = 1; k < mi.length; k += 1) { if (mi[k] === mi[k - 1] + 1) run += 1; else break; }
+
     const align = pl.align ?? it.align;
     const hd = pl.hd ?? it.hd;
     const w = pl.w ?? it.w;
     n.place = {
-      t,
-      sp: clampInt(pl.sp ?? it.sp, 1, doc.tracks.length - ti, 1),
+      t: homeId,
+      sp: run,
+      tracks: members,
       align: ALIGNS.includes(align) ? align : 'middle',
       showNote: (pl.showNote ?? it.showNote) === true,
       // 세로 크기 강제(일 단위). 없거나 잘못됐으면 null = 기간대로 자동.
@@ -388,11 +407,11 @@ export function normalize(doc) {
       cursor = cursor.parent ? itemById.get(cursor.parent) : null;
     }
   }
-  // 자식은 상위 일정의 트랙을 따른다
+  // 자식은 상위 일정의 트랙을 따른다 (소속 트랙 개념은 최상위에만)
   for (const it of doc.items) {
     if (!it.parent) continue;
     const parent = itemById.get(it.parent);
-    if (parent) { it.place.t = parent.place.t; it.place.sp = 1; }
+    if (parent) { it.place.t = parent.place.t; it.place.sp = 1; it.place.tracks = [parent.place.t]; }
   }
 
   // ── 관계(relations)를 일급 객체로 정리 (docs/DIRECTION.md #2·#5·#7)
@@ -537,6 +556,7 @@ export function reidentify(doc) {
   for (const it of doc.items ?? []) {
     if (it.parent) it.parent = map.get(it.parent) ?? null;
     if (it.place && tmap.has(it.place.t)) it.place.t = tmap.get(it.place.t);
+    if (it.place && Array.isArray(it.place.tracks)) it.place.tracks = it.place.tracks.map((id) => tmap.get(id) ?? id);
     for (const t of (Array.isArray(it.tasks) ? it.tasks : [])) t.id = fresh('k');
   }
   doc.relations = (Array.isArray(doc.relations) ? doc.relations : [])

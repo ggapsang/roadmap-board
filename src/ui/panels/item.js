@@ -250,42 +250,51 @@ export class ItemPanel {
   }
 
   /**
-   * 트랙 매핑 — 이 이벤트가 덮을 트랙을 고른다(여럿 가능, §3.7). 트랙 칩을 눌러 켜고 끈다.
-   * 여러 트랙을 고르면 그 최소~최대 범위를 덮는다(화면상 한 덩어리라 경계는 이어진다).
-   * 자식 카드는 트랙이 상위를 따르므로 매핑하지 않는다.
+   * 소속 트랙 — 이 카드가 든 트랙을 고른다(여럿 가능). 붙어 있는 트랙끼리는 걸쳐서 한
+   * 덩어리로, 떨어진 트랙에는 같은 카드가 따로 표시된다. 고른 트랙만 소속이다 — 사이의
+   * 트랙이 자동으로 끼어들지 않는다. 자식 카드는 트랙이 상위를 따르므로 매핑하지 않는다.
    */
   #renderTrackMap(item) {
     const box = $('i-span');
     clear(box);
     if (item.parent) { box.append(el('span.muted', { text: '상위 일정 안에서는 트랙이 상위를 따릅니다.' })); return; }
-    const tracks = this.store.tracks;
-    const home = this.store.trackIndex(item.place.t);
-    const sp = item.place.sp ?? 1;
-    const covered = new Set();
-    for (let k = 0; k < sp; k++) covered.add(home + k);
-    tracks.forEach((t, i) => {
+    const member = new Set(this.#memberTracks(item));
+    for (const t of this.store.tracks) {
       box.append(el('button.seg-btn', {
-        type: 'button', text: t.name, title: `${t.name} 매핑`,
-        attrs: { 'aria-pressed': String(covered.has(i)) },
-        on: { click: () => this.#toggleTrack(item, i) },
+        type: 'button', text: t.name, title: `${t.name} 소속`,
+        attrs: { 'aria-pressed': String(member.has(t.id)) },
+        on: { click: () => this.#toggleTrack(item, t.id) },
       }));
-    });
+    }
   }
 
-  #toggleTrack(item, idx) {
-    const tracks = this.store.tracks;
-    const home = this.store.trackIndex(item.place.t);
-    const sp = item.place.sp ?? 1;
-    const set = new Set();
-    for (let k = 0; k < sp; k++) set.add(home + k);
-    if (set.has(idx)) set.delete(idx); else set.add(idx);
-    if (!set.size) set.add(idx);            // 최소 한 트랙엔 놓인다
-    const min = Math.min(...set); const max = Math.max(...set);
-    this.store.commit('트랙 매핑', () => {
-      item.place.t = tracks[min].id;
-      item.place.sp = max - min + 1;        // 고른 트랙들을 감싸는 범위(경계 포함)
+  /** 이 카드가 실제로 소속된 트랙 id들 (존재하는 것만). */
+  #memberTracks(item) {
+    const list = Array.isArray(item.place.tracks) && item.place.tracks.length
+      ? item.place.tracks : [item.place.t];
+    return list.filter((id) => this.store.trackIndex(id) >= 0);
+  }
+
+  #toggleTrack(item, trackId) {
+    const set = new Set(this.#memberTracks(item));
+    if (set.has(trackId)) set.delete(trackId); else set.add(trackId);
+    if (!set.size) set.add(trackId);              // 최소 한 트랙엔 놓인다
+    // 트랙 인덱스 순서로 정렬 — 고른 것만, 사이는 안 채운다.
+    const ordered = this.store.tracks.filter((t) => set.has(t.id)).map((t) => t.id);
+    this.store.commit('소속 트랙', () => {
+      item.place.tracks = ordered;
+      item.place.t = ordered[0];
+      item.place.sp = this.#homeRunLen(ordered);  // 홈부터 연속으로 몇 칸인지(레거시 표시용)
     });
     this.#renderTrackMap(item);
+  }
+
+  /** 정렬된 소속 트랙에서 홈(첫째)부터 연속된 칸 수. */
+  #homeRunLen(orderedIds) {
+    const idx = orderedIds.map((id) => this.store.trackIndex(id));
+    let n = 1;
+    for (let k = 1; k < idx.length; k += 1) { if (idx[k] === idx[k - 1] + 1) n += 1; else break; }
+    return n;
   }
 
   // ── 관계 (선행·상위·별칭) ────────────────────────────────

@@ -116,7 +116,13 @@ export function attachDrag(grid, {
       if (!drag.moved) { store.begin('트랙 걸침'); drag.moved = true; }
       store.commit('트랙 걸침', () => {
         const item = store.item(drag.id);
-        if (item) item.place.sp = nextSpan;
+        if (!item) return;
+        item.place.sp = nextSpan;
+        // 걸침 손잡이는 연속 확장 — 소속 트랙을 홈부터 연속 범위로 채운다.
+        const home = store.trackIndex(item.place.t);
+        const ids = [];
+        for (let k = 0; k < nextSpan && home + k < store.tracks.length; k += 1) ids.push(store.tracks[home + k].id);
+        item.place.tracks = ids;
       });
       return;
     }
@@ -143,9 +149,14 @@ export function attachDrag(grid, {
         const s = Math.max(0, drag.startDay + dDays);
         item.s = dateAt(origin, s);
         item.e = dateAt(origin, s + length);
-        const maxTrack = store.tracks.length - item.place.sp;
+        const sp = item.place.sp ?? 1;
+        const maxTrack = store.tracks.length - sp;
         const k = Math.max(0, Math.min(maxTrack, drag.startTrack + dTrack));
         item.place.t = store.tracks[k].id;
+        // 옮기면 소속 트랙도 새 홈부터 연속 범위로 (비연속은 패널에서 편집).
+        const ids = [];
+        for (let j = 0; j < sp && k + j < store.tracks.length; j += 1) ids.push(store.tracks[k + j].id);
+        item.place.tracks = ids;
       } else if (drag.mode === 'size-top') {
         if (drag.hd0 != null) {
           // 크기 강제: 위 가장자리를 끌면 바닥(아래)은 고정하고 위로/아래로 늘고 줄인다.

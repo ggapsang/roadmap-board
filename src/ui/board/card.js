@@ -39,7 +39,7 @@ function addHorizontalGrips(node, { span = false } = {}) {
  *   hasChildren 자식을 품는 카드인가
  */
 export function renderCard(item, ctx) {
-  const { origin, ppd, scale, placement, selectedId, match, parent, hasChildren, spanBox } = ctx;
+  const { origin, ppd, scale, placement, selectedId, match, parent, hasChildren, spanBox, echo } = ctx;
   const isMilestone = item.ty === 'ms';
   // 점 마일스톤(s===e)만 얇은 표식으로 그린다. 기간 마일스톤은 막대로 떨어진다.
   const msPoint = isMilestone && item.s === item.e;
@@ -64,8 +64,9 @@ export function renderCard(item, ctx) {
   if (item.id === selectedId) node.classList.add('sel');
   if (match === true) node.classList.add('hit');
   if (match === false) node.classList.add('dim');
+  if (echo) node.classList.add('echo');                   // 떨어진 트랙에 같은 카드가 따로 표시된 사본
 
-  const { lane = 0, lanes = 1 } = placement.get(item.id) ?? {};
+  const { lane = 0, lanes = 1 } = ctx.laneInfo ?? placement.get(item.id) ?? {};
 
   /**
    * 상위 일정 안에 든 카드는 트랙 걸침(sp)이 의미가 없다. 대신 상위 카드 안에서의
@@ -112,7 +113,7 @@ export function renderCard(item, ctx) {
   if (msPoint) {
     // 상위 일정 안에 든 마일스톤은 형제와 레인을 나눠 갖는다.
     // 최상위 점 마일스톤만 트랙 폭을 가로지른다.
-    const laned = placement.has(item.id);
+    const laned = ctx.laned ?? placement.has(item.id);
     if (spanBox) {
       node.style.left = `${spanBox.left + 8}px`;
       node.style.width = `${Math.max(24, spanBox.width - 16)}px`;
@@ -128,8 +129,8 @@ export function renderCard(item, ctx) {
       el('span.meta', { text: shortMD(item.s) }),
     );
     node.title = `${item.alias || item.ti} · ${item.s} · ${item.og}`;
-    // 최상위 점 마일스톤만 트랙 걸침 손잡이. 상위에 든 것은 폭 손잡이.
-    addHorizontalGrips(node, { span: !parent });
+    // 최상위 점 마일스톤만 트랙 걸침 손잡이. 상위에 든 것은 폭 손잡이. 사본(echo)은 손잡이 없음.
+    if (!echo) addHorizontalGrips(node, { span: !parent });
     return node;
   }
 
@@ -183,13 +184,15 @@ export function renderCard(item, ctx) {
   }
 
   // 위·아래 가장자리. 보통은 위=시작일·아래=종료일. 크기 강제면 위·아래 둘 다 잡아
-  // 자유롭게 늘리고 줄인다(위로도, 아래로도).
-  node.append(el('div.grip-top', { attrs: { 'aria-hidden': 'true' } }));
-  node.append(el('div.grip', { attrs: { 'aria-hidden': 'true' } }));
-  // 자식·강제 → 좌우 폭 손잡이(x/w). 강제 모드는 폭을 트랙 너머로도 끌 수 있다(w>1).
-  // 강제 아닌 최상위 → 트랙 걸침 손잡이(칸 단위).
-  const widthGrips = forced || !!parent;
-  addHorizontalGrips(node, { span: !widthGrips });
+  // 자유롭게 늘리고 줄인다(위로도, 아래로도). 사본(echo)은 손잡이를 달지 않는다 — 눌러서 열기만.
+  if (!echo) {
+    node.append(el('div.grip-top', { attrs: { 'aria-hidden': 'true' } }));
+    node.append(el('div.grip', { attrs: { 'aria-hidden': 'true' } }));
+    // 자식·강제 → 좌우 폭 손잡이(x/w). 강제 모드는 폭을 트랙 너머로도 끌 수 있다(w>1).
+    // 강제 아닌 최상위 → 트랙 걸침 손잡이(칸 단위).
+    const widthGrips = forced || !!parent;
+    addHorizontalGrips(node, { span: !widthGrips });
+  }
   node.title = `${label}${item.alias ? ` (${item.ti})` : ''}\n${item.s} – ${item.e} · ${item.og}${item.pg ? ' · ' + item.pg + '%' : ''}`;
   return node;
 }

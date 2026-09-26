@@ -354,7 +354,8 @@ export class BoardRepository {
     // 카드 재구성
     const homeTrack = new Map();   // event -> 홈 트랙 id
     const docParent = new Map();   // event -> 부모 카드 id | null
-    const spanOf = new Map();      // event -> 걸침 수
+    const spanOf = new Map();      // event -> 홈부터 연속 칸 수(레거시)
+    const tracksOf = new Map();    // event -> 소속 트랙 id들(정렬, 사이는 안 채움)
     const ordOf = new Map();       // event -> 형제 내 순서
 
     const trackMembers = new Map();
@@ -367,7 +368,10 @@ export class BoardRepository {
     for (const [ev, idxs] of trackMembers) {
       idxs.sort((a, b) => a - b);
       homeTrack.set(ev, trackIds[idxs[0]]);
-      spanOf.set(ev, idxs[idxs.length - 1] - idxs[0] + 1);
+      tracksOf.set(ev, idxs.map((i) => trackIds[i]));   // 실제 소속만 (비연속 유지)
+      let run = 1;
+      for (let k = 1; k < idxs.length; k += 1) { if (idxs[k] === idxs[k - 1] + 1) run += 1; else break; }
+      spanOf.set(ev, run);
       docParent.set(ev, null);
     }
     // 중첩 카드: 최상위 카드에서 순서 있는 포함을 따라 내려간다. 참조 카드(남의 보드 구조)는
@@ -413,6 +417,7 @@ export class BoardRepository {
         tasks: (tasksOf.get(ev) ?? []).map((t) => ({ id: t.id, text: t.text, done: t.done })),
         place: {
           t: homeTrack.get(ev), sp: spanOf.get(ev) ?? 1,
+          tracks: parentId ? undefined : (tracksOf.get(ev) ?? [homeTrack.get(ev)]),
           x: d.pos_x ?? null, w: d.pos_w ?? null, hd: d.height_days ?? null,
           align: d.align ?? 'middle', showNote: d.show_note === 1,
         },
@@ -555,8 +560,6 @@ export class BoardRepository {
         });
       });
 
-      const trackAt = new Map(doc.tracks.map((t, i) => [tkey(t.id), i]));
-
       doc.items.forEach((it, i) => {
         const p = it.place ?? it;
         upEvent.run({
@@ -573,12 +576,14 @@ export class BoardRepository {
           align: p.align ?? 'middle', showNote: p.showNote ? 1 : 0, alias: it.alias ?? null,
           lab: null, pxWidth: null,
         });
-        // 걸침: 홈 트랙 다음 (sp-1)개 트랙에도 소속(다중 소속). 최상위 카드에만.
-        const sp = p.sp ?? 1;
-        if (!it.parent && sp > 1 && trackAt.has(homeTrackId)) {
-          const from = trackAt.get(homeTrackId);
-          for (let k = 1; k < sp && from + k < doc.tracks.length; k += 1) {
-            insCont.run(tkey(doc.tracks[from + k].id), it.id, 1, i);
+        // 소속 트랙: 홈 외의 소속 트랙에도 containment를 건다(다중 소속, 사이는 안 채움).
+        // 최상위 카드에만 — 자식은 상위를 따른다.
+        if (!it.parent) {
+          const members = Array.isArray(p.tracks) && p.tracks.length ? p.tracks : [p.t];
+          for (const rawT of members) {
+            const tid = tkey(rawT);
+            if (tid === edgeParent) continue;   // 홈은 위에서 이미 넣음
+            insCont.run(tid, it.id, 1, i);
           }
         }
         // 태스크: 이벤트 + 순서 없는 포함

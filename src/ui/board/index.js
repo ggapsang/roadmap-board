@@ -440,19 +440,45 @@ export class Board {
       // 펼쳐 들어간 이벤트(focus)의 직속 자식은 최상위처럼 트랙 컬럼에 놓는다.
       const pid = (item.parent && item.parent !== focus) ? item.parent : null;
       const parent = this.orderMode ? null : (pid ? byId.get(pid) : null);
-      // 상위 카드가 안 그려졌으면(숨김/필터) 자식도 놓을 자리가 없다
-      const host = parent ? cardEls.get(parent.id) : this.columns.get(item.place.t);
-      if (!host) continue;
 
-      const node = renderCard(item, {
+      const common = {
         ...ctx,
         match: this.view.matches(item),
         parent,
         hasChildren: !this.orderMode && (childrenOf.get(item.id) ?? []).length > 0,
-        spanBox: (parent || this.orderMode) ? null : this.#spanBox(item, placement.get(item.id), colWidth),
+      };
+
+      // 자식 카드: 상위 카드 안에 한 장.
+      if (parent) {
+        const host = cardEls.get(parent.id);
+        if (!host) continue;
+        const node = renderCard(item, {
+          ...common, laneInfo: placement.get(item.id), laned: placement.has(item.id), spanBox: null,
+        });
+        host.append(node);
+        cardEls.set(item.id, node);
+        continue;
+      }
+
+      // 최상위 카드: 소속 트랙을 연속 구간(run)으로 나눈다. 붙은 트랙은 걸쳐서 한 장,
+      // 떨어진 구간엔 같은 카드의 사본(echo)을 그 트랙에 따로 놓는다.
+      const forced = item.place?.hd != null;
+      const isMsPoint = item.ty === 'ms' && item.s === item.e;
+      const runs = (this.orderMode || forced) ? [[item.place.t]]
+        : isMsPoint ? [this.#fillRange(item)] : this.#trackRuns(item);
+
+      runs.forEach((run, r) => {
+        const homeTrackId = run[0];
+        const host = this.columns.get(homeTrackId);
+        if (!host) return;
+        const laneInfo = placement.get(`${item.id}@${homeTrackId}`) ?? placement.get(item.id);
+        const spanBox = this.orderMode ? null : this.#spanBox(run, laneInfo, colWidth);
+        const node = renderCard(item, {
+          ...common, laneInfo, laned: !!laneInfo, spanBox, echo: r > 0,
+        });
+        host.append(node);
+        if (r === 0) cardEls.set(item.id, node);
       });
-      host.append(node);
-      cardEls.set(item.id, node);
     }
 
     // 카드가 붙어 크기가 확정된 뒤 제목이 넘치면 폰트를 줄여 잘리지 않게 한다
@@ -470,28 +496,52 @@ export class Board {
   }
 
   /**
-   * 여러 트랙에 걸치는 카드의 좌표를 실제 컬럼 너비로 계산한다.
+   * 한 연속 구간(run, 붙어 있는 트랙 id들)에 걸치는 카드의 좌표를 실제 컬럼 너비로 계산한다.
    * 퍼센트로는 트랙마다 너비가 다른 경우를 표현할 수 없고, 레인 분할과도 뒤섞인다.
-   * @returns {{left:number,width:number}|null} 걸치지 않으면 null (퍼센트 배치)
+   * @param {string[]} run  붙어 있는 트랙 id들 (한 덩어리)
+   * @returns {{left:number,width:number}|null} 한 칸이면 null (퍼센트 배치)
    */
-  #spanBox(item, place, colWidth) {
-    const span = Math.max(1, item.place.sp ?? 1);
-    if (span <= 1) return null;
-
-    const tracks = this.store.tracks;
-    const home = tracks.findIndex((t) => t.id === item.place.t);
-    if (home < 0) return null;
-
-    const lanes = Math.max(1, place?.lanes ?? 1);
-    const lane = place?.lane ?? 0;
-    const own = colWidth.get(item.place.t) ?? 0;
+  #spanBox(run, laneInfo, colWidth) {
+    if (!run || run.length <= 1) return null;
+    const lanes = Math.max(1, laneInfo?.lanes ?? 1);
+    const lane = laneInfo?.lane ?? 0;
+    const own = colWidth.get(run[0]) ?? 0;
 
     // 자기 트랙에서는 레인 몫만, 넘어가는 트랙은 통째로 차지한다
     let width = own / lanes;
-    for (let k = 1; k < span && home + k < tracks.length; k++) {
-      width += colWidth.get(tracks[home + k].id) ?? 0;
-    }
+    for (let k = 1; k < run.length; k += 1) width += colWidth.get(run[k]) ?? 0;
     return { left: (lane * own) / lanes, width };
+  }
+
+  /** 소속 트랙을 연속 구간(run)들로 나눈다 — 사이가 떨어지면 별도 구간. 각 run은 트랙 id 배열. */
+  #trackRuns(item) {
+    const tracks = this.store.tracks;
+    const index = new Map(tracks.map((t, i) => [t.id, i]));
+    const members = (Array.isArray(item.place?.tracks) && item.place.tracks.length
+      ? item.place.tracks : [item.place?.t]).filter((id) => index.has(id));
+    const idxs = [...new Set(members.map((id) => index.get(id)))].sort((a, b) => a - b);
+    if (!idxs.length) return [];
+    const runs = [];
+    let run = [idxs[0]];
+    for (let k = 1; k < idxs.length; k += 1) {
+      if (idxs[k] === idxs[k - 1] + 1) run.push(idxs[k]);
+      else { runs.push(run); run = [idxs[k]]; }
+    }
+    runs.push(run);
+    return runs.map((r) => r.map((i) => tracks[i].id));
+  }
+
+  /** 소속 트랙의 최소~최대를 연속으로 채운 한 구간 (점 마일스톤은 한 표식으로 가로지른다). */
+  #fillRange(item) {
+    const tracks = this.store.tracks;
+    const index = new Map(tracks.map((t, i) => [t.id, i]));
+    const members = (Array.isArray(item.place?.tracks) && item.place.tracks.length
+      ? item.place.tracks : [item.place?.t]).filter((id) => index.has(id));
+    const idxs = members.map((id) => index.get(id)).sort((a, b) => a - b);
+    if (!idxs.length) return [];
+    const out = [];
+    for (let i = idxs[0]; i <= idxs[idxs.length - 1]; i += 1) out.push(tracks[i].id);
+    return out;
   }
 
   redrawArrows() {

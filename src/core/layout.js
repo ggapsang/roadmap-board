@@ -24,7 +24,7 @@ import { LAYOUT } from '../config/index.js';
  *
  * @returns {number} 최대 레인 수
  */
-function assignLanes(siblings, origin, placement, { includeMilestones = false } = {}) {
+function assignLanes(siblings, origin, placement, { includeMilestones = false, keyOf = (it) => it.id } = {}) {
   // 최상위에서 레인 계산에서 빼는 건 '점' 마일스톤(s===e)뿐이다. 기간을 가진
   // 마일스톤(전시회 등)은 막대처럼 자리를 차지하므로 형제와 레인을 나눈다 —
   // 안 그러면 트랙 폭을 가로질러 그 기간의 막대들을 덮는다.
@@ -44,10 +44,10 @@ function assignLanes(siblings, origin, placement, { includeMilestones = false } 
       let lane = laneEnds.findIndex((end) => end < b.s);
       if (lane < 0) lane = laneEnds.length;
       laneEnds[lane] = b.e;
-      placement.set(b.item.id, { lane, lanes: 1 });
+      placement.set(keyOf(b.item), { lane, lanes: 1 });
     }
     const lanes = Math.max(1, laneEnds.length);
-    for (const b of cluster) placement.get(b.item.id).lanes = lanes;
+    for (const b of cluster) placement.get(keyOf(b.item)).lanes = lanes;
     maxLanes = Math.max(maxLanes, lanes);
     cluster = [];
     clusterEnd = -Infinity;
@@ -86,10 +86,25 @@ export function computeLayout(tracks, items, origin, isVisible = () => true, roo
 
   // 트랙마다 최상위 일정들로 레인을 나눈다. 펼쳐 들어갔으면(rootId) 그 이벤트의
   // 자식들이 최상위가 된다 (PDF §8: 카드를 펼치면 자식들이 보드로).
+  // 트랙마다 레인을 나눈다. 카드는 자신의 각 '연속 구간(run)의 홈 트랙'에서만 자리를
+  // 차지한다 — 걸쳐 지나가는 중간 트랙에는 상자를 안 그리므로 빈 레인을 만들지 않는다.
+  // 떨어진 구간의 홈 트랙에서는 따로 자리를 얻어 같은 카드의 사본이 겹치지 않게 놓인다.
+  // placement는 (id@트랙)으로 키를 잡아 구간별 레인을 따로 기록한다.
+  const trackIndex = new Map(tracks.map((t, i) => [t.id, i]));
+  const runHomeIds = (i) => {
+    const members = (Array.isArray(i.place.tracks) && i.place.tracks.length ? i.place.tracks : [i.place.t])
+      .filter((id) => trackIndex.has(id));
+    const idxs = [...new Set(members.map((id) => trackIndex.get(id)))].sort((a, b) => a - b);
+    const homes = new Set();
+    for (let k = 0; k < idxs.length; k += 1) {
+      if (k === 0 || idxs[k] !== idxs[k - 1] + 1) homes.add(tracks[idxs[k]].id);
+    }
+    return homes;
+  };
   const roots = childrenOf.get(rootId) ?? [];
   for (const track of tracks) {
-    const own = roots.filter((i) => i.place.t === track.id && isVisible(i));
-    trackLanes.set(track.id, assignLanes(own, origin, placement));
+    const own = roots.filter((i) => runHomeIds(i).has(track.id) && isVisible(i));
+    trackLanes.set(track.id, assignLanes(own, origin, placement, { keyOf: (it) => `${it.id}@${track.id}` }));
   }
 
   // 상위 일정 안에서 자식들끼리 다시 나눈다
