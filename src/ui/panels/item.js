@@ -33,9 +33,16 @@ function autogrow(node) {
 export class ItemPanel {
   constructor({ store, view, panels, adapter, openProject, onChange }) {
     Object.assign(this, { store, view, panels, adapter, openProject, onChange });
+    this._allEvents = [];          // 모든 보드의 이벤트 캐시 — 카드를 열 때마다 갱신하되 비우진 않는다
     this.#buildStatic();
     this.#buildLists();
     this.#bind();
+    this.#primeEvents();           // 미리 한 번 받아 둔다 — 첫 카드에서도 조합·동일 후보가 바로 뜨게
+  }
+
+  /** 다른 보드 이벤트 목록을 미리 채워 둔다(첫 열림 지연 방지). 실패해도 조용히 넘어간다. */
+  async #primeEvents() {
+    try { const ev = await this.adapter?.listEvents?.(); if (Array.isArray(ev)) this._allEvents = ev; } catch { /* 다음 열림에서 다시 시도 */ }
   }
 
   get item() { return this.view.selectedItem ? this.store.item(this.view.selectedItem) : null; }
@@ -206,7 +213,10 @@ export class ItemPanel {
     $('i-shownote').setAttribute('aria-pressed', String(item.place?.showNote === true));
     $('i-fixedh').setAttribute('aria-pressed', String(item.place?.hd != null));
 
-    this._allEvents = null;            // 다른 보드 이벤트는 아래에서 비동기로 받는다
+    // 다른 보드 이벤트 목록은 캐시를 그대로 두고 아래 #loadCrossBoard가 새로 받아 갱신한다.
+    // null로 비우면 목록을 다시 받기 전까지 동일·조합 후보(다른 보드 트랙들)가 잠깐 사라진다 —
+    // 이름을 바꾸고 매핑 탭을 다시 열 때 "트랙이 안 뜬다"로 보이는 원인이라 비우지 않는다.
+    if (!Array.isArray(this._allEvents)) this._allEvents = [];
     this.#renderDeps(item);
     this.#renderParents(item);
     this.#renderSame(item);            // 동일 후보 (자기 자신 항상 체크)
@@ -711,12 +721,15 @@ export class ItemPanel {
     return out;
   }
 
-  /** 다른 보드의 이벤트(카드·트랙·프로젝트)를 받아 동일 후보·구성 일정·진행도를 갱신. */
+  /** 다른 보드의 이벤트(카드·트랙·프로젝트)를 받아 동일·조합 후보·구성 일정을 갱신. */
   async #loadCrossBoard(item) {
-    let events = [];
-    try { events = (await this.adapter?.listEvents?.()) ?? []; } catch { events = []; }
+    let events = null;
+    try { events = await this.adapter?.listEvents?.(); } catch { events = null; }
     if (this.item?.id !== item.id) return;
-    this._allEvents = events;
+    // 새로 받았을 때만 갈아끼운다. 실패·미지원이면 이전 목록을 지키고 빈 목록으로 만들지
+    // 않는다 — 한 번 삐끗해도 동일·조합의 다른 보드 트랙들이 사라지지 않게.
+    if (Array.isArray(events)) this._allEvents = events;
+    else if (!Array.isArray(this._allEvents)) this._allEvents = [];
     this.#renderSame(item);
     this.#renderCombine(item);
     this.#renderChildren(item);
