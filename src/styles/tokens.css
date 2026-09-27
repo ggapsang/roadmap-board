@@ -46,6 +46,9 @@
   /* 상위 일정(그룹)의 면. 캔버스보다 한 단계 들어가 보이고, 그 안의 카드는
      한 단계 떠 보인다. Light는 50 -> 100 -> white 로 내려갔다 올라온다. */
   --surface-group:var(--neutral-100);
+  /* 트랙 컬럼 면(캔버스와 카드 사이 중간). 선택 카드 면. Light는 눈에 안 띄게 둔다. */
+  --surface-track:transparent;
+  --surface-sel:var(--neutral-50);
 
   --border-subtle:var(--neutral-200);
   --border-default:var(--neutral-300);
@@ -97,19 +100,24 @@
    만들면 계층이 사라지고, 그 결과 카드 경계를 강한 선으로 그리게 된다.
    Canvas 950 → Panel 900 → Elevated 800 의 명도 단계를 확실히 둔다 (Dark 가이드 §2.1). */
 @media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){ color-scheme:dark;
-  --bg-canvas:var(--neutral-950);
-  --bg-header:var(--neutral-900);
-  --bg-panel:var(--neutral-900);
-  --bg-elevated:var(--neutral-800);
-  --bg-input:var(--neutral-800);
-  --bg-hover:var(--neutral-800);
-  --surface-card:var(--neutral-900);
-  --surface-card-hover:var(--neutral-800);
-  /* Dark는 950 -> 900 -> 800 으로 한 단계씩 올라온다 */
-  --surface-group:var(--neutral-900);
+  /* Dark 가이드(개정) §3~7: 어두운 배경 + 한 단계 밝은 Surface로 계층을 만든다. 카드는
+     캔버스보다 '확실히' 밝아야 하고(테두리가 아니라 면으로 인식), 트랙은 그 사이 중간 면이다.
+     Canvas → Track → Card → Hover → Selected 가 육안으로 구분되게. */
+  --bg-canvas:#0F0E0D;
+  --bg-header:#17140F;
+  --bg-panel:#1A1613;
+  --bg-elevated:#2A2724;
+  --bg-input:#23201E;
+  --bg-hover:#2A2724;
+  --surface-card:#211E1C;
+  --surface-card-hover:#2A2724;
+  /* 상위 일정(그룹)·트랙 면 — 캔버스보다 한 단계, 카드보다는 어둡게(그 안 카드가 떠 보이게) */
+  --surface-group:#17140F;
+  --surface-track:#141210;
+  --surface-sel:#30261F;   /* 선택 카드 — 약간 밝게 + 오렌지 테두리(전체 채움 금지) */
 
-  --border-subtle:var(--neutral-800);
-  --border-default:var(--neutral-700);
+  --border-subtle:#2A2623;
+  --border-default:#3A3430;
   --border-strong:var(--neutral-600);
   --grid-line:#211D1B;
   --grid-line-strong:var(--neutral-800);
@@ -134,19 +142,21 @@
   --shadow-dialog:0 var(--u5) var(--u10) rgba(0,0,0,.55);
 }}
 :root[data-theme="dark"]{ color-scheme:dark;
-  --bg-canvas:var(--neutral-950);
-  --bg-header:var(--neutral-900);
-  --bg-panel:var(--neutral-900);
-  --bg-elevated:var(--neutral-800);
-  --bg-input:var(--neutral-800);
-  --bg-hover:var(--neutral-800);
-  --surface-card:var(--neutral-900);
-  --surface-card-hover:var(--neutral-800);
-  /* Dark는 950 -> 900 -> 800 으로 한 단계씩 올라온다 */
-  --surface-group:var(--neutral-900);
+  /* Dark 가이드(개정) §3~7 — @media 블록과 동일한 Surface 계층 */
+  --bg-canvas:#0F0E0D;
+  --bg-header:#17140F;
+  --bg-panel:#1A1613;
+  --bg-elevated:#2A2724;
+  --bg-input:#23201E;
+  --bg-hover:#2A2724;
+  --surface-card:#211E1C;
+  --surface-card-hover:#2A2724;
+  --surface-group:#17140F;
+  --surface-track:#141210;
+  --surface-sel:#30261F;
 
-  --border-subtle:var(--neutral-800);
-  --border-default:var(--neutral-700);
+  --border-subtle:#2A2623;
+  --border-default:#3A3430;
   --border-strong:var(--neutral-600);
   --grid-line:#211D1B;
   --grid-line-strong:var(--neutral-800);
