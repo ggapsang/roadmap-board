@@ -6,7 +6,7 @@
  * 전부 이 다이얼로그를 쓴다. confirm()과 alert()는 Electron에서도 동작하므로
  * 그대로 둔다.
  */
-import { el, $ } from './dom.js';
+import { el, $, clear, icon, ICONS } from './dom.js';
 
 let host = null;
 
@@ -110,12 +110,15 @@ export function askConfirm({ title, message = '', confirmLabel = '확인', dange
 }
 
 /**
- * 체크박스 트리에서 여러 개를 고른다. 조합(포함)에서 '다른 프로젝트의 이벤트'를 트리로 펼쳐
- * 골라 담을 때 쓴다.
- * @param {{title, message?, rows:{id,label,sub?,depth?,checkable?}[], checked?:Set<string>}} o
- * @returns {Promise<Set<string>|null>} 확인하면 체크된 id 집합, 취소하면 null
+ * 펼칠 수 있는 트리 + 텍스트 검색으로 다른 프로젝트의 이벤트를 고른다.
+ *   select='multi' : 체크박스 여러 개 → '적용'. minSelect로 최소 개수 강제(조합은 2). 0개(전부
+ *                    해제)는 허용, 1~(minSelect-1)개면 적용 비활성(조합은 둘 이상의 묶음이므로).
+ *   select='single': 행을 누르면 그 id로 바로 확정(동일 합치기 대상 고르기).
+ * @param {{title, message?, nodes, checked?:Set, select?:'multi'|'single', minSelect?:number}} o
+ *   nodes = [{ id, label, sub?, checkable?, children? }] (중첩)
+ * @returns {Promise<Set<string>|string|null>} multi=Set, single=id, 취소=null
  */
-export function askTree({ title, message = '', rows = [], checked = new Set() }) {
+export function askTree({ title, message = '', nodes = [], checked = new Set(), select = 'multi', minSelect = 0 }) {
   const scrim = ensureHost();
   return new Promise((resolve) => {
     let settled = false;
@@ -131,33 +134,66 @@ export function askTree({ title, message = '', rows = [], checked = new Set() })
     const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(null); } };
     document.addEventListener('keydown', onKey, true);
 
-    const list = el('div.dlg-tree');
-    if (!rows.length) list.append(el('div.empty', { text: '다른 프로젝트에 담을 이벤트가 없습니다.' }));
-    for (const r of rows) {
-      const row = el('div.dlg-tree-row', { dataset: { depth: String(r.depth ?? 0) }, style: { paddingLeft: `${8 + (r.depth ?? 0) * 16}px` } });
-      if (r.checkable !== false) {
-        const box = el('input', { type: 'checkbox', checked: sel.has(r.id) });
-        box.addEventListener('change', () => { if (box.checked) sel.add(r.id); else sel.delete(r.id); });
-        row.append(box);
-      } else {
-        row.classList.add('dlg-tree-head');
-      }
-      row.append(el('span.dlg-tree-label', { text: r.label || '(제목 없음)' }));
-      if (r.sub) row.append(el('em.dlg-tree-sub', { text: r.sub }));
-      list.append(row);
+    const expanded = new Set();
+    (function markAll(list) { for (const n of list) if (n.children?.length) { expanded.add(n.id); markAll(n.children); } })(nodes);
+
+    const matchesDeep = (n, q) => `${n.label} ${n.sub ?? ''}`.toLowerCase().includes(q) || (n.children ?? []).some((c) => matchesDeep(c, q));
+
+    const search = el('input.dlg-tree-search', { type: 'text', placeholder: '검색…', attrs: { 'aria-label': '검색' } });
+    const treeBox = el('div.dlg-tree');
+    const applyBtn = el('button.btn.cta', { type: 'button', text: '적용', on: { click: () => finish(sel) } });
+    const updateApply = () => { applyBtn.disabled = sel.size > 0 && sel.size < minSelect; };
+
+    function paint() {
+      const q = search.value.trim().toLowerCase();
+      clear(treeBox);
+      const render = (list, depth) => {
+        for (const n of list) {
+          if (q && !matchesDeep(n, q)) continue;
+          const hasKids = !!(n.children && n.children.length);
+          const row = el('div.dlg-tree-row', { dataset: { id: n.id }, style: { paddingLeft: `${6 + depth * 16}px` } });
+          if (hasKids) {
+            const open = expanded.has(n.id) || !!q;
+            row.append(el('button.dlg-tree-chev', { type: 'button', text: open ? '▾' : '▸', attrs: { 'aria-label': open ? '접기' : '펼치기' }, on: { click: (e) => { e.stopPropagation(); if (expanded.has(n.id)) expanded.delete(n.id); else expanded.add(n.id); paint(); } } }));
+          } else row.append(el('span.dlg-tree-chev-none'));
+          if (n.checkable !== false) {
+            if (select === 'multi') {
+              const cb = el('input', { type: 'checkbox', checked: sel.has(n.id) });
+              cb.addEventListener('change', () => { if (cb.checked) sel.add(n.id); else sel.delete(n.id); updateApply(); });
+              row.append(cb);
+            }
+          } else row.classList.add('dlg-tree-head');
+          const clickable = select === 'single' && n.checkable !== false;
+          const label = el('span.dlg-tree-label' + (clickable ? '.linklike' : ''), { text: n.label || '(제목 없음)' });
+          if (clickable) label.addEventListener('click', () => finish(n.id));
+          row.append(label);
+          if (n.sub) row.append(el('em.dlg-tree-sub', { text: n.sub }));
+          treeBox.append(row);
+          if (hasKids && (expanded.has(n.id) || q)) render(n.children, depth + 1);
+        }
+      };
+      render(nodes, 0);
+      if (!treeBox.children.length) treeBox.append(el('div.empty', { text: q ? '검색 결과 없음' : '다른 프로젝트에 담을 이벤트가 없습니다.' }));
     }
+    search.addEventListener('input', paint);
+    paint();
+    updateApply();
+
+    const actions = select === 'multi'
+      ? el('div.dlg-actions', {}, [el('button.btn.outline', { type: 'button', text: '취소', on: { click: () => finish(null) } }), applyBtn])
+      : el('div.dlg-actions', {}, [el('button.btn.outline', { type: 'button', text: '취소', on: { click: () => finish(null) } })]);
+
     const box = el('div.dlg.dlg-wide', { on: { click: (e) => e.stopPropagation() } }, [
       el('h2', { text: title }),
       message ? el('p.note', { text: message }) : null,
-      list,
-      el('div.dlg-actions', {}, [
-        el('button.btn.outline', { type: 'button', text: '취소', on: { click: () => finish(null) } }),
-        el('button.btn.cta', { type: 'button', text: '적용', on: { click: () => finish(sel) } }),
-      ]),
+      el('div.fl-search', {}, [icon(ICONS.search), search]),
+      treeBox,
+      actions,
     ]);
     scrim.replaceChildren(box);
     scrim.hidden = false;
     scrim.onclick = () => finish(null);
+    search.focus();
   });
 }
 

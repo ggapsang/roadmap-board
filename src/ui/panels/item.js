@@ -13,7 +13,7 @@ import { STATUSES, ITEM_TYPES } from '../../config/index.js';
 import { $, el, clear, icon, ICONS } from '../dom.js';
 import { createFilterList } from '../components/filter-list.js';
 import { askConfirm, askChoice } from '../dialog.js';
-import { openCombinePicker, containedChildren } from '../combine.js';
+import { openCombinePicker, pickEventForMerge, containedChildren } from '../combine.js';
 import { toast } from '../toast.js';
 
 /** 값이 바로 문서로 반영되는 단순 입력들 (트랙·관계·별칭·진척은 매핑 탭 UI가 맡는다) */
@@ -95,19 +95,9 @@ export class ItemPanel {
       isSelected: (id) => this.item?.parent === id,
       onChange: (id, next) => this.#setParent(next ? id : null),
     });
-    // 동일 = 관계가 아니라 '두 이벤트를 하나로 합치는 작업'(docs/SYSTEM.md §7.2). 후보를 고르면
-    // 합친다(본질 선택 → 병합). 자기 자신은 맨 위에 항상 체크로 보인다(이 이벤트가 곧 그 정체성).
-    // 합치면 순환이 생기거나 같은 보드에 이중 배치가 되는 대상은 후보에서 뺀다.
-    this.sameList = createFilterList({
-      mode: 'multi', placeholder: '같은 것으로 합칠 다른 보드 이벤트 검색…', emptyText: '합칠 이벤트가 없습니다.',
-      isSelected: (id) => id === this.item?.id,
-      onChange: (id) => { if (id !== this.item?.id) this.#confirmMerge(id); },
-    });
-    // 조합 = 포함 관계(카드 렌더 아님, docs/SYSTEM.md §7.1). 인라인 목록이 아니라 팝업 트리에서
-    // 다른 프로젝트의 트랙·카드를 체크해 담는다. i-combine에는 '편집' 버튼 + 현재 담긴 것 요약만.
+    // 동일(합치기)·조합(포함)은 인라인 목록이 아니라 팝업 트리 버튼으로 다룬다(#renderSame/#renderCombine).
     $('i-deps').append(this.depsList.root);
     $('i-parent').append(this.parentList.root);
-    $('i-same').append(this.sameList.root);
   }
 
   #bind() {
@@ -330,31 +320,31 @@ export class ItemPanel {
   }
 
   /**
-   * 동일(합치기) 후보 — 골라서 이 이벤트와 하나로 합칠 다른 보드 이벤트. 자기 자신은 맨 위에
-   * 항상 체크로 보인다(이 이벤트가 곧 그 정체성). 합치면 순환/이중배치가 되는 것은 뺀다.
+   * 동일(합치기) UI — 팝업 버튼. 누르면 다른 프로젝트의 이벤트를 트리로 펼쳐 하나 고르고, 본질을
+   * 어느 쪽으로 남길지 물은 뒤 두 이벤트를 하나로 합친다. 인라인 목록이 아니다.
    */
   #renderSame(item) {
-    this._sameOptions = new Map();
-    const events = this._allEvents ?? [];
-    const byId = new Map(events.map((e) => [e.id, e]));
-    const kindLabel = { board: '프로젝트', track: '트랙', card: '카드' };
-    const excluded = this.#sameExcluded(item);
-    const options = [];
-    const push = (ev, sub) => {
-      this._sameOptions.set(ev.id, ev);
-      options.push({ id: ev.id, label: ev.title || '(제목 없음)', sub: sub ?? `${kindLabel[ev.kind] || ''}${ev.boardNames ? ' · ' + ev.boardNames : ''}` });
-    };
-    push(byId.get(item.id) ?? { id: item.id, title: item.ti }, '이 이벤트 (항상)');
-    for (const ev of events) {
-      if (ev.id === item.id || excluded.has(ev.id)) continue;
-      push(ev);
-    }
-    this.sameList.render(options);
+    const box = $('i-same');
+    clear(box);
+    box.append(el('button.btn.outline.sm', {
+      type: 'button', text: '다른 프로젝트와 동일(합치기)…',
+      on: { click: () => this.#openMergePicker() },
+    }));
+    // 제목 검색 드롭다운(합치기 후보) 재료 — 자기 자신 제외한 모든 보드 이벤트.
+    this._sameOptions = new Map((this._allEvents ?? []).filter((e) => e.id !== item.id).map((e) => [e.id, e]));
+  }
+
+  /** 동일 팝업 → 대상 하나 고르면 본질 선택 후 합친다. */
+  async #openMergePicker() {
+    const item = this.item;
+    if (!item || this.store.readonly) return;
+    const targetId = await pickEventForMerge(this.adapter, item.id);
+    if (targetId) await this.#confirmMerge(targetId);
   }
 
   /**
-   * 조합(포함) UI — 인라인 목록이 아니라 '편집' 버튼 + 현재 담긴 것 요약. 버튼을 누르면 다른
-   * 프로젝트의 트랙·카드를 트리로 펼친 팝업이 뜨고, 거기서 체크해 담는다(카드로 렌더하지 않음).
+   * 조합(포함) UI — 팝업 버튼 + 현재 담긴 것 요약(읽기 전용). 해제는 요약이 아니라 팝업에서
+   * 체크를 풀어서 한다(조합은 둘 이상의 묶음이라 요약에서 하나씩 빼면 규칙이 깨진다).
    */
   #renderCombine(item) {
     const box = $('i-combine');
@@ -371,52 +361,20 @@ export class ItemPanel {
     for (const cid of children) {
       const ev = byId.get(cid);
       const kindLabel = ev?.kind === 'track' ? '트랙' : ev?.kind === 'board' ? '프로젝트' : '카드';
-      const row = el('div.combine-chip', {}, [
+      list.append(el('div.combine-chip', {}, [
         el('span.combine-chip-name', { text: (ev?.title || '(다른 보드 이벤트)') }),
         el('em.muted', { text: `${kindLabel}${ev?.boardNames ? ' · ' + ev.boardNames : ''}` }),
-        el('button.task-del', { type: 'button', title: '조합에서 빼기', on: { click: () => this.#toggleContain(cid, false) } }, [icon(ICONS.close)]),
-      ]);
-      list.append(row);
+      ]));
     }
     box.append(list);
   }
 
-  /**
-   * 조합 트리 팝업 — 다른 프로젝트(보드)를 프로젝트 → 트랙 → 카드 트리로 펼치고, 체크한 것을
-   * 이 이벤트의 조합(포함)으로 담는다. 현재 보드 것은 넣지 않는다(같은 보드 이중 부모 모순).
-   */
+  /** 조합 트리 팝업 — 체크한 다른 프로젝트 이벤트를 이 이벤트의 조합(포함)으로 담는다(둘 이상). */
   async #openCombinePicker() {
     const item = this.item;
     if (!item) return;
     const changed = await openCombinePicker(this.store, this.adapter, item.id);
     if (changed) { this.#renderCombine(item); this.#renderChildren(item); }
-  }
-
-  /**
-   * 조합(포함)에서 하나 뺀다 (요약의 × 버튼). 관계(doc.refs)만 건드린다.
-   */
-  #toggleContain(targetId, next) {
-    const item = this.item;
-    if (!item || targetId === item.id) return;
-    const id = item.id;
-    this.store.commit('조합(포함)', (doc) => {
-      if (!Array.isArray(doc.refs)) doc.refs = [];
-      doc.refs = doc.refs.filter((r) => !(r.parent === id && r.child === targetId));
-      if (next) doc.refs.push({ parent: id, child: targetId });
-    });
-    this.#renderCombine(item); this.#renderChildren(item);
-  }
-
-  /**
-   * 합칠 수 없는 것 = 자기 자신 + **이미 이 보드에 놓인 모든 이벤트**(트랙·카드). 같은 보드의 둘을
-   * 합치면 한 이벤트가 한 보드에서 배치가 둘 → 순서축 위치 모순(§5.3 논리와 같다). 포함으로 얽힌
-   * 상하위는 이 안에 포함되고, 남는 순환 위험은 repository 병합이 최종 거부한다(§7.2).
-   */
-  #sameExcluded(item) {
-    const out = new Set([item.id]);
-    for (const t of this.store.tracks) out.add(t.id);
-    for (const it of this.store.items) out.add(it.id);
-    return out;
   }
 
   /**

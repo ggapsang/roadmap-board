@@ -497,7 +497,7 @@ export class BoardRepository {
     const trackMembers = new Map();
     for (const c of cont) {
       if (c.ordered !== 1 || !trackSet.has(c.parent_id) || !inSub.has(c.child_id)) continue;
-      if (foreign.has(c.child_id)) continue;   // 다른 보드 이벤트는 카드로 렌더 안 함 — 조합 참조(refs)로
+      if (foreign.has(c.child_id)) continue;   // 옛 데이터의 크로스보드 ordered=1은 조합 참조로(카드 렌더 X)
       if (!trackMembers.has(c.child_id)) trackMembers.set(c.child_id, []);
       trackMembers.get(c.child_id).push(trackIndex.get(c.parent_id));
       ordOf.set(c.child_id, c.ord);
@@ -519,7 +519,7 @@ export class BoardRepository {
       if (foreign.has(parent)) continue;
       for (const c of (kids.get(parent) ?? [])) {
         if (c.ordered !== 1 || !inSub.has(c.child_id) || homeTrack.has(c.child_id)) continue;
-        if (foreign.has(c.child_id)) continue;   // 다른 보드 이벤트는 카드로 렌더 안 함 — 조합 참조(refs)로
+        if (foreign.has(c.child_id)) continue;   // 옛 데이터의 크로스보드 ordered=1은 조합 참조로
         docParent.set(c.child_id, parent);
         homeTrack.set(c.child_id, homeTrack.get(parent));
         spanOf.set(c.child_id, 1);
@@ -585,14 +585,16 @@ export class BoardRepository {
       if (it.parent) relations.push({ id: `c_${it.id}`, type: 'contain', from: it.parent, to: it.id });
     }
 
-    // 조합(포함) 참조 — 이 보드의 로컬 부모(루트·트랙·카드)가 품은 '다른 보드' 이벤트. 카드로
-    // 렌더하지 않는다(포함 관계라고 보드에 꼭 띄우는 게 아니다). 상세·펼침에서만 보이고, 저장이
-    // 이 간선을 보존한다. refs = [{ parent, child }].
+    // 조합(포함) 참조 — 이 보드의 로컬 부모(루트·트랙·카드)가 ordered=2로 품은 다른 보드 이벤트.
+    // 카드로 렌더하지 않는다(포함 관계라고 보드에 꼭 띄우는 게 아니다). 상세·펼침에서만 보이고,
+    // 저장이 이 간선을 보존한다. refs = [{ parent, child }].
     const localIds = new Set([root, ...trackIds, ...items.map((i) => i.id)]);
     const refs = [];
     const seenRef = new Set();
     for (const c of cont) {
-      if (c.ordered !== 1 || !localIds.has(c.parent_id) || !foreign.has(c.child_id)) continue;
+      // 조합 참조 = ordered=2(새 저장) 또는 옛 데이터의 크로스보드 ordered=1(다른 보드 구조를 품음).
+      const isRef = localIds.has(c.parent_id) && (c.ordered === 2 || (c.ordered === 1 && foreign.has(c.child_id)));
+      if (!isRef) continue;
       const k = c.parent_id + SEP + c.child_id;
       if (seenRef.has(k)) continue;
       seenRef.add(k);
@@ -770,11 +772,13 @@ export class BoardRepository {
         }
       }
 
-      // 조합(포함) 참조 — 이 보드의 로컬 부모가 다른 보드 이벤트를 품는 containment 간선. 카드로
-      // 그리지 않지만(refs) 관계는 보존한다. 부품 본질은 그 보드 소유라 upsert하지 않고 간선만 쓴다.
+      // 조합(포함) 참조 — 로컬 부모가 다른 보드 이벤트를 품는 관계. **ordered=2로 표식**해 일반
+      // 포함(ordered=1, 보드에 카드로 그림)과 구분한다. ordered=2는 서브트리 재구성이 건너뛰므로
+      // 카드로 안 그려지고, 그 자식(다른 보드 내용)도 이 보드로 안 쏟아진다. 부품 본질은 그 보드
+      // 소유라 upsert 안 하고 간선만 쓴다.
       (Array.isArray(doc.refs) ? doc.refs : []).forEach((ref, i) => {
         if (!ref || !ref.parent || !ref.child || ref.parent === ref.child) return;
-        insCont.run(ref.parent, ref.child, 1, 900 + i);
+        insCont.run(ref.parent, ref.child, 2, 900 + i);
       });
 
       this.#maybeRevision(doc, label);
