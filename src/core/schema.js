@@ -372,7 +372,9 @@ export function normalize(doc) {
       // 세로 크기 강제(일 단위). 없거나 잘못됐으면 null = 기간대로 자동.
       hd: (typeof hd === 'number' && hd >= 1) ? Math.round(hd) : null,
       x: ratio(pl.x ?? it.x),
-      w: w == null ? null : Math.min(1, Math.max(0.05, Number(w) || 0.05)),
+      // 가로 폭 비율. 1 = 한 칸. **크기 강제로 여러 트랙에 걸치면 w>1이 될 수 있다**(sp만큼).
+      // 1로 잘라 버리면 걸친 카드가 데이터 적용·재정규화 때 한 칸으로 쪼그라든다. 트랙 수까지 허용.
+      w: w == null ? null : Math.min(doc.tracks.length || 1, Math.max(0.05, Number(w) || 0.05)),
     };
     delete n.t; delete n.sp; delete n.align; delete n.showNote; delete n.hd; delete n.x; delete n.w;
     return n;
