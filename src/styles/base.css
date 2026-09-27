@@ -48,6 +48,9 @@ svg.ic{width:var(--u4);height:var(--u4);stroke:currentColor;stroke-width:1.5;fil
   padding:var(--u2) var(--u4);border-radius:var(--r-control);font-size:13px;z-index:80;
   box-shadow:var(--shadow-pop);
   opacity:0;pointer-events:none;transition:opacity .16s;max-width:70vw;text-align:center}
-.toast.on{opacity:1}
+.toast.on{opacity:1;pointer-events:auto}
 .toast.warn{background:var(--error-500);color:#fff}
+.toast-action{margin-left:var(--u3);background:transparent;border:1px solid currentColor;color:inherit;
+  border-radius:var(--r-control);padding:2px var(--u2);font-size:12px;cursor:pointer;opacity:.9}
+.toast-action:hover{opacity:1}
 @media (prefers-reduced-motion:reduce){.toast{transition:none}}

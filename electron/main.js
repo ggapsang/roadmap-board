@@ -1693,7 +1693,13 @@ async function runRepro(target) {
         const after = await r.adapter.listEvents();
         const dropGone = !after.some((e) => e.id === drop);
         const keepStays = after.some((e) => e.id === keep);
-        merge = { sameShown, dialogShown, beforeHasDrop, dropGone, keepStays, dropTitle, keep };
+        // 되돌리기 버튼
+        const undoBtn = document.querySelector('.toast-action');
+        const undoShown = !!undoBtn;
+        if (undoBtn) undoBtn.click();
+        await sleep(700);
+        const dropBack = (await r.adapter.listEvents()).some((e) => e.id === drop);
+        merge = { sameShown, dialogShown, beforeHasDrop, dropGone, keepStays, undoShown, dropBack, dropTitle };
       }
 
       // ── 트랙도 조합할 수 있다 (ConfigPanel) ──

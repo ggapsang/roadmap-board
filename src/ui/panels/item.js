@@ -451,7 +451,22 @@ export class ItemPanel {
     const doc = cur != null ? await this.adapter.openProject(cur) : null;
     if (doc) this.store.adopt(doc);
     this.panels.close();
-    toast('같은 이벤트로 합쳤습니다');
+    toast('같은 이벤트로 합쳤습니다', '', { label: '되돌리기', on: () => this.#undoMerge() });
+  }
+
+  /** 방금 합친 것을 되돌린다(§7.2). repository가 합치기 전 스냅샷으로 복원하고 보드를 다시 읽는다. */
+  async #undoMerge() {
+    const snap = this._lastMergeUndo;
+    if (!snap) return;
+    this._lastMergeUndo = null;
+    let res;
+    try { res = await this.adapter?.unmergeEvents?.(snap); }
+    catch (e) { toast('되돌리기 실패: ' + String(e.message || e), 'warn'); return; }
+    if (!res || res.ok !== true) { toast('되돌리기 실패', 'warn'); return; }
+    const cur = this.adapter.projectId;
+    const doc = cur != null ? await this.adapter.openProject(cur) : null;
+    if (doc) this.store.adopt(doc);
+    toast('합치기를 되돌렸습니다');
   }
 
   /** 제목으로 검색하면 뜨는 "같은 이벤트로 연결" 후보(모든 보드). 평상시엔 숨김. */
