@@ -9,7 +9,7 @@
  * 그 조직을 쓰는 일정을 함께 갱신해야 한다. #renameOrg가 그 일을 한다.
  */
 import { newId } from '../../core/schema.js';
-import { DISPLAY_LIMITS } from '../../config/index.js';
+import { DISPLAY_LIMITS, STATUSES, statusList } from '../../config/index.js';
 import { $, el, clear, button, ICONS } from '../dom.js';
 import { openCombinePicker, containedChildren } from '../combine.js';
 import { toast } from '../toast.js';
@@ -71,7 +71,37 @@ export class ConfigPanel {
   render() {
     this.#renderTracks();
     this.#renderOrgs();
+    this.#renderStatuses();
     this.#renderDisplay();
+  }
+
+  // ── 상태 이름 (보드별 표시) ──────────────────────────────
+
+  /** 상태(계획·진행중·완료·지연·보류)를 이 보드에서 부를 이름을 편집. 키·색은 고정. */
+  #renderStatuses() {
+    const list = $('slist');
+    if (!list) return;
+    clear(list);
+    for (const s of statusList(this.store.doc)) {
+      const input = el('input', {
+        value: s.label, attrs: { 'aria-label': `${s.key} 상태 이름` },
+        on: { input: (e) => this.#setStatusLabel(s.key, e.target.value) },
+      });
+      list.append(el('div.trow', {}, [
+        el('span.st-dot', { className: 'st-dot st-' + s.key }),
+        el('div.names', {}, [input]),
+      ]));
+    }
+  }
+
+  #setStatusLabel(key, label) {
+    this.store.commit('상태 이름', (doc) => {
+      if (!doc.meta.statusLabels) doc.meta.statusLabels = {};
+      const def = STATUSES.find((s) => s.key === key)?.label ?? key;
+      const v = label.trim();
+      if (!v || v === def) delete doc.meta.statusLabels[key];   // 기본과 같으면 재정의 안 남김
+      else doc.meta.statusLabels[key] = v;
+    });
   }
 
   // ── 트랙 ────────────────────────────────────────────────

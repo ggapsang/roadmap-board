@@ -9,7 +9,7 @@
  */
 import { shortMD, dayIndex, parseDate, inclusiveDays } from '../../core/dates.js';
 import { newId, ALIGNS } from '../../core/schema.js';
-import { STATUSES, ITEM_TYPES } from '../../config/index.js';
+import { STATUSES, ITEM_TYPES, statusList } from '../../config/index.js';
 import { $, el, clear, icon, ICONS } from '../dom.js';
 import { createFilterList } from '../components/filter-list.js';
 import { askConfirm, askChoice } from '../dialog.js';
@@ -53,14 +53,7 @@ export class ItemPanel {
     clear(type);
     for (const t of ITEM_TYPES) type.append(el('option', { value: t.key, text: t.label }));
 
-    const status = $('i-status');
-    clear(status);
-    for (const s of STATUSES) {
-      status.append(el('button', {
-        type: 'button', dataset: { st: s.key }, text: s.label,
-        on: { click: () => this.#setStatus(s.key) },
-      }));
-    }
+    this.#renderStatusButtons();
 
     // 글자 세로 정렬 — 아이콘 세그먼트
     const align = $('i-align');
@@ -192,6 +185,7 @@ export class ItemPanel {
     $(F.note).value = item.note ?? '';
     $('i-title-drop').hidden = true;
 
+    this.#renderStatusButtons();   // 보드별 상태 이름 반영
     this.#syncStatus(item);
     this.#syncAlign(item);
     this.#renderTrackMap(item);
@@ -213,6 +207,18 @@ export class ItemPanel {
     this.#showTab('attr');
     this.panels.open('pItem');
     this.onChange?.();
+  }
+
+  /** 상태 버튼을 이 보드의 상태 이름으로 다시 그린다(키·색은 고정, 이름만 보드별). */
+  #renderStatusButtons() {
+    const box = $('i-status');
+    clear(box);
+    for (const s of statusList(this.store.doc)) {
+      box.append(el('button', {
+        type: 'button', dataset: { st: s.key }, text: s.label,
+        on: { click: () => this.#setStatus(s.key) },
+      }));
+    }
   }
 
   #setStatus(key) {

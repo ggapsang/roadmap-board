@@ -25,6 +25,15 @@ export const STATUS_KEYS = STATUSES.map((s) => s.key);
 export const DEFAULT_STATUS = 'plan';
 
 /**
+ * 이 보드의 상태 목록 — 기본 상태(계획·진행중·완료·지연·보류)에 보드별 이름 재정의를 덮는다.
+ * 상태의 key·색·의미(완료=흐림, 보류=점선 등)는 고정이고, 보드마다 '이름'만 바꿀 수 있다(표현).
+ */
+export function statusList(doc) {
+  const ov = (doc && doc.meta && doc.meta.statusLabels) || {};
+  return STATUSES.map((s) => ({ ...s, label: ov[s.key] ?? s.label }));
+}
+
+/**
  * 담당 조직의 **초기값**. 새 프로젝트를 만들 때만 쓰인다.
  * 실제 목록은 문서(`doc.orgs`)에 들어 있고 보드 구성 패널에서 편집한다.
  * 조직명은 일정의 `og`에 문자열로 들어가므로, 이름을 바꾸면 참조도 함께 갱신한다.

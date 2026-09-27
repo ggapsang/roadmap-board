@@ -417,9 +417,16 @@ export class BoardRepository {
     ).all(this.boardId)
       .map((r) => ({ id: r.id, from: r.from_date, to: r.to_date, label: r.label, scale: r.scale }));
 
+    // 보드별 표현 설정(display)·상태 이름 재정의(statusLabels)를 meta_json에서 복원.
+    let boardMeta = {};
+    try { boardMeta = board.meta_json ? JSON.parse(board.meta_json) : {}; } catch { boardMeta = {}; }
+    const metaExtra = {};
+    if (boardMeta.display) metaExtra.display = boardMeta.display;
+    if (boardMeta.statusLabels) metaExtra.statusLabels = boardMeta.statusLabels;
+
     const base = {
       version: board.doc_version,
-      meta: { start: board.start_date, end: board.end_date, name: board.name },
+      meta: { start: board.start_date, end: board.end_date, name: board.name, ...metaExtra },
       orgs, bands, tracks: [], relations: [], items: [],
     };
     if (!root) return base;
@@ -603,7 +610,7 @@ export class BoardRepository {
 
     return {
       version: board.doc_version,
-      meta: { start: board.start_date, end: board.end_date, name: evById.get(root)?.title ?? board.name },
+      meta: { start: board.start_date, end: board.end_date, name: evById.get(root)?.title ?? board.name, ...metaExtra },
       orgs, bands, tracks, relations, items, refs,
     };
   }
@@ -627,17 +634,22 @@ export class BoardRepository {
       const tkey = (raw) => (typeof raw === 'string' && raw.startsWith(`track:${this.boardId}:`))
         ? raw : `track:${this.boardId}:${raw}`;
 
+      // 보드별 '표현' 설정(화살표·글자·축)과 상태 이름 재정의를 JSON으로 보관(시스템과 무관).
+      const metaJson = JSON.stringify({
+        display: doc.meta.display ?? null,
+        statusLabels: doc.meta.statusLabels ?? null,
+      });
       this.db.prepare(`
-        INSERT INTO board (id, name, start_date, end_date, doc_version, root_event_id)
-        VALUES (@id, @name, @start, @end, @docVersion, @root)
+        INSERT INTO board (id, name, start_date, end_date, doc_version, root_event_id, meta_json)
+        VALUES (@id, @name, @start, @end, @docVersion, @root, @metaJson)
         ON CONFLICT(id) DO UPDATE SET
           name = @name, start_date = @start, end_date = @end, doc_version = @docVersion,
-          root_event_id = @root, updated_at = datetime('now','localtime')
+          root_event_id = @root, meta_json = @metaJson, updated_at = datetime('now','localtime')
       `).run({
         id: this.boardId,
         name: doc.meta.name ?? '로드맵',
         start: doc.meta.start, end: doc.meta.end,
-        docVersion: doc.version ?? 1, root,
+        docVersion: doc.version ?? 1, root, metaJson,
       });
 
       // 다른 보드의 구조 이벤트(그 보드의 루트·트랙)는 이 보드에선 '접힌 참조 잎'이다.

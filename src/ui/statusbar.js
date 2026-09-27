@@ -3,16 +3,17 @@
  * 상태 칩과 조직 칩은 토글 필터를 겸한다 (기획안 §5).
  */
 import { DAY, parseDate, today } from '../core/dates.js';
-import { STATUSES, UPCOMING_DAYS } from '../config/index.js';
+import { statusList, UPCOMING_DAYS } from '../config/index.js';
 import { el, clear } from './dom.js';
 
 export function renderStatusBar(bar, { store, view, onChange }) {
   clear(bar);
 
-  const counts = new Map(STATUSES.map((s) => [s.key, 0]));
+  const statuses = statusList(store.doc);   // 보드별 상태 이름 반영
+  const counts = new Map(statuses.map((s) => [s.key, 0]));
   for (const item of store.items) counts.set(item.st, (counts.get(item.st) ?? 0) + 1);
 
-  for (const status of STATUSES) {
+  for (const status of statuses) {
     bar.append(el('button', {
       className: 'stat s-' + status.key,
       type: 'button',
