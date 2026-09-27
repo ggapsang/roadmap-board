@@ -1,5 +1,9 @@
 # WOLFPACK — 개발 방향 점검: 순서 기반 이벤트 전개 시스템 정합성
 
+> **먼저 읽을 것:** 시스템 개념의 최종 기준은 [docs/SYSTEM.md](./SYSTEM.md)다(코드보다 우선).
+> 이 문서는 그 관점에서 코드를 점검한 **방향 메모**로, SYSTEM.md와 어긋나면 SYSTEM.md가 이긴다.
+> 실제로 크게 틀렸던 지점과 반성은 [docs/LESSONS.md](./LESSONS.md)에 있다.
+
 WOLFPACK은 **순서 기반 이벤트 전개 시스템**의 첫 활용 예다.
 (근거 문서: `refs/TTB-만들어진 배경-*.pdf`, `refs/TTB-순서 기반 이벤트 전개 시스템 - 개발자를 위한 설명-*.pdf`)
 
@@ -19,11 +23,11 @@ WOLFPACK은 **순서 기반 이벤트 전개 시스템**의 첫 활용 예다.
 
 | 시스템 개념 | 현재 WOLFPACK | 위치 |
 |---|---|---|
-| **이벤트** — 앞뒤 관계를 가진 단위. 접으면 카드, 펼치면 보드 | `item` | `src/core/schema.js`, `db/repository.js` |
-| **트랙** — 이벤트가 흐르는 갈래 | `tracks[]` | `schema.js`, `ui/board/head.js` |
-| **관계** — 선행·합류·원인·참조. 보드를 넘나드는 독립 대상 | `item.dp[]` (선행만, 카드의 속성) | `item.dp`, DB `dependency` |
-| **순서/시간** — 앞뒤 관계. 달력은 선택적 눈금 | 항상 달력축, `dayIndex`로 위치 계산 | `core/timescale.js`, `core/layout.js` |
-| **태스크** — 순서 없이 카드에 담기는 할 일 | `item.tasks[]` | `schema.js`, DB `task`, `ui/panels/item.js` |
+| **이벤트** — 앞뒤 관계를 가진 단위. 접으면 카드, 펼치면 보드 | `item`(본질) + `place`(배치) | `src/core/schema.js`, DB `event` · `disp` |
+| **트랙** — 이벤트가 흐르는 갈래 | `tracks[]` (본질은 이벤트, 축 위 순서=포함) | `schema.js`, `ui/board/head.js`, DB `containment` |
+| **관계** — 선행·합류·원인·참조. 보드를 넘나드는 독립 대상 | `doc.relations[]`(선행 dep, 일급) · 포함=`item.parent`/`doc.refs`(조합) | `schema.js`, DB `rel` · `containment` |
+| **순서/시간** — 앞뒤 관계. 달력은 선택적 눈금 | 항상 달력축, 일 단위 정수로 위치 계산 | `core/dates.js`, `core/layout.js` |
+| **태스크** — 순서 없이 카드에 담기는 할 일 | `item.tasks[]` | `schema.js`, DB `containment`(ordered=0), `ui/panels/item.js` |
 
 ## 이미 지켜 온 것 (정합)
 
