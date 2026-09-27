@@ -18,3 +18,8 @@ body.exporting .scroll{overflow:visible;flex:none;margin-right:0}
 body.exporting .status{margin-right:0}
 body.exporting .head{position:static}      /* sticky면 캡처에서 어긋난다 */
 body.exporting .gut-m b u{position:static}
+/* '트랙 추가(+)'는 편집 도구지 보드 내용이 아니다. PNG는 마지막 트랙에서 잘라 내지만
+   PDF는 페이지 폭을 줄이면 보드 전체가 축소되므로 칸은 두고 버튼만 감춘다
+   (visibility — 레이아웃은 그대로). */
+body.exporting .addcol>*{visibility:hidden}
+@media print{.addcol>*{visibility:hidden}}
