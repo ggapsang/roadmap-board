@@ -193,6 +193,16 @@ async function boot() {
   // ── 전역 키 ─────────────────────────────────────────────
 
   document.addEventListener('keydown', (e) => {
+    // 브라우저처럼 탭 조작 — 런처가 떠 있어도, 입력 중이어도 먼저 받는다.
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 't') {
+      e.preventDefault(); tabs.newLauncherTab(); return;
+    }
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'Tab' || e.code === 'Tab')) {
+      e.preventDefault();
+      const n = tabs.tabs.length;
+      if (n > 1) { const next = (tabs.active + (e.shiftKey ? -1 : 1) + n) % n; tabs.activate(next); }
+      return;
+    }
     if (launcher.visible) {
       if (e.key === 'Escape' && !$('l-close').hidden) launcher.hide();
       return;

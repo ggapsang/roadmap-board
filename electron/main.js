@@ -1714,8 +1714,44 @@ async function runRepro(target) {
         const trackRef = (r.store.doc.refs || []).filter((x) => x.parent === trackId).length >= 2;
         trackCombine = { opened: rows2.length > 0, checkedN, trackRef };
       }
+      // 구성 패널 닫기
+      document.querySelector('#pTrack [data-close]')?.click();
+      await sleep(150);
 
-      return { treeShown, hasSearch, chev, disabledAt1, enabledAt2, twoRefs, notRenderedCard, itemsUnchanged, inDetail, persisted, persistedNoCard, merge, trackCombine };
+      // ── 우클릭 복사/붙여넣기 ──
+      let copyPaste = { skipped: true };
+      const cardEl = document.querySelector('.col .ev:not(.ms)');
+      if (cardEl) {
+        const beforeN = r.store.items.length;
+        cardEl.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 120, clientY: 120 }));
+        await sleep(120);
+        const copyBtn = [...document.querySelectorAll('.ctx-menu button')].find((b) => b.textContent.includes('복사'));
+        const copyShown = !!copyBtn;
+        if (copyBtn) copyBtn.click();
+        await sleep(120);
+        const copied = !!r.board._clip;
+        const col = document.querySelector('.col');
+        col.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 220, clientY: 320 }));
+        await sleep(120);
+        const pasteBtn = [...document.querySelectorAll('.ctx-menu button')].find((b) => b.textContent.includes('붙여넣기'));
+        const pasteShown = !!pasteBtn && !pasteBtn.disabled;
+        if (pasteBtn && !pasteBtn.disabled) pasteBtn.click();
+        await sleep(250);
+        copyPaste = { copyShown, copied, pasteShown, pasted: r.store.items.length > beforeN };
+      }
+
+      // ── 키보드 탭 (Ctrl+T 새 탭, Ctrl+Tab 전환) ──
+      const tabsBefore = r.tabs.tabs.length;
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 't', ctrlKey: true, bubbles: true }));
+      await sleep(300);
+      const tAddsTab = r.tabs.tabs.length > tabsBefore;
+      const activeBefore = r.tabs.active;
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', ctrlKey: true, bubbles: true }));
+      await sleep(300);
+      const ctrlTabSwitches = r.tabs.active !== activeBefore;
+      const keyboardTabs = { tAddsTab, ctrlTabSwitches };
+
+      return { treeShown, hasSearch, chev, disabledAt1, enabledAt2, twoRefs, notRenderedCard, itemsUnchanged, inDetail, persisted, persistedNoCard, merge, trackCombine, copyPaste, keyboardTabs };
     })()`);
     console.log('[repro] ' + JSON.stringify(out));
   } catch (err) {

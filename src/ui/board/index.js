@@ -18,6 +18,8 @@ import { computeOrder, orderLayout, OrderScale } from '../../core/order.js';
 import { newId } from '../../core/schema.js';
 import { LAYOUT, DEFAULT_STATUS, DEFAULT_TYPE } from '../../config/index.js';
 import { el, clear } from '../dom.js';
+import { openCtxMenu } from '../ctxmenu.js';
+import { toast } from '../toast.js';
 import { renderHead } from './head.js';
 import { renderAxis, makeTodayLine } from './axis.js';
 import { attachBandEditing } from './bands.js';
@@ -582,6 +584,25 @@ export class Board {
 
     this.#attachCreate();
 
+    // 우클릭 — 카드에서 '이벤트 복사', 빈 칸에서 '붙여넣기'. 보드를 넘나든다(클립보드는 인스턴스에).
+    this.grid.addEventListener('contextmenu', (ev) => {
+      if (this.store.readonly) return;
+      const card = ev.target.closest('.ev');
+      const col = ev.target.closest('.col');
+      if (!card && !col) return;
+      ev.preventDefault();
+      const opts = [];
+      if (card) {
+        const id = card.dataset.id;
+        opts.push({ label: '이벤트 복사', action: () => this.#copyEvent(id) });
+      }
+      if (col) {
+        const day = Math.max(0, Math.round(this.scale.dayAt(ev.clientY - col.getBoundingClientRect().top)));
+        opts.push({ label: '여기에 붙여넣기', disabled: !this._clip, action: () => this.#pasteEvent(col.dataset.t, day) });
+      }
+      if (opts.length) openCtxMenu(ev.clientX, ev.clientY, opts);
+    });
+
     this.grid.addEventListener('keydown', (ev) => {
       const card = ev.target.closest('.ev');
       if (card && (ev.key === 'Enter' || ev.key === ' ')) {
@@ -589,6 +610,47 @@ export class Board {
         this.handlers.openItem(card.dataset.id);
       }
     });
+  }
+
+  /** 우클릭 '이벤트 복사' — 이 카드의 하위 트리(본질+태스크+하위 카드)를 인스턴스 클립보드에. */
+  #copyEvent(id) {
+    const serialize = (it) => ({
+      ti: it.ti, s: it.s, e: it.e, ty: it.ty, st: it.st, og: it.og, pg: it.pg, note: it.note,
+      tasks: (Array.isArray(it.tasks) ? it.tasks : []).map((t) => ({ text: t.text, done: t.done })),
+      children: this.store.items.filter((x) => x.parent === it.id).map(serialize),
+    });
+    const it = this.store.item(id);
+    if (!it) return;
+    this._clip = serialize(it);
+    toast('이벤트를 복사했습니다 — 빈 칸에서 우클릭 → 붙여넣기');
+  }
+
+  /** 우클릭 '붙여넣기' — 복사한 트리를 새 id로 이 트랙·이 날짜에 만든다(보드 넘나듦 가능). */
+  #pasteEvent(trackId, day) {
+    const clip = this._clip;
+    if (!clip || this.store.readonly) return;
+    const origin = this.origin;
+    const baseStart = dayIndex(clip.s, origin);   // 원본 시작 오프셋 — 붙여넣는 위치로 맞춰 이동
+    const shiftDays = day - baseStart;
+    const shift = (ds) => dateAt(origin, dayIndex(ds, origin) + shiftDays);
+    let rootId = null;
+    this.store.commit('붙여넣기', (doc) => {
+      const build = (node, parent, home) => {
+        const id = newId('e');
+        if (!rootId) rootId = id;
+        doc.items.push({
+          id, ti: node.ti ?? '', s: shift(node.s), e: shift(node.e),
+          ty: node.ty ?? 'bar', st: node.st ?? 'plan', og: node.og ?? '', pg: node.pg ?? 0, note: node.note ?? '',
+          parent, alias: null,
+          tasks: (node.tasks ?? []).map((t) => ({ id: newId('k'), text: t.text ?? '', done: !!t.done })),
+          place: { t: home, sp: 1, x: null, w: null, hd: null, align: 'middle', showNote: false },
+        });
+        for (const c of (node.children ?? [])) build(c, id, home);
+      };
+      build(clip, null, trackId);
+    });
+    if (rootId) { this.handlers.openItem(rootId); }
+    toast('붙여넣었습니다');
   }
 
   /**

@@ -9,6 +9,7 @@ import { dateAt, parseDate, dayIndex } from '../../core/dates.js';
 import { newId } from '../../core/schema.js';
 import { el } from '../dom.js';
 import { askText } from '../dialog.js';
+import { openCtxMenu } from '../ctxmenu.js';
 import { toast } from '../toast.js';
 
 export function attachBandEditing(gutM, { store, getOrigin, getScale, getOrderMode, onChange }) {
@@ -219,26 +220,6 @@ export function attachBandEditing(gutM, { store, getOrigin, getScale, getOrderMo
   }
 }
 
-/** 커서 위치에 뜨는 작은 우클릭 메뉴. 바깥을 누르면 닫힌다. */
-function openCtxMenu(x, y, options) {
-  document.querySelector('.ctx-menu')?.remove();
-  const menu = el('div.ctx-menu', { style: { left: `${x}px`, top: `${y}px` } });
-  const onDoc = (e) => {
-    if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('pointerdown', onDoc, true); }
-  };
-  for (const opt of options) {
-    menu.append(el('button', {
-      text: opt.label,
-      on: { click: () => { menu.remove(); document.removeEventListener('pointerdown', onDoc, true); opt.action(); } },
-    }));
-  }
-  document.body.append(menu);
-  // 화면 밖으로 나가면 안쪽으로 당긴다
-  const r = menu.getBoundingClientRect();
-  if (r.right > window.innerWidth) menu.style.left = `${Math.max(4, x - r.width)}px`;
-  if (r.bottom > window.innerHeight) menu.style.top = `${Math.max(4, y - r.height)}px`;
-  setTimeout(() => document.addEventListener('pointerdown', onDoc, true), 0);
-}
 
 /** 한 캘린더 달에 딱 맞는 구간인가 (드래그로 만든 낱개 월 높이 조절 구간) */
 function isSingleMonth(band) {
