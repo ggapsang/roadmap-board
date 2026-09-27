@@ -201,3 +201,8 @@ body.panel-open{--panel-w:var(--panel-size)}
   border:1px solid var(--border-default);border-radius:var(--u1-5);font-size:13px}
 .dlg-actions{display:flex;gap:var(--u2);justify-content:flex-end;margin-top:var(--u4)}
 .dlg-actions .btn{min-width:72px;justify-content:center}
+/* 선택 다이얼로그 — 동일 매핑에서 남길 본질 고르기 */
+.dlg-choices{display:flex;flex-direction:column;gap:var(--u2);margin-top:var(--u3)}
+.dlg-choice{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:var(--u2) var(--u3);height:auto}
+.dlg-choice-label{font-weight:600}
+.dlg-choice-sub{font-size:12px;color:var(--text-secondary)}

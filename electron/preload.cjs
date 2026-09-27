@@ -23,6 +23,9 @@ contextBridge.exposeInMainWorld('roadmapDB', {
   listEvents: () => call('event:list'),
   // 한 이벤트가 품은 카드들 — 상세 탭에서 조합한 이벤트의 안쪽 일정
   eventCards: (id) => call('event:cards', id),
+  // 동일 매핑 = 두 이벤트를 하나로 합치기(§7.2). {ok, rejected?, undo?} 반환.
+  mergeEvents: (keepId, dropId) => call('event:merge', keepId, dropId),
+  unmergeEvents: (snapshot) => call('event:unmerge', snapshot),
   openProject: (id) => call('project:open', id),
   // 활성 보드만 바꾼다(문서는 안 읽음) — 탭을 캐시에서 즉시 전환할 때 저장 대상을 맞춘다
   selectProject: (id) => call('project:select', id),

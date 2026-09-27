@@ -495,7 +495,9 @@ function normalizeRelations(doc, itemIds) {
   const seen = new Set();
   const out = [];
   for (const r of src) {
-    const type = RELATION_KEYS.includes(r.type) ? r.type : 'dep';
+    // 모르는 종류(옛 same·combine 등)는 버린다 — dep로 바꾸지 않는다(동일·조합은 관계가 아님).
+    if (!RELATION_KEYS.includes(r.type)) continue;
+    const type = r.type;
     const { from, to } = r;
     if (typeof from !== 'string' || typeof to !== 'string') continue;
     if (from === to) continue;

@@ -108,3 +108,41 @@ export function askConfirm({ title, message = '', confirmLabel = '확인', dange
     scrim.onclick = () => finish(false);
   });
 }
+
+/**
+ * 여러 보기 중 하나를 고른다. 동일 매핑에서 "어느 이벤트의 본질을 남길까"를 매번 고를 때 쓴다.
+ * @param {{title, message?, choices:{key,label,sub?}[]}} o
+ * @returns {Promise<string|null>} 고른 key, 취소하면 null
+ */
+export function askChoice({ title, message = '', choices = [] }) {
+  const scrim = ensureHost();
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (key) => {
+      if (settled) return;
+      settled = true;
+      scrim.hidden = true;
+      scrim.replaceChildren();
+      document.removeEventListener('keydown', onKey, true);
+      resolve(key);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(null); } };
+    document.addEventListener('keydown', onKey, true);
+    const box = el('div.dlg', { on: { click: (e) => e.stopPropagation() } }, [
+      el('h2', { text: title }),
+      message ? el('p.note', { text: message }) : null,
+      el('div.dlg-choices', {}, choices.map((c) => el('button.btn.outline.dlg-choice', {
+        type: 'button', on: { click: () => finish(c.key) },
+      }, [
+        el('span.dlg-choice-label', { text: c.label }),
+        c.sub ? el('span.dlg-choice-sub', { text: c.sub }) : null,
+      ]))),
+      el('div.dlg-actions', {}, [
+        el('button.btn.outline', { type: 'button', text: '취소', on: { click: () => finish(null) } }),
+      ]),
+    ]);
+    scrim.replaceChildren(box);
+    scrim.hidden = false;
+    scrim.onclick = () => finish(null);
+  });
+}

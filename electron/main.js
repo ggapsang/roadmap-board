@@ -1647,22 +1647,41 @@ async function runRepro(target) {
       // 상세 탭에 나오나
       document.querySelector('#pItem .ptab[data-tab="task"]').click();
       await sleep(400);
-      const detailText = document.getElementById('i-children').textContent;
-      const inDetail = detailText.includes(tgtTitle);
+      const inDetail = document.getElementById('i-children').textContent.includes(tgtTitle);
       // 저장 대기 후 재로드해서 지속 확인
       await sleep(400);
       await r.openProject(${boardId});
       await sleep(500);
       const persisted = !!r.store.item(tgt) && r.store.item(tgt).parent === cid;
-      // 원복 — 뺀다
-      document.querySelector('[data-id="' + cid + '"]').click();
-      await sleep(300);
-      document.querySelector('#pItem .ptab[data-tab="rel"]').click();
-      await sleep(300);
-      const off = document.querySelector('#i-combine .fl-opt[data-id="' + tgt + '"][aria-selected="true"]');
-      if (off) off.click();
-      await sleep(300);
-      return { otherShown, ownHidden, becameChild, inDetail, persisted, target: tgtTitle, card: card.ti };
+
+      // ── 동일 = 합치기(merge) ──
+      // 다른 보드의 카드 하나를 이 보드 카드와 합친다.
+      const evs2 = await r.adapter.listEvents();
+      const otherCard = evs2.find((e) => e.kind === 'card' && !String(e.boardIds||'').split(',').includes(activeStr));
+      let merge = { skipped: true };
+      if (otherCard) {
+        const card2 = r.store.items.find((x) => !x.parent && x.ty !== 'ms' && x.ti && x.id !== tgt);
+        const keep = card2.id, drop = otherCard.id, dropTitle = otherCard.title;
+        const beforeHasDrop = (await r.adapter.listEvents()).some((e) => e.id === drop);
+        document.querySelector('[data-id="' + keep + '"]').click();
+        await sleep(300);
+        document.querySelector('#pItem .ptab[data-tab="rel"]').click();
+        await sleep(350);
+        const sameShown = !!document.querySelector('#i-same .fl-opt[data-id="' + drop + '"]');
+        const sameOpt = document.querySelector('#i-same .fl-opt[data-id="' + drop + '"]');
+        if (sameOpt) sameOpt.click();
+        await sleep(300);
+        // askChoice 다이얼로그 — '이 이벤트를 남긴다'(keep) 클릭
+        const choiceBtns = [...document.querySelectorAll('.dlg-choice')];
+        const dialogShown = choiceBtns.length === 2;
+        if (choiceBtns[0]) choiceBtns[0].click();   // 첫째 = 이 이벤트를 남긴다
+        await sleep(700);   // merge + reload
+        const after = await r.adapter.listEvents();
+        const dropGone = !after.some((e) => e.id === drop);
+        const keepStays = after.some((e) => e.id === keep);
+        merge = { sameShown, dialogShown, beforeHasDrop, dropGone, keepStays, dropTitle, keep };
+      }
+      return { otherShown, ownHidden, becameChild, inDetail, persisted, target: tgtTitle, card: card.ti, merge };
     })()`);
     console.log('[repro] ' + JSON.stringify(out));
   } catch (err) {
@@ -1769,6 +1788,9 @@ function registerIpc() {
   ipcMain.handle('project:select', guard((_e, id) => { repo.open(id); repo.touchOpened(id); return true; }));
   // 한 이벤트가 품은 카드들 — '상세' 탭에서 조합한 이벤트의 안쪽 일정을 펼칠 때.
   ipcMain.handle('event:cards', guard((_e, id) => repo.eventCards(id)));
+  // 동일 매핑 = 두 이벤트를 하나로 합치기(§7.2). 되돌리기 스냅샷을 돌려준다.
+  ipcMain.handle('event:merge', guard((_e, keepId, dropId) => repo.mergeEvents(keepId, dropId)));
+  ipcMain.handle('event:unmerge', guard((_e, snapshot) => repo.unmergeEvents(snapshot)));
   ipcMain.handle('project:create', guard((_e, doc, name) => repo.createProject(doc, name)));
   ipcMain.handle('project:rename', guard((_e, id, name) => { repo.renameProject(id, name); return true; }));
   ipcMain.handle('project:duplicate', guard((_e, id, name) => repo.duplicateProject(id, name)));

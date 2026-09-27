@@ -1,18 +1,18 @@
 /**
  * 일정 편집 패널 — PPT 서식창처럼 탭으로 나눈다.
  *   속성   제목·상태·소속 트랙·유형·기간·담당·비고
- *   매핑   선행·상위·동일·조합 — 모두 같은 "검색 리스트"로 통일 (엑셀 필터식).
- *          동일(same)=서로 같은 이벤트(자기 자신 항상 포함), 조합(combine)=이 이벤트가
- *          다른 이벤트들의 합. 둘은 별개 관계다. 이름은 이벤트마다 고유 — 전파·동기화 없음.
+ *   매핑   선행·상위·동일·조합 — 같은 "검색 리스트" UI (엑셀 필터식). 단 화면 말 ≠ 시스템 말:
+ *          동일 = 두 이벤트를 하나로 '합치는 작업'(관계 아님, §7.2). 조합 = 포함(§7.1) — 이 이벤트가
+ *          다른 보드 이벤트를 하위로 품음. 관계 타입은 선행·포함뿐. (docs/SYSTEM.md)
  *   표시   글자 정렬·비고 표시·크기 강제 — 아이콘 토글
- *   상세   이 이벤트를 이루는 것 — 하위 카드 + 동일/조합 이벤트의 카드 (트리)
+ *   상세   이 이벤트를 이루는 것 — 하위(포함=조합) 카드 트리 + 그 안쪽 카드(eventCards)
  */
 import { shortMD, dayIndex, parseDate, inclusiveDays } from '../../core/dates.js';
-import { newId, ALIGNS, sameGroupOf } from '../../core/schema.js';
+import { newId, ALIGNS } from '../../core/schema.js';
 import { STATUSES, ITEM_TYPES } from '../../config/index.js';
 import { $, el, clear, icon, ICONS } from '../dom.js';
 import { createFilterList } from '../components/filter-list.js';
-import { askConfirm } from '../dialog.js';
+import { askConfirm, askChoice } from '../dialog.js';
 import { toast } from '../toast.js';
 
 /** 값이 바로 문서로 반영되는 단순 입력들 (트랙·관계·별칭·진척은 매핑 탭 UI가 맡는다) */
@@ -94,13 +94,13 @@ export class ItemPanel {
       isSelected: (id) => this.item?.parent === id,
       onChange: (id, next) => this.#setParent(next ? id : null),
     });
-    // 동일(same) = 서로 '같은 이벤트'라는 관계. 자기 자신은 항상 포함(체크). 각 이벤트는 자기
-    // 이름을 그대로 지킨다(동기화·덮어쓰기 없음). 조합 부품·상하위 등 구조상 '다른 이벤트'로
-    // 증명된 것은 동일이 될 수 없어 후보에서 뺀다(모순 방지).
+    // 동일 = 관계가 아니라 '두 이벤트를 하나로 합치는 작업'(docs/SYSTEM.md §7.2). 후보를 고르면
+    // 합친다(본질 선택 → 병합). 자기 자신은 맨 위에 항상 체크로 보인다(이 이벤트가 곧 그 정체성).
+    // 합치면 순환이 생기거나 같은 보드에 이중 배치가 되는 대상은 후보에서 뺀다.
     this.sameList = createFilterList({
-      mode: 'multi', placeholder: '같은 이벤트로 묶을 이벤트 검색…', emptyText: '묶을 이벤트가 없습니다.',
-      isSelected: (id) => id === this.item?.id || this.#sameGroup().has(id),
-      onChange: (id, next) => this.#toggleSame(id, next),
+      mode: 'multi', placeholder: '같은 것으로 합칠 다른 보드 이벤트 검색…', emptyText: '합칠 이벤트가 없습니다.',
+      isSelected: (id) => id === this.item?.id,
+      onChange: (id) => { if (id !== this.item?.id) this.#confirmMerge(id); },
     });
     // 조합 = 포함(containment). 이 이벤트가 다른 보드의 이벤트를 하위로 품는다(docs/SYSTEM.md §7.1).
     // 별도 '조합 관계'가 아니다 — 보드-트랙과 같은 포함이다. 이미 이 보드에 놓인 이벤트는 후보에서
@@ -328,12 +328,7 @@ export class ItemPanel {
     });
   }
 
-  // ── 동일(same) · 조합(combine) — 이벤트 사이의 두 관계 (§3.4·§3.6, 보드를 넘나든다) ──
-
-  /** 이 이벤트와 same 관계로 묶인 이벤트 id들 (대칭·이행, 자기 자신 제외). */
-  #sameGroup() {
-    return sameGroupOf(this.store.relations, this.item?.id ?? '');
-  }
+  // ── 동일(합치기 작업) · 조합(포함) — docs/SYSTEM.md §7.1·§7.2 ──
 
   /** 이 이벤트가 하위로 품은(포함한) 이벤트 id들 = 이 보드 문서에서 parent가 이 이벤트인 것. */
   #containedChildren() {
@@ -345,8 +340,8 @@ export class ItemPanel {
   }
 
   /**
-   * 동일 후보 — '같은 이벤트'로 묶을 것. 자기 자신은 맨 위에 항상 체크로 보인다(정체성).
-   * 구조상 '다른 이벤트'로 증명된 것(조합 부품·합성물, 상하위, 자기 트랙)은 뺀다.
+   * 동일(합치기) 후보 — 골라서 이 이벤트와 하나로 합칠 다른 보드 이벤트. 자기 자신은 맨 위에
+   * 항상 체크로 보인다(이 이벤트가 곧 그 정체성). 합치면 순환/이중배치가 되는 것은 뺀다.
    */
   #renderSame(item) {
     this._sameOptions = new Map();
@@ -354,21 +349,14 @@ export class ItemPanel {
     const byId = new Map(events.map((e) => [e.id, e]));
     const kindLabel = { board: '프로젝트', track: '트랙', card: '카드' };
     const excluded = this.#sameExcluded(item);
-    const group = this.#sameGroup();
     const options = [];
     const push = (ev, sub) => {
       this._sameOptions.set(ev.id, ev);
       options.push({ id: ev.id, label: ev.title || '(제목 없음)', sub: sub ?? `${kindLabel[ev.kind] || ''}${ev.boardNames ? ' · ' + ev.boardNames : ''}` });
     };
-    push(byId.get(item.id) ?? { id: item.id, title: item.ti }, '이 이벤트 (항상 동일)');
-    for (const gid of group) {
-      if (gid === item.id) continue;
-      const ev = byId.get(gid);
-      if (ev) push(ev);
-      else { this._sameOptions.set(gid, { id: gid, title: '(다른 곳의 이벤트)' }); options.push({ id: gid, label: '(다른 곳의 이벤트)', sub: '동일' }); }
-    }
+    push(byId.get(item.id) ?? { id: item.id, title: item.ti }, '이 이벤트 (항상)');
     for (const ev of events) {
-      if (ev.id === item.id || group.has(ev.id) || excluded.has(ev.id)) continue;
+      if (ev.id === item.id || excluded.has(ev.id)) continue;
       push(ev);
     }
     this.sameList.render(options);
@@ -401,19 +389,15 @@ export class ItemPanel {
     this.combineList.render(options);
   }
 
-  /** 동일이 될 수 없는 것(구조상 '다른 이벤트'): 자기·자기 트랙·상하위·조합 관계. */
+  /**
+   * 합칠 수 없는 것 = 자기 자신 + **이미 이 보드에 놓인 모든 이벤트**(트랙·카드). 같은 보드의 둘을
+   * 합치면 한 이벤트가 한 보드에서 배치가 둘 → 순서축 위치 모순(§5.3 논리와 같다). 포함으로 얽힌
+   * 상하위는 이 안에 포함되고, 남는 순환 위험은 repository 병합이 최종 거부한다(§7.2).
+   */
   #sameExcluded(item) {
     const out = new Set([item.id]);
-    const home = this.store.trackIndex(item.place.t);
-    const sp = item.place.sp ?? 1;
-    for (let k = 0; k < sp; k += 1) { const t = this.store.tracks[home + k]; if (t) out.add(t.id); }
-    let p = item.parent;
-    while (p && !out.has(p)) { out.add(p); p = this.store.item(p)?.parent; }
-    for (const d of this.#descendantsOf(item.id)) out.add(d);
-    for (const r of this.store.relations) {
-      if (r.type === 'combine' && r.from === item.id) out.add(r.to);
-      if (r.type === 'combine' && r.to === item.id) out.add(r.from);
-    }
+    for (const t of this.store.tracks) out.add(t.id);
+    for (const it of this.store.items) out.add(it.id);
     return out;
   }
 
@@ -461,16 +445,39 @@ export class ItemPanel {
     this.#renderCombine(item); this.#renderChildren(item);
   }
 
-  #toggleSame(targetId, next) {
+  /**
+   * 동일 매핑 = 두 이벤트를 하나로 합치는 작업(docs/SYSTEM.md §7.2). 남길 본질을 매번 고르게 하고
+   * (안 고른 이름은 사라짐 — 별칭 보존은 후속), repository가 관계를 합치고 순환이면 거부한다.
+   * 합친 뒤 현재 보드를 다시 읽어 반영한다. 되돌리기 스냅샷은 보관한다.
+   */
+  async #confirmMerge(targetId) {
     const item = this.item;
-    if (!item || targetId === item.id) return;   // 자기 자신은 항상 동일 — 토글 안 함
-    const id = item.id;
-    this.store.commit('동일', (doc) => {
-      const dup = (r) => r.type === 'same' && ((r.from === id && r.to === targetId) || (r.from === targetId && r.to === id));
-      doc.relations = (doc.relations ?? []).filter((r) => !dup(r));
-      if (next) doc.relations.push({ id: newId('r'), type: 'same', from: id, to: targetId });
+    if (!item || targetId === item.id || this.store.readonly) return;
+    const ev = (this._sameOptions?.get(targetId)) || (this._allEvents ?? []).find((e) => e.id === targetId);
+    const mine = item.ti || '(제목 없음)';
+    const theirs = ev?.title || '(제목 없음)';
+    const choice = await askChoice({
+      title: '같은 이벤트로 합치기',
+      message: '두 이벤트를 하나로 합칩니다. 남길 본질(제목·상태·날짜)을 고르세요.',
+      choices: [
+        { key: 'mine', label: '이 이벤트를 남긴다', sub: mine },
+        { key: 'theirs', label: '상대 이벤트를 남긴다', sub: theirs },
+      ],
     });
-    this.#renderSame(item); this.#renderCombine(item); this.#renderChildren(item);
+    if (!choice) return;
+    const keepId = choice === 'mine' ? item.id : targetId;
+    const dropId = choice === 'mine' ? targetId : item.id;
+    let res;
+    try { res = await this.adapter?.mergeEvents?.(keepId, dropId); }
+    catch (e) { toast('합치기 실패: ' + String(e.message || e), 'warn'); return; }
+    if (!res || res.ok !== true) { toast(res?.rejected ? '합칠 수 없음: ' + res.rejected : '합치기 실패', 'warn'); return; }
+    this._lastMergeUndo = res.undo;
+    // 합치기는 DB 전역 변경 — 현재 보드를 다시 읽어 반영한다.
+    const cur = this.adapter.projectId;
+    const doc = cur != null ? await this.adapter.openProject(cur) : null;
+    if (doc) this.store.adopt(doc);
+    this.panels.close();
+    toast('같은 이벤트로 합쳤습니다');
   }
 
   /** 제목으로 검색하면 뜨는 "같은 이벤트로 연결" 후보(모든 보드). 평상시엔 숨김. */
@@ -512,18 +519,12 @@ export class ItemPanel {
     return true;
   }
 
+  /** 제목 검색 드롭다운에서 고른 기존 이벤트와 '같은 이벤트로 합치기'(동일 매핑)를 연다. */
   async #confirmLink(targetId) {
     const item = this.item;
-    if (!item) return;
+    if (!item || targetId === item.id) return;
     $('i-title-drop').hidden = true;
-    const ev = this._sameOptions?.get(targetId);
-    const name = ev?.title || '(제목 없음)';
-    const where = ev?.kind === 'board' ? '프로젝트' : (ev?.boardNames || '다른 보드');
-    const ok = await askConfirm({
-      title: '같은 이벤트로 연결', confirmLabel: '연결',
-      message: `'${name}' (${where})와 같은 이벤트(동일)로 이을까요?`,
-    });
-    if (ok) this.#toggleSame(targetId, true);
+    await this.#confirmMerge(targetId);
   }
 
   /** 상위 일정 후보 — 자기·자손·마일스톤을 뺀 것. 체크가 없으면 상위 없음(트랙에 직접). */
@@ -707,47 +708,8 @@ export class ItemPanel {
       }
     }).catch(() => {});
 
-    // (2) 매핑한 이벤트 — 동일(same)과 조합(combine) 둘 다. 부품마다 접기 그룹, 자식 카드는
-    //     그 부품 칸에 채운다(순서·자리 보존).
-    const parts = this.#mappedParts(item);
-    for (const p of parts) {
-      const pev = (this._allEvents ?? []).find((e) => e.id === p.id);
-      const partBoard = pev?.boardId ?? (Number(String(pev?.boardIds ?? '').split(',')[0]) || null);
-      const { row, kids } = node({
-        title: pev?.title || '(이벤트)', status: pev?.st ?? 'plan', tag: p.kind, hasKids: true,
-        onOpen: partBoard ? () => this.openProject?.(partBoard) : null,
-      });
-      box.append(row);
-      kids.append(el('div.empty', { text: '불러오는 중…' }));
-      this.adapter?.eventCards?.(p.id).then((cards) => {
-        if (this._detailGen !== gen || this.item?.id !== item.id) return;
-        clear(kids);
-        if (!(cards && cards.length)) { kids.append(el('div.empty', { text: '하위 일정 없음' })); return; }
-        for (const c of cards) {
-          const r = node({ title: c.title, status: c.status, hasKids: false, onOpen: partBoard ? () => this.openProject?.(partBoard) : null });
-          if (c.depth) r.row.style.paddingLeft = `${8 + c.depth * 14}px`;
-          kids.append(r.row);
-        }
-      }).catch(() => { if (this._detailGen === gen && this.item?.id === item.id) { clear(kids); kids.append(el('div.empty', { text: '불러오지 못함' })); } });
-    }
-  }
-
-  /**
-   * 상세에 부품 그룹으로 따로 보여 줄 대상 — 동일(same)로 묶인 이벤트뿐. 조합은 이제 포함이라
-   * 위(1) 하위 카드로 이미 나온다. (동일은 병합으로 재작성 예정 — 그때 이 목록도 정리된다.)
-   */
-  #mappedParts(item) {
-    const id = item?.id;
-    if (!id) return [];
-    const out = [];
-    const seen = new Set();
-    for (const r of this.store.relations) {
-      if (r.type === 'same' && (r.from === id || r.to === id)) {
-        const pid = r.from === id ? r.to : r.from;
-        if (!seen.has(pid)) { seen.add(pid); out.push({ id: pid, kind: '동일' }); }
-      }
-    }
-    return out;
+    // 동일은 이제 '합치기 작업'이라 별도 표시가 없다(합치면 한 이벤트가 됨). 조합한 것은 위 (1)
+    // 하위 카드로 나오고, 그 안쪽 카드는 (1b) eventCards가 보여 준다.
   }
 
   /** 다른 보드의 이벤트(카드·트랙·프로젝트)를 받아 동일·조합 후보·구성 일정을 갱신. */

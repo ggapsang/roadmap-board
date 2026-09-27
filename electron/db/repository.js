@@ -241,6 +241,135 @@ export class BoardRepository {
     if (b?.root_event_id) this.db.prepare('UPDATE event SET title = ? WHERE id = ?').run(name, b.root_event_id);
   }
 
+  // ── 동일 매핑 = 두 이벤트를 하나로 합치는 작업 (docs/SYSTEM.md §7.2) ──────────
+
+  /** 포함(containment) 그래프에 순환이 있나. 합치기 후 검증용. */
+  #hasContainmentCycle() {
+    const adj = new Map();
+    for (const c of this.db.prepare('SELECT parent_id, child_id FROM containment').all()) {
+      if (!adj.has(c.parent_id)) adj.set(c.parent_id, []);
+      adj.get(c.parent_id).push(c.child_id);
+    }
+    const WHITE = 0, GRAY = 1, BLACK = 2;
+    const color = new Map();
+    const visit = (n) => {
+      color.set(n, GRAY);
+      for (const m of (adj.get(n) ?? [])) {
+        const c = color.get(m) ?? WHITE;
+        if (c === GRAY) return true;
+        if (c === WHITE && visit(m)) return true;
+      }
+      color.set(n, BLACK);
+      return false;
+    };
+    for (const n of adj.keys()) if ((color.get(n) ?? WHITE) === WHITE) { if (visit(n)) return true; }
+    return false;
+  }
+
+  /** rel의 한 종류(예: dep)에 순환이 있나. */
+  #hasRelCycle(type) {
+    const adj = new Map();
+    for (const r of this.db.prepare('SELECT from_id, to_id FROM rel WHERE type=?').all(type)) {
+      if (!adj.has(r.from_id)) adj.set(r.from_id, []);
+      adj.get(r.from_id).push(r.to_id);
+    }
+    const color = new Map();
+    const visit = (n) => {
+      color.set(n, 1);
+      for (const m of (adj.get(n) ?? [])) {
+        const c = color.get(m) ?? 0;
+        if (c === 1) return true;
+        if (c === 0 && visit(m)) return true;
+      }
+      color.set(n, 2);
+      return false;
+    };
+    for (const n of adj.keys()) if ((color.get(n) ?? 0) === 0) { if (visit(n)) return true; }
+    return false;
+  }
+
+  /**
+   * 두 이벤트를 하나로 합친다. keepId를 남기고 dropId를 없앤다. dropId를 가리키던 포함·표시·
+   * 관계·태스크·보드루트를 keepId로 옮기고, 중복·자기순환을 정리한다. 합친 결과 포함이나
+   * 선행에 순환이 생기면 거부(롤백). 본질은 keepId 것을 남긴다 — 호출부가 keep을 정한다.
+   * @returns {{ok:boolean, rejected?:string, undo?:object}} undo=합치기 전 스냅샷(되돌리기용).
+   */
+  mergeEvents(keepId, dropId) {
+    if (!keepId || !dropId || keepId === dropId) return { ok: false, rejected: '같은 이벤트' };
+    const keepEv = this.db.prepare('SELECT * FROM event WHERE id=?').get(keepId);
+    const dropEv = this.db.prepare('SELECT * FROM event WHERE id=?').get(dropId);
+    if (!keepEv || !dropEv) return { ok: false, rejected: '이벤트를 찾을 수 없음' };
+    // 되돌리기용 스냅샷 — 양쪽 이벤트와 관련 간선 전부.
+    const affected = [keepId, dropId];
+    const snapshot = {
+      keepId, dropId, dropEvent: dropEv, keepEvent: keepEv,
+      containment: this.db.prepare('SELECT * FROM containment WHERE parent_id IN (?,?) OR child_id IN (?,?)').all(...affected, ...affected),
+      disp: this.db.prepare('SELECT * FROM disp WHERE parent_id IN (?,?) OR child_id IN (?,?)').all(...affected, ...affected),
+      rel: this.db.prepare('SELECT * FROM rel WHERE from_id IN (?,?) OR to_id IN (?,?)').all(...affected, ...affected),
+      tasks: this.db.prepare('SELECT * FROM event_task WHERE event_id=?').all(dropId),
+    };
+    const insCont = this.db.prepare('INSERT OR IGNORE INTO containment (parent_id,child_id,ordered,ord) VALUES (?,?,?,?)');
+    const insDisp = this.db.prepare('INSERT OR IGNORE INTO disp (parent_id,child_id,pos_x,pos_w,height_days,align,show_note,alias,lab,px_width) VALUES (@parent_id,@child_id,@pos_x,@pos_w,@height_days,@align,@show_note,@alias,@lab,@px_width)');
+    const run = this.db.transaction(() => {
+      // 포함: dropId를 keepId로. 자기순환(부모=자식)은 버린다. PK 충돌은 IGNORE.
+      for (const c of this.db.prepare('SELECT * FROM containment WHERE parent_id=?').all(dropId)) {
+        if (keepId !== c.child_id) insCont.run(keepId, c.child_id, c.ordered, c.ord);
+      }
+      for (const c of this.db.prepare('SELECT * FROM containment WHERE child_id=?').all(dropId)) {
+        if (c.parent_id !== keepId) insCont.run(c.parent_id, keepId, c.ordered, c.ord);
+      }
+      this.db.prepare('DELETE FROM containment WHERE parent_id=? OR child_id=?').run(dropId, dropId);
+      // 표시(배치): dropId를 keepId로. keepId에 이미 있으면 dropId 것은 버린다(IGNORE).
+      for (const d of this.db.prepare('SELECT * FROM disp WHERE parent_id=?').all(dropId)) {
+        if (keepId !== d.child_id) insDisp.run({ ...d, parent_id: keepId });
+      }
+      for (const d of this.db.prepare('SELECT * FROM disp WHERE child_id=?').all(dropId)) {
+        if (d.parent_id !== keepId) insDisp.run({ ...d, child_id: keepId });
+      }
+      this.db.prepare('DELETE FROM disp WHERE parent_id=? OR child_id=?').run(dropId, dropId);
+      // 관계: 끝점을 keepId로. 자기순환·중복은 버린다.
+      for (const rr of this.db.prepare('SELECT * FROM rel WHERE from_id=? OR to_id=?').all(dropId, dropId)) {
+        const from = rr.from_id === dropId ? keepId : rr.from_id;
+        const to = rr.to_id === dropId ? keepId : rr.to_id;
+        if (from === to) { this.db.prepare('DELETE FROM rel WHERE id=?').run(rr.id); continue; }
+        const dup = this.db.prepare('SELECT id FROM rel WHERE type=? AND from_id=? AND to_id=? AND id<>?').get(rr.type, from, to, rr.id);
+        if (dup) this.db.prepare('DELETE FROM rel WHERE id=?').run(rr.id);
+        else this.db.prepare('UPDATE rel SET from_id=?, to_id=? WHERE id=?').run(from, to, rr.id);
+      }
+      // 태스크·보드루트(방어적)
+      this.db.prepare('UPDATE event_task SET event_id=? WHERE event_id=?').run(keepId, dropId);
+      this.db.prepare('UPDATE board SET root_event_id=? WHERE root_event_id=?').run(keepId, dropId);
+      // 사라지는 이벤트 제거. 본질은 keepId 것을 남긴다(이미 keep에 있음).
+      this.db.prepare('DELETE FROM event WHERE id=?').run(dropId);
+      // 합친 결과 순환이면 거부(롤백).
+      if (this.#hasContainmentCycle()) throw new Error('합치면 포함이 순환합니다');
+      if (this.#hasRelCycle('dep')) throw new Error('합치면 선행이 순환합니다');
+    });
+    try { run(); } catch (e) { return { ok: false, rejected: String(e.message || e) }; }
+    return { ok: true, undo: snapshot };
+  }
+
+  /** 합치기 되돌리기 — 스냅샷으로 두 이벤트와 간선을 원래대로 복원. */
+  unmergeEvents(snapshot) {
+    if (!snapshot || !snapshot.dropId) return { ok: false };
+    const s = snapshot;
+    const run = this.db.transaction(() => {
+      // 합치기가 건드린 keep·drop 관련 간선을 싹 지우고 스냅샷을 그대로 되살린다.
+      this.db.prepare('DELETE FROM containment WHERE parent_id IN (?,?) OR child_id IN (?,?)').run(s.keepId, s.dropId, s.keepId, s.dropId);
+      this.db.prepare('DELETE FROM disp WHERE parent_id IN (?,?) OR child_id IN (?,?)').run(s.keepId, s.dropId, s.keepId, s.dropId);
+      this.db.prepare('DELETE FROM rel WHERE from_id IN (?,?) OR to_id IN (?,?)').run(s.keepId, s.dropId, s.keepId, s.dropId);
+      this.db.prepare('DELETE FROM event_task WHERE event_id=?').run(s.keepId);   // drop의 태스크가 keep으로 옮겨졌을 수 있음
+      if (s.dropEvent) this.db.prepare('INSERT OR REPLACE INTO event (id,title,start_date,end_date,type,status,org,progress,note) VALUES (@id,@title,@start_date,@end_date,@type,@status,@org,@progress,@note)').run(s.dropEvent);
+      if (s.keepEvent) this.db.prepare('INSERT OR REPLACE INTO event (id,title,start_date,end_date,type,status,org,progress,note) VALUES (@id,@title,@start_date,@end_date,@type,@status,@org,@progress,@note)').run(s.keepEvent);
+      for (const c of s.containment) this.db.prepare('INSERT OR REPLACE INTO containment (parent_id,child_id,ordered,ord) VALUES (?,?,?,?)').run(c.parent_id, c.child_id, c.ordered, c.ord);
+      for (const d of s.disp) this.db.prepare('INSERT OR REPLACE INTO disp (parent_id,child_id,pos_x,pos_w,height_days,align,show_note,alias,lab,px_width) VALUES (@parent_id,@child_id,@pos_x,@pos_w,@height_days,@align,@show_note,@alias,@lab,@px_width)').run(d);
+      for (const r of s.rel) this.db.prepare('INSERT OR REPLACE INTO rel (id,type,from_id,to_id) VALUES (?,?,?,?)').run(r.id, r.type, r.from_id, r.to_id);
+      for (const t of s.tasks) this.db.prepare('INSERT OR REPLACE INTO event_task (id,event_id,ord,text,done) VALUES (?,?,?,?,?)').run(t.id, t.event_id, t.ord, t.text, t.done);
+    });
+    try { run(); } catch (e) { return { ok: false, rejected: String(e.message || e) }; }
+    return { ok: true };
+  }
+
   /** 문서를 그대로 복사해 새 보드를 만든다 */
   duplicateProject(id, name) {
     const previous = this.boardId;
