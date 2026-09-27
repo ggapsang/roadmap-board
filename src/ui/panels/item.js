@@ -11,8 +11,7 @@ import { shortMD, dayIndex, parseDate, inclusiveDays } from '../../core/dates.js
 import { newId, ALIGNS } from '../../core/schema.js';
 import { STATUSES, ITEM_TYPES, statusList } from '../../config/index.js';
 import { $, el, clear, icon, ICONS } from '../dom.js';
-import { createFilterList } from '../components/filter-list.js';
-import { askConfirm, askChoice } from '../dialog.js';
+import { askConfirm, askChoice, askTree } from '../dialog.js';
 import { openCombinePicker, pickEventForMerge, containedChildren } from '../combine.js';
 import { toast } from '../toast.js';
 
@@ -78,19 +77,22 @@ export class ItemPanel {
 
   /** 관계 3종을 같은 검색 리스트로. 선택은 문서가 진실이라 isSelected를 매번 물어본다. */
   #buildLists() {
-    this.depsList = createFilterList({
-      mode: 'multi', placeholder: '선행 일정 검색…', emptyText: '선택할 다른 일정이 없습니다.',
-      isSelected: (id) => this.store.relations.some((r) => r.type === 'dep' && r.from === id && r.to === this.item?.id),
-      onChange: (id) => this.#toggleDep(id),
+    // 동일·조합·상위·선행 모두 팝업 트리 버튼으로 다룬다(각 #render*가 버튼+요약을 그린다).
+  }
+
+  /** 이 보드를 트랙 → 카드 트리 노드로. 상위·선행 후보 고르기에 쓴다(같은 보드 안). */
+  #boardTreeNodes({ exclude = new Set(), noMs = false } = {}) {
+    const childrenOf = (pid) => this.store.items.filter((x) => x.parent === pid);
+    const build = (it) => ({
+      id: it.id, label: it.ti || '(제목 없음)',
+      sub: it.ty === 'ms' ? '마일스톤' : '',
+      checkable: !exclude.has(it.id) && !(noMs && it.ty === 'ms'),
+      children: childrenOf(it.id).map(build),
     });
-    this.parentList = createFilterList({
-      mode: 'single', placeholder: '상위 일정 검색…', emptyText: '품을 수 있는 일정이 없습니다.',
-      isSelected: (id) => this.item?.parent === id,
-      onChange: (id, next) => this.#setParent(next ? id : null),
-    });
-    // 동일(합치기)·조합(포함)은 인라인 목록이 아니라 팝업 트리 버튼으로 다룬다(#renderSame/#renderCombine).
-    $('i-deps').append(this.depsList.root);
-    $('i-parent').append(this.parentList.root);
+    return this.store.tracks.map((tr) => ({
+      id: tr.id, label: tr.name || '(트랙)', sub: '트랙', checkable: false,
+      children: this.store.items.filter((x) => !x.parent && x.place?.t === tr.id).map(build),
+    }));
   }
 
   #bind() {
@@ -295,17 +297,37 @@ export class ItemPanel {
     return n;
   }
 
-  // ── 관계 (선행·상위·별칭) ────────────────────────────────
+  // ── 관계 (선행·상위) — 같은 보드 안, 팝업 트리 버튼 ────────
 
-  /** 선행 일정 — 트랙·시작일 순으로 후보를 늘어놓고, 검색으로 좁힌다. */
+  /** 선행 일정 — '고르기' 버튼 + 현재 선행 요약. 팝업 트리(여럿)에서 이 보드 카드를 고른다. */
   #renderDeps(item) {
-    const order = (tid) => this.store.trackIndex(tid);
-    const origin = parseDate(this.store.meta.start);
-    const options = this.store.items
-      .filter((x) => x.id !== item.id)
-      .sort((a, b) => order(a.place.t) - order(b.place.t) || dayIndex(a.s, origin) - dayIndex(b.s, origin))
-      .map((x) => ({ id: x.id, label: x.ti || '(제목 없음)', sub: `${this.store.track(x.place.t)?.name ?? ''} · ${shortMD(x.s)}` }));
-    this.depsList.render(options);
+    const box = $('i-deps');
+    clear(box);
+    box.append(el('button.btn.outline.sm', { type: 'button', text: '고르기…', on: { click: () => this.#openDepsPicker() } }));
+    const cur = this.store.relations.filter((r) => r.type === 'dep' && r.to === item.id).map((r) => r.from);
+    const list = el('div.combine-summary');
+    if (!cur.length) list.append(el('div.empty', { text: '선행 일정이 없습니다.' }));
+    for (const id of cur) {
+      list.append(el('div.combine-chip', {}, [
+        el('span.combine-chip-name', { text: this.store.item(id)?.ti || '(제목 없음)' }),
+        el('button.task-del', { type: 'button', title: '선행에서 빼기', on: { click: () => this.#toggleDep(id) } }, [icon(ICONS.close)]),
+      ]));
+    }
+    box.append(list);
+  }
+
+  async #openDepsPicker() {
+    const item = this.item;
+    if (!item || this.store.readonly) return;
+    const checked = new Set(this.store.relations.filter((r) => r.type === 'dep' && r.to === item.id).map((r) => r.from));
+    const nodes = this.#boardTreeNodes({ exclude: new Set([item.id]) });
+    const result = await askTree({ title: '선행 일정 고르기', message: '먼저 끝나야 하는 일정들(같은 보드)을 고르세요.', nodes, checked, select: 'multi' });
+    if (!result) return;
+    this.store.commit('선행 일정 변경', (doc) => {
+      doc.relations = (doc.relations ?? []).filter((r) => !(r.type === 'dep' && r.to === item.id));
+      for (const from of result) if (from !== item.id) doc.relations.push({ id: newId('r'), type: 'dep', from, to: item.id });
+    });
+    this.#renderDeps(item);
   }
 
   #toggleDep(otherId) {
@@ -316,6 +338,7 @@ export class ItemPanel {
       if (doc.relations.some(dep)) doc.relations = doc.relations.filter((r) => !dep(r));
       else doc.relations.push({ id: newId('r'), type: 'dep', from: otherId, to: item.id });
     });
+    this.#renderDeps(item);
   }
 
   // ── 동일(합치기 작업) · 조합(포함) — docs/SYSTEM.md §7.1·§7.2 ──
@@ -333,7 +356,7 @@ export class ItemPanel {
     const box = $('i-same');
     clear(box);
     box.append(el('button.btn.outline.sm', {
-      type: 'button', text: '다른 프로젝트와 동일(합치기)…',
+      type: 'button', text: '합치기…',
       on: { click: () => this.#openMergePicker() },
     }));
     // 제목 검색 드롭다운(합치기 후보) 재료 — 자기 자신 제외한 모든 보드 이벤트.
@@ -358,7 +381,7 @@ export class ItemPanel {
     const events = this._allEvents ?? [];
     const byId = new Map(events.map((e) => [e.id, e]));
     box.append(el('button.btn.outline.sm', {
-      type: 'button', text: '다른 프로젝트에서 조합…',
+      type: 'button', text: '고르기…',
       on: { click: () => this.#openCombinePicker() },
     }));
     const children = [...this.#containedChildren()];
@@ -480,15 +503,29 @@ export class ItemPanel {
     await this.#confirmMerge(targetId);
   }
 
-  /** 상위 일정 후보 — 자기·자손·마일스톤을 뺀 것. 체크가 없으면 상위 없음(트랙에 직접). */
+  /** 상위 일정 — '고르기' 버튼 + 현재 상위 요약. 팝업 트리(하나)에서 이 보드 카드를 고른다. */
   #renderParents(item) {
-    const descendants = this.#descendantsOf(item.id);
-    const options = [];
-    for (const other of this.store.items) {
-      if (other.id === item.id || descendants.has(other.id) || other.ty === 'ms') continue;
-      options.push({ id: other.id, label: other.ti || '(제목 없음)', sub: this.store.track(other.place.t)?.name ?? '' });
+    const box = $('i-parent');
+    clear(box);
+    box.append(el('button.btn.outline.sm', { type: 'button', text: '고르기…', on: { click: () => this.#openParentPicker() } }));
+    const list = el('div.combine-summary');
+    if (!item.parent) list.append(el('div.empty', { text: '상위 없음 (트랙에 직접)' }));
+    else {
+      list.append(el('div.combine-chip', {}, [
+        el('span.combine-chip-name', { text: this.store.item(item.parent)?.ti || '(제목 없음)' }),
+        el('button.task-del', { type: 'button', title: '상위에서 빼기', on: { click: () => this.#setParent(null) } }, [icon(ICONS.close)]),
+      ]));
     }
-    this.parentList.render(options);
+    box.append(list);
+  }
+
+  async #openParentPicker() {
+    const item = this.item;
+    if (!item || this.store.readonly) return;
+    const exclude = new Set([item.id, ...this.#descendantsOf(item.id)]);
+    const nodes = this.#boardTreeNodes({ exclude, noMs: true });
+    const picked = await askTree({ title: '상위 일정 고르기', message: '이 카드를 품을 상위 일정 하나를 고르세요(같은 보드).', nodes, select: 'single' });
+    if (typeof picked === 'string') this.#setParent(picked);
   }
 
   #setParent(parentId) {
@@ -503,8 +540,9 @@ export class ItemPanel {
       item.place.x = null;
       item.place.w = null;
     });
-    // 상위에 담기면 트랙이 상위를 따르므로 트랙 매핑 표시도 갱신한다.
+    // 상위에 담기면 트랙이 상위를 따르므로 트랙 매핑·요약을 갱신한다.
     this.#renderTrackMap(item);
+    this.#renderParents(item);
   }
 
   #descendantsOf(id) {

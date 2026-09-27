@@ -1740,6 +1740,33 @@ async function runRepro(target) {
         copyPaste = { copyShown, copied, pasteShown, pasted: r.store.items.length > beforeN };
       }
 
+      // ── 상위·선행도 팝업 버튼인지 + 선행 픽커 동작 ──
+      let relBtns = { skipped: true };
+      {
+        const card3 = r.store.items.find((x) => !x.parent && x.ty !== 'ms' && x.ti);
+        document.querySelector('[data-id="' + card3.id + '"]').click();
+        await sleep(300);
+        document.querySelector('#pItem .ptab[data-tab="rel"]').click();
+        await sleep(200);
+        const parentBtn = !!document.querySelector('#i-parent button.btn');
+        const depsBtn = !!document.querySelector('#i-deps button.btn');
+        const noInline = document.querySelectorAll('#i-parent .fl-opt, #i-deps .fl-opt').length === 0;
+        // 선행 픽커 열어 하나 골라 적용
+        const depsBefore = r.store.relations.filter((x) => x.type === 'dep' && x.to === card3.id).length;
+        document.querySelector('#i-deps button.btn').click();
+        await sleep(300);
+        const depTreeShown = document.querySelectorAll('.dlg-tree-row').length > 0;
+        const cb = [...document.querySelectorAll('.dlg-tree-row input[type=checkbox]')].find((x) => !x.checked);
+        if (cb) cb.click();
+        await sleep(80);
+        const apply = [...document.querySelectorAll('.dlg-actions .btn.cta')].pop();
+        if (apply && !apply.disabled) apply.click();
+        await sleep(200);
+        const depsAfter = r.store.relations.filter((x) => x.type === 'dep' && x.to === card3.id).length;
+        relBtns = { parentBtn, depsBtn, noInline, depTreeShown, depAdded: depsAfter > depsBefore };
+        document.querySelector('#pItem [data-close]')?.click();
+      }
+
       // ── 키보드 탭 (Ctrl+T 새 탭, Ctrl+Tab 전환) ──
       const tabsBefore = r.tabs.tabs.length;
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 't', ctrlKey: true, bubbles: true }));
@@ -1751,7 +1778,7 @@ async function runRepro(target) {
       const ctrlTabSwitches = r.tabs.active !== activeBefore;
       const keyboardTabs = { tAddsTab, ctrlTabSwitches };
 
-      return { treeShown, hasSearch, chev, disabledAt1, enabledAt2, twoRefs, notRenderedCard, itemsUnchanged, inDetail, persisted, persistedNoCard, merge, trackCombine, copyPaste, keyboardTabs };
+      return { treeShown, hasSearch, chev, disabledAt1, enabledAt2, twoRefs, notRenderedCard, itemsUnchanged, inDetail, persisted, persistedNoCard, merge, trackCombine, copyPaste, keyboardTabs, relBtns };
     })()`);
     console.log('[repro] ' + JSON.stringify(out));
   } catch (err) {
