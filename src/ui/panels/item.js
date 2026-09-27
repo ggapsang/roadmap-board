@@ -12,7 +12,8 @@ import { newId, ALIGNS } from '../../core/schema.js';
 import { STATUSES, ITEM_TYPES } from '../../config/index.js';
 import { $, el, clear, icon, ICONS } from '../dom.js';
 import { createFilterList } from '../components/filter-list.js';
-import { askConfirm, askChoice, askTree } from '../dialog.js';
+import { askConfirm, askChoice } from '../dialog.js';
+import { openCombinePicker, containedChildren } from '../combine.js';
 import { toast } from '../toast.js';
 
 /** 값이 바로 문서로 반영되는 단순 입력들 (트랙·관계·별칭·진척은 매핑 탭 UI가 맡는다) */
@@ -323,14 +324,9 @@ export class ItemPanel {
 
   // ── 동일(합치기 작업) · 조합(포함) — docs/SYSTEM.md §7.1·§7.2 ──
 
-  /** 이 이벤트가 조합(포함)한 다른 보드 이벤트 id들 = doc.refs에서 parent가 이 이벤트인 것.
-   *  조합은 관계이지 카드 렌더가 아니다 — 그래서 doc.items가 아니라 doc.refs에 담긴다. */
+  /** 이 이벤트가 조합(포함)한 다른 보드 이벤트 id들 (doc.refs). 공용 모듈에 위임. */
   #containedChildren() {
-    const id = this.item?.id;
-    const set = new Set();
-    if (!id) return set;
-    for (const r of (this.store.doc.refs ?? [])) if (r.parent === id) set.add(r.child);
-    return set;
+    return containedChildren(this.store, this.item?.id);
   }
 
   /**
@@ -391,62 +387,13 @@ export class ItemPanel {
    */
   async #openCombinePicker() {
     const item = this.item;
-    if (!item || this.store.readonly) return;
-    let events = this._allEvents ?? [];
-    try { const fresh = await this.adapter?.listEvents?.(); if (Array.isArray(fresh)) { events = fresh; this._allEvents = fresh; } } catch { /* 캐시 사용 */ }
-    const curBoard = String(this.adapter?.projectId ?? '');
-    const inBoard = (e) => String(e.boardIds ?? '').split(',').includes(curBoard);
-    const boards = events.filter((e) => e.kind === 'board' && !inBoard(e));
-    const rows = [];
-    for (const b of boards) {
-      rows.push({ id: b.id, label: b.title || '(프로젝트)', sub: '프로젝트', depth: 0, checkable: false });
-      const bid = String(b.boardId ?? b.boardIds ?? '');
-      const tracks = events.filter((e) => e.kind === 'track' && String(e.boardIds ?? '').split(',').includes(bid));
-      for (const tr of tracks) {
-        rows.push({ id: tr.id, label: tr.title || '(트랙)', sub: '트랙', depth: 1, checkable: true });
-        let cards = [];
-        try { cards = (await this.adapter?.eventCards?.(tr.id)) ?? []; } catch { cards = []; }
-        for (const c of cards) rows.push({ id: c.id, label: c.title || '(카드)', sub: '카드', depth: 2 + (c.depth || 0), checkable: true });
-      }
-    }
-    const checked = this.#containedChildren();
-    const result = await askTree({
-      title: '조합 — 다른 프로젝트의 이벤트 품기',
-      message: '체크한 트랙·카드를 이 이벤트의 조합(포함)으로 담습니다. 보드에 카드로 그려지지 않고, 상세와 펼침에서 보입니다.',
-      rows, checked,
-    });
-    if (!result) return;
-    this.#setContained([...result]);
+    if (!item) return;
+    const changed = await openCombinePicker(this.store, this.adapter, item.id);
+    if (changed) { this.#renderCombine(item); this.#renderChildren(item); }
   }
 
   /**
-   * 합칠 수 없는 것 = 자기 자신 + **이미 이 보드에 놓인 모든 이벤트**(트랙·카드). 같은 보드의 둘을
-   * 합치면 한 이벤트가 한 보드에서 배치가 둘 → 순서축 위치 모순(§5.3 논리와 같다). 포함으로 얽힌
-   * 상하위는 이 안에 포함되고, 남는 순환 위험은 repository 병합이 최종 거부한다(§7.2).
-   */
-  #sameExcluded(item) {
-    const out = new Set([item.id]);
-    for (const t of this.store.tracks) out.add(t.id);
-    for (const it of this.store.items) out.add(it.id);
-    return out;
-  }
-
-  /**
-   * 조합(포함) 후보에서 뺄 것 = **이미 이 보드에 놓인 모든 이벤트**(트랙·카드)와 자기 자신.
-   * boardId를 비교해서가 아니라, 같은 보드의 이벤트를 또 품으면 그 이벤트가 한 보드 안에서
-   * 부모가 둘이 되어 순서축 위치가 모순되기 때문(docs/SYSTEM.md §5.3). 결과적으로 다른 보드
-   * 이벤트만 후보가 된다.
-   */
-  #containExcluded(item) {
-    const out = new Set([item.id]);
-    for (const t of this.store.tracks) out.add(t.id);
-    for (const it of this.store.items) out.add(it.id);
-    return out;
-  }
-
-  /**
-   * 조합 = 포함 관계(카드 렌더 아님). 대상(다른 보드 이벤트)을 doc.refs에 넣거나 뺀다. 보드에는
-   * 안 그리고 상세·펼침에서만 보인다. 본질은 그 이벤트 소유라 여기서 안 건드린다(간선만).
+   * 조합(포함)에서 하나 뺀다 (요약의 × 버튼). 관계(doc.refs)만 건드린다.
    */
   #toggleContain(targetId, next) {
     const item = this.item;
@@ -460,17 +407,16 @@ export class ItemPanel {
     this.#renderCombine(item); this.#renderChildren(item);
   }
 
-  /** 조합(포함)한 다른 보드 이벤트를 여러 개 한 번에 설정한다(트리 팝업 확인 시). */
-  #setContained(childIds) {
-    const item = this.item;
-    if (!item) return;
-    const id = item.id;
-    const want = new Set(childIds);
-    this.store.commit('조합(포함)', (doc) => {
-      const others = (Array.isArray(doc.refs) ? doc.refs : []).filter((r) => r.parent !== id);
-      doc.refs = [...others, ...[...want].map((child) => ({ parent: id, child }))];
-    });
-    this.#renderCombine(item); this.#renderChildren(item);
+  /**
+   * 합칠 수 없는 것 = 자기 자신 + **이미 이 보드에 놓인 모든 이벤트**(트랙·카드). 같은 보드의 둘을
+   * 합치면 한 이벤트가 한 보드에서 배치가 둘 → 순서축 위치 모순(§5.3 논리와 같다). 포함으로 얽힌
+   * 상하위는 이 안에 포함되고, 남는 순환 위험은 repository 병합이 최종 거부한다(§7.2).
+   */
+  #sameExcluded(item) {
+    const out = new Set([item.id]);
+    for (const t of this.store.tracks) out.add(t.id);
+    for (const it of this.store.items) out.add(it.id);
+    return out;
   }
 
   /**

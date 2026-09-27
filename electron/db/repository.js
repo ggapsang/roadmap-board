@@ -31,10 +31,12 @@ export class BoardRepository {
 
   // ── 포함 그래프 헬퍼 ────────────────────────────────────
 
-  /** parent -> [{child_id, ordered, ord}] (ord 오름차순). 전역 포함 그래프. */
+  /** parent -> [{child_id, ordered, ord}] (ord 오름차순). 전역 포함 그래프.
+   *  보드 루트를 자식으로 담는 간선은 무시한다 — 보드는 최상위라 담길 수 없고, 담기면 순환이
+   *  생긴다(옛 조합 버그가 프로젝트를 조합 대상으로 넣어 순환을 만든 적이 있다). */
   #childMap() {
     const kids = new Map();
-    for (const c of this.db.prepare('SELECT parent_id, child_id, ordered, ord FROM containment').all()) {
+    for (const c of this.db.prepare("SELECT parent_id, child_id, ordered, ord FROM containment WHERE child_id NOT LIKE 'board:%'").all()) {
       if (!kids.has(c.parent_id)) kids.set(c.parent_id, []);
       kids.get(c.parent_id).push(c);
     }
@@ -422,7 +424,8 @@ export class BoardRepository {
     };
     if (!root) return base;
 
-    const cont = this.db.prepare('SELECT parent_id, child_id, ordered, ord FROM containment').all();
+    // 보드 루트를 자식으로 담는 간선은 무시(보드는 담길 수 없다 — 순환 방지, 위 #childMap 주석).
+    const cont = this.db.prepare("SELECT parent_id, child_id, ordered, ord FROM containment WHERE child_id NOT LIKE 'board:%'").all();
     const kids = new Map();
     for (const c of cont) {
       if (!kids.has(c.parent_id)) kids.set(c.parent_id, []);

@@ -11,11 +11,12 @@
 import { newId } from '../../core/schema.js';
 import { DISPLAY_LIMITS } from '../../config/index.js';
 import { $, el, clear, button, ICONS } from '../dom.js';
+import { openCombinePicker, containedChildren } from '../combine.js';
 import { toast } from '../toast.js';
 
 export class ConfigPanel {
-  constructor({ store, view, panels }) {
-    Object.assign(this, { store, view, panels });
+  constructor({ store, view, panels, adapter }) {
+    Object.assign(this, { store, view, panels, adapter });
     $('t-add').addEventListener('click', () => this.add());
     $('o-add').addEventListener('click', () => this.#addOrg());
     $('o-new').addEventListener('keydown', (e) => { if (e.key === 'Enter') this.#addOrg(); });
@@ -89,14 +90,23 @@ export class ConfigPanel {
         on: { input: (e) => this.store.commit('트랙 라벨', () => { track.lab = e.target.value; }) },
       });
 
+      // 트랙도 이벤트다 — 다른 프로젝트의 트랙·카드를 조합(포함)할 수 있다(docs/SYSTEM.md §6.2).
+      const combN = containedChildren(this.store, track.id).size;
       const row = el('div.trow', { className: track.id === this.view.selectedTrack ? 'trow active' : 'trow' }, [
         el('div.names', {}, [lab, name]),
+        button({ className: 'mini' + (combN ? ' on' : ''), iconPath: ICONS.plus, title: combN ? `조합 ${combN}개 — 편집` : '다른 프로젝트에서 조합', onClick: () => this.#combine(track.id) }),
         button({ className: 'mini', iconPath: ICONS.up, title: '위로', onClick: () => this.move(i, -1) }),
         button({ className: 'mini', iconPath: ICONS.down, title: '아래로', onClick: () => this.move(i, +1) }),
         button({ className: 'mini', iconPath: ICONS.trash, title: '삭제', onClick: () => this.remove(i) }),
       ]);
       list.append(row);
     });
+  }
+
+  /** 이 트랙(=이벤트)에 다른 프로젝트의 트랙·카드를 조합(포함)으로 담는다. 카드로 안 그린다. */
+  async #combine(trackId) {
+    const changed = await openCombinePicker(this.store, this.adapter, trackId);
+    if (changed) this.#renderTracks();
   }
 
   move(index, delta) {

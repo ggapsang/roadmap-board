@@ -1695,7 +1695,31 @@ async function runRepro(target) {
         const keepStays = after.some((e) => e.id === keep);
         merge = { sameShown, dialogShown, beforeHasDrop, dropGone, keepStays, dropTitle, keep };
       }
-      return { treeShown, projectCheckable, checkedTarget, isRef, notRenderedCard, itemsUnchanged, inDetail, persisted, persistedNoCard, target: tgtTitle, merge };
+
+      // ── 트랙도 조합할 수 있다 (ConfigPanel) ──
+      let trackCombine = { skipped: true };
+      document.getElementById('btnTracks').click();
+      await sleep(450);
+      const trow = document.querySelector('#tlist .trow');
+      const trackCombBtn = trow ? trow.querySelector('.mini') : null;
+      if (trackCombBtn) {
+        const trackId = r.store.tracks[0].id;
+        trackCombBtn.click();
+        await sleep(600);
+        const rows2 = [...document.querySelectorAll('.dlg-tree-row')];
+        let checkedOne = false;
+        for (const row of rows2) {
+          const cb = row.querySelector('input[type=checkbox]');
+          if (cb && !cb.checked) { cb.click(); checkedOne = true; break; }
+        }
+        const applyBtn2 = [...document.querySelectorAll('.dlg-actions .btn.cta')].pop();
+        if (applyBtn2) applyBtn2.click();
+        await sleep(300);
+        const trackRef = (r.store.doc.refs || []).some((x) => x.parent === trackId);
+        trackCombine = { opened: rows2.length > 0, checkedOne, trackRef };
+      }
+
+      return { treeShown, projectCheckable, checkedTarget, isRef, notRenderedCard, itemsUnchanged, inDetail, persisted, persistedNoCard, target: tgtTitle, merge, trackCombine };
     })()`);
     console.log('[repro] ' + JSON.stringify(out));
   } catch (err) {

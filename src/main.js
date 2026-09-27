@@ -69,7 +69,7 @@ async function boot() {
   });
 
   const itemPanel = new ItemPanel({ store, view, panels, adapter, openProject: (id) => tabs.openBoard(id) });
-  const configPanel = new ConfigPanel({ store, view, panels });
+  const configPanel = new ConfigPanel({ store, view, panels, adapter });
   const dataPanel = new DataPanel({
     store, view, panels, adapter,
     onReplaced: () => { rebuild(); configPanel.render(); },
