@@ -1630,29 +1630,43 @@ async function runRepro(target) {
       const card = r.store.items.find((x) => !x.parent && x.ty !== 'ms' && x.ti);
       if (!otherTrack || !card) return { error: 'no target/card', otherTrack: !!otherTrack, card: !!card };
       const cid = card.id, tgt = otherTrack.id, tgtTitle = otherTrack.title;
+      const itemsBefore = r.store.items.length;
       document.querySelector('[data-id="' + cid + '"]').click();
       await sleep(300);
       document.querySelector('#pItem .ptab[data-tab="rel"]').click();
       await sleep(350);
-      // 조합 후보에 다른 보드 트랙이 뜨나 + 같은 보드 트랙은 안 뜨나
-      const combIds = [...document.querySelectorAll('#i-combine .fl-opt')].map((o) => o.dataset.id);
-      const ownTrackIds = r.store.tracks.map((t) => t.id);
-      const otherShown = combIds.includes(tgt);
-      const ownHidden = !ownTrackIds.some((id) => combIds.includes(id));
-      // 조합(포함) 실행 — 대상 클릭
-      const opt = document.querySelector('#i-combine .fl-opt[data-id="' + tgt + '"]');
-      if (opt) opt.click();
-      await sleep(250);
-      const becameChild = r.store.item(tgt) && r.store.item(tgt).parent === cid;
+      // 조합 = 팝업 트리에서 체크. '다른 프로젝트에서 조합…' 버튼을 누른다.
+      const combBtn = document.querySelector('#i-combine button');
+      if (combBtn) combBtn.click();
+      await sleep(500);   // listEvents + eventCards 로 트리 구성
+      const treeRows = [...document.querySelectorAll('.dlg-tree-row')];
+      const treeShown = treeRows.length > 0;
+      // 프로젝트(현재 보드) 행이 체크가능한가? (아니어야 함 — 헤더만)
+      const projectCheckable = treeRows.some((row) => row.querySelector('.dlg-tree-head') === null && /프로젝트/.test(row.textContent) && row.querySelector('input'));
+      // 대상 트랙 행의 체크박스를 켠다
+      let checkedTarget = false;
+      for (const row of treeRows) {
+        const cb = row.querySelector('input[type=checkbox]');
+        if (cb && row.textContent.includes(tgtTitle)) { cb.click(); checkedTarget = true; break; }
+      }
+      // 적용
+      const applyBtn = [...document.querySelectorAll('.dlg-actions .btn.cta')].pop();
+      if (applyBtn) applyBtn.click();
+      await sleep(300);
+      // 조합은 관계(refs)로만 — doc.items/보드에 카드가 안 생겨야 한다.
+      const isRef = (r.store.doc.refs || []).some((x) => x.parent === cid && x.child === tgt);
+      const notRenderedCard = !r.store.items.some((x) => x.id === tgt);
+      const itemsUnchanged = r.store.items.length === itemsBefore;
       // 상세 탭에 나오나
       document.querySelector('#pItem .ptab[data-tab="task"]').click();
-      await sleep(400);
+      await sleep(450);
       const inDetail = document.getElementById('i-children').textContent.includes(tgtTitle);
       // 저장 대기 후 재로드해서 지속 확인
       await sleep(400);
       await r.openProject(${boardId});
       await sleep(500);
-      const persisted = !!r.store.item(tgt) && r.store.item(tgt).parent === cid;
+      const persisted = (r.store.doc.refs || []).some((x) => x.parent === cid && x.child === tgt);
+      const persistedNoCard = !r.store.items.some((x) => x.id === tgt);
 
       // ── 동일 = 합치기(merge) ──
       // 다른 보드의 카드 하나를 이 보드 카드와 합친다.
@@ -1681,7 +1695,7 @@ async function runRepro(target) {
         const keepStays = after.some((e) => e.id === keep);
         merge = { sameShown, dialogShown, beforeHasDrop, dropGone, keepStays, dropTitle, keep };
       }
-      return { otherShown, ownHidden, becameChild, inDetail, persisted, target: tgtTitle, card: card.ti, merge };
+      return { treeShown, projectCheckable, checkedTarget, isRef, notRenderedCard, itemsUnchanged, inDetail, persisted, persistedNoCard, target: tgtTitle, merge };
     })()`);
     console.log('[repro] ' + JSON.stringify(out));
   } catch (err) {

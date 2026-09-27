@@ -110,6 +110,58 @@ export function askConfirm({ title, message = '', confirmLabel = '확인', dange
 }
 
 /**
+ * 체크박스 트리에서 여러 개를 고른다. 조합(포함)에서 '다른 프로젝트의 이벤트'를 트리로 펼쳐
+ * 골라 담을 때 쓴다.
+ * @param {{title, message?, rows:{id,label,sub?,depth?,checkable?}[], checked?:Set<string>}} o
+ * @returns {Promise<Set<string>|null>} 확인하면 체크된 id 집합, 취소하면 null
+ */
+export function askTree({ title, message = '', rows = [], checked = new Set() }) {
+  const scrim = ensureHost();
+  return new Promise((resolve) => {
+    let settled = false;
+    const sel = new Set(checked);
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      scrim.hidden = true;
+      scrim.replaceChildren();
+      document.removeEventListener('keydown', onKey, true);
+      resolve(result);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(null); } };
+    document.addEventListener('keydown', onKey, true);
+
+    const list = el('div.dlg-tree');
+    if (!rows.length) list.append(el('div.empty', { text: '다른 프로젝트에 담을 이벤트가 없습니다.' }));
+    for (const r of rows) {
+      const row = el('div.dlg-tree-row', { dataset: { depth: String(r.depth ?? 0) }, style: { paddingLeft: `${8 + (r.depth ?? 0) * 16}px` } });
+      if (r.checkable !== false) {
+        const box = el('input', { type: 'checkbox', checked: sel.has(r.id) });
+        box.addEventListener('change', () => { if (box.checked) sel.add(r.id); else sel.delete(r.id); });
+        row.append(box);
+      } else {
+        row.classList.add('dlg-tree-head');
+      }
+      row.append(el('span.dlg-tree-label', { text: r.label || '(제목 없음)' }));
+      if (r.sub) row.append(el('em.dlg-tree-sub', { text: r.sub }));
+      list.append(row);
+    }
+    const box = el('div.dlg.dlg-wide', { on: { click: (e) => e.stopPropagation() } }, [
+      el('h2', { text: title }),
+      message ? el('p.note', { text: message }) : null,
+      list,
+      el('div.dlg-actions', {}, [
+        el('button.btn.outline', { type: 'button', text: '취소', on: { click: () => finish(null) } }),
+        el('button.btn.cta', { type: 'button', text: '적용', on: { click: () => finish(sel) } }),
+      ]),
+    ]);
+    scrim.replaceChildren(box);
+    scrim.hidden = false;
+    scrim.onclick = () => finish(null);
+  });
+}
+
+/**
  * 여러 보기 중 하나를 고른다. 동일 매핑에서 "어느 이벤트의 본질을 남길까"를 매번 고를 때 쓴다.
  * @param {{title, message?, choices:{key,label,sub?}[]}} o
  * @returns {Promise<string|null>} 고른 key, 취소하면 null

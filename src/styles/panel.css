@@ -206,3 +206,15 @@ body.panel-open{--panel-w:var(--panel-size)}
 .dlg-choice{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:var(--u2) var(--u3);height:auto}
 .dlg-choice-label{font-weight:600}
 .dlg-choice-sub{font-size:12px;color:var(--text-secondary)}
+/* 조합 트리 팝업 */
+.dlg-wide{max-width:560px;width:92vw}
+.dlg-tree{max-height:52vh;overflow:auto;margin-top:var(--u3);border:1px solid var(--border-default);border-radius:var(--u1-5)}
+.dlg-tree-row{display:flex;align-items:center;gap:var(--u2);padding:4px 8px;font-size:13px;border-bottom:1px solid var(--border-subtle)}
+.dlg-tree-row input[type=checkbox]{width:14px;height:14px;flex:0 0 auto;margin:0}
+.dlg-tree-head{font-weight:600;color:var(--text-secondary);background:var(--surface-2)}
+.dlg-tree-label{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dlg-tree-sub{font-size:11px;color:var(--text-tertiary);flex:0 0 auto}
+/* 조합 요약(매핑 탭) */
+.combine-summary{display:flex;flex-direction:column;gap:4px;margin-top:var(--u2)}
+.combine-chip{display:flex;align-items:center;gap:var(--u2);font-size:13px;padding:2px 0}
+.combine-chip-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

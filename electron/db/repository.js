@@ -494,6 +494,7 @@ export class BoardRepository {
     const trackMembers = new Map();
     for (const c of cont) {
       if (c.ordered !== 1 || !trackSet.has(c.parent_id) || !inSub.has(c.child_id)) continue;
+      if (foreign.has(c.child_id)) continue;   // 다른 보드 이벤트는 카드로 렌더 안 함 — 조합 참조(refs)로
       if (!trackMembers.has(c.child_id)) trackMembers.set(c.child_id, []);
       trackMembers.get(c.child_id).push(trackIndex.get(c.parent_id));
       ordOf.set(c.child_id, c.ord);
@@ -515,6 +516,7 @@ export class BoardRepository {
       if (foreign.has(parent)) continue;
       for (const c of (kids.get(parent) ?? [])) {
         if (c.ordered !== 1 || !inSub.has(c.child_id) || homeTrack.has(c.child_id)) continue;
+        if (foreign.has(c.child_id)) continue;   // 다른 보드 이벤트는 카드로 렌더 안 함 — 조합 참조(refs)로
         docParent.set(c.child_id, parent);
         homeTrack.set(c.child_id, homeTrack.get(parent));
         spanOf.set(c.child_id, 1);
@@ -580,10 +582,24 @@ export class BoardRepository {
       if (it.parent) relations.push({ id: `c_${it.id}`, type: 'contain', from: it.parent, to: it.id });
     }
 
+    // 조합(포함) 참조 — 이 보드의 로컬 부모(루트·트랙·카드)가 품은 '다른 보드' 이벤트. 카드로
+    // 렌더하지 않는다(포함 관계라고 보드에 꼭 띄우는 게 아니다). 상세·펼침에서만 보이고, 저장이
+    // 이 간선을 보존한다. refs = [{ parent, child }].
+    const localIds = new Set([root, ...trackIds, ...items.map((i) => i.id)]);
+    const refs = [];
+    const seenRef = new Set();
+    for (const c of cont) {
+      if (c.ordered !== 1 || !localIds.has(c.parent_id) || !foreign.has(c.child_id)) continue;
+      const k = c.parent_id + SEP + c.child_id;
+      if (seenRef.has(k)) continue;
+      seenRef.add(k);
+      refs.push({ parent: c.parent_id, child: c.child_id });
+    }
+
     return {
       version: board.doc_version,
       meta: { start: board.start_date, end: board.end_date, name: evById.get(root)?.title ?? board.name },
-      orgs, bands, tracks, relations, items,
+      orgs, bands, tracks, relations, items, refs,
     };
   }
 
@@ -738,26 +754,25 @@ export class BoardRepository {
         });
       });
 
-      // 관계 쓰기. 선행·동일은 rel 테이블. 포함(contain)은 item.parent에서 파생이라 안 넣는다.
-      // 조합(combine)은 '이 이벤트가 여러 이벤트의 합' — 포함이므로 containment(ordered=2)에 넣되,
-      // 부품(자식)은 다른 보드일 수 있어 이 보드 층에는 끌어오지 않는다.
-      const idSet = new Set(itemIds);
+      // 관계 쓰기. 지금 rel 테이블에 넣는 종류는 선행(dep)뿐. 포함(contain)은 item.parent에서
+      // 파생이라 안 넣는다. 동일은 관계가 아니라 합치기 '작업'(mergeEvents)이라 여기서 안 만든다.
+      // 조합은 포함이라 아래 refs(containment 간선)로 저장한다 — '조합 관계' 타입은 없다.
       if (Array.isArray(doc.relations)) {
         for (const rel of doc.relations) {
-          if (rel.type === 'dep' || rel.type === 'same') {
-            insRel.run(rel.id || `r_${rel.from}_${rel.to}`, rel.type, rel.from, rel.to);
-          } else if (rel.type === 'combine' && idSet.has(rel.from)) {
-            insCont.run(rel.from, rel.to, 2, 0);
-          }
+          if (rel.type === 'dep') insRel.run(rel.id || `r_${rel.from}_${rel.to}`, 'dep', rel.from, rel.to);
         }
-        // 동일(same)은 관계만 기록한다 — 한쪽 본질을 다른 쪽에 복사하지 않는다.
-        // (옛 '본질 공유' 복사가 사용자가 직접 지은 트랙·카드 이름을 덮어써 데이터를 망가뜨렸다.)
-        // 각 이벤트는 자기 제목을 지키고, 이름은 관계로 잇되 값은 각자 유지한다.
       } else {
         for (const it of doc.items) {
           for (const dep of it.dp ?? []) insRel.run(`r_${dep}_${it.id}`, 'dep', dep, it.id);
         }
       }
+
+      // 조합(포함) 참조 — 이 보드의 로컬 부모가 다른 보드 이벤트를 품는 containment 간선. 카드로
+      // 그리지 않지만(refs) 관계는 보존한다. 부품 본질은 그 보드 소유라 upsert하지 않고 간선만 쓴다.
+      (Array.isArray(doc.refs) ? doc.refs : []).forEach((ref, i) => {
+        if (!ref || !ref.parent || !ref.child || ref.parent === ref.child) return;
+        insCont.run(ref.parent, ref.child, 1, 900 + i);
+      });
 
       this.#maybeRevision(doc, label);
     });
