@@ -102,12 +102,13 @@ export class ItemPanel {
       isSelected: (id) => id === this.item?.id || this.#sameGroup().has(id),
       onChange: (id, next) => this.#toggleSame(id, next),
     });
-    // 조합(combine) = 이 이벤트가 다른 이벤트들의 '합'이라는 관계. 부품을 고른다. 자기 자신·
-    // 동일 무리·조상은 뺀다(순환/모순 방지).
+    // 조합 = 포함(containment). 이 이벤트가 다른 보드의 이벤트를 하위로 품는다(docs/SYSTEM.md §7.1).
+    // 별도 '조합 관계'가 아니다 — 보드-트랙과 같은 포함이다. 이미 이 보드에 놓인 이벤트는 후보에서
+    // 빠진다(같은 보드에서 부모가 둘이 되면 순서축 위치가 모순되므로 §5.3).
     this.combineList = createFilterList({
-      mode: 'multi', placeholder: '구성원으로 넣을 이벤트 검색…', emptyText: '고를 이벤트가 없습니다.',
-      isSelected: (id) => this.#combineTargets().has(id),
-      onChange: (id, next) => this.#toggleCombine(id, next),
+      mode: 'multi', placeholder: '하위로 품을 다른 보드 이벤트 검색…', emptyText: '품을 이벤트가 없습니다.',
+      isSelected: (id) => this.#containedChildren().has(id),
+      onChange: (id, next) => this.#toggleContain(id, next),
     });
     $('i-deps').append(this.depsList.root);
     $('i-parent').append(this.parentList.root);
@@ -334,12 +335,12 @@ export class ItemPanel {
     return sameGroupOf(this.store.relations, this.item?.id ?? '');
   }
 
-  /** 이 이벤트가 조합(combine)한 구성원 id들. */
-  #combineTargets() {
+  /** 이 이벤트가 하위로 품은(포함한) 이벤트 id들 = 이 보드 문서에서 parent가 이 이벤트인 것. */
+  #containedChildren() {
     const id = this.item?.id;
     const set = new Set();
     if (!id) return set;
-    for (const r of this.store.relations) if (r.type === 'combine' && r.from === id) set.add(r.to);
+    for (const it of this.store.items) if (it.parent === id) set.add(it.id);
     return set;
   }
 
@@ -373,26 +374,28 @@ export class ItemPanel {
     this.sameList.render(options);
   }
 
-  /** 조합 후보 — 부품으로 넣을 것. 자기 자신·동일 무리·상하위는 뺀다(순환/모순 방지). */
+  /**
+   * 조합(포함) 후보 — 이 이벤트가 하위로 품을 다른 보드 이벤트. 이미 이 보드에 놓인 것은 뺀다
+   * (§5.3: 같은 보드에서 부모가 둘이면 순서축 위치가 모순). 현재 자식은 위에 체크로 보인다.
+   */
   #renderCombine(item) {
     this._combineOptions = new Map();
     const events = this._allEvents ?? [];
     const byId = new Map(events.map((e) => [e.id, e]));
     const kindLabel = { board: '프로젝트', track: '트랙', card: '카드' };
-    const excluded = this.#combineExcluded(item);
-    const targets = this.#combineTargets();
+    const excluded = this.#containExcluded(item);
+    const children = this.#containedChildren();
     const options = [];
     const push = (ev) => {
       this._combineOptions.set(ev.id, ev);
       options.push({ id: ev.id, label: ev.title || '(제목 없음)', sub: `${kindLabel[ev.kind] || ''}${ev.boardNames ? ' · ' + ev.boardNames : ''}` });
     };
-    for (const tid of targets) {
-      const ev = byId.get(tid);
-      if (ev) push(ev);
-      else { this._combineOptions.set(tid, { id: tid, title: '(다른 곳의 이벤트)' }); options.push({ id: tid, label: '(다른 곳의 이벤트)', sub: '조합' }); }
+    for (const cid of children) {
+      const ev = byId.get(cid) ?? { id: cid, title: this.store.item(cid)?.ti };
+      push(ev);
     }
     for (const ev of events) {
-      if (targets.has(ev.id) || excluded.has(ev.id)) continue;
+      if (children.has(ev.id) || excluded.has(ev.id)) continue;
       push(ev);
     }
     this.combineList.render(options);
@@ -414,14 +417,48 @@ export class ItemPanel {
     return out;
   }
 
-  /** 조합 부품이 될 수 없는 것: 자기·동일 무리·상하위(순환/모순). */
-  #combineExcluded(item) {
+  /**
+   * 조합(포함) 후보에서 뺄 것 = **이미 이 보드에 놓인 모든 이벤트**(트랙·카드)와 자기 자신.
+   * boardId를 비교해서가 아니라, 같은 보드의 이벤트를 또 품으면 그 이벤트가 한 보드 안에서
+   * 부모가 둘이 되어 순서축 위치가 모순되기 때문(docs/SYSTEM.md §5.3). 결과적으로 다른 보드
+   * 이벤트만 후보가 된다.
+   */
+  #containExcluded(item) {
     const out = new Set([item.id]);
-    for (const g of this.#sameGroup()) out.add(g);
-    let p = item.parent;
-    while (p && !out.has(p)) { out.add(p); p = this.store.item(p)?.parent; }
-    for (const d of this.#descendantsOf(item.id)) out.add(d);
+    for (const t of this.store.tracks) out.add(t.id);
+    for (const it of this.store.items) out.add(it.id);
     return out;
+  }
+
+  /**
+   * 조합 = 포함. 대상(다른 보드 이벤트)을 이 이벤트의 하위로 넣거나 뺀다. 다른 보드 이벤트는
+   * 이 보드 문서에 '접힌 참조 카드'로 들어온다(펼치면 그 보드). 본질은 공유되므로 최신 본질을
+   * 받아 넣되, 저장 때 UPSERT라 남의 이벤트 본질을 덮지 않는다.
+   */
+  #toggleContain(targetId, next) {
+    const item = this.item;
+    if (!item || targetId === item.id) return;
+    const id = item.id;
+    const ev = (this._allEvents ?? []).find((e) => e.id === targetId);
+    this.store.commit('조합(포함)', (doc) => {
+      const host = doc.items.find((x) => x.id === id);
+      if (!host) return;
+      if (next) {
+        let t = doc.items.find((x) => x.id === targetId);
+        if (t) { t.parent = id; t.place = { ...(t.place ?? {}), t: host.place.t }; }
+        else {
+          doc.items.push({
+            id: targetId, ti: ev?.title ?? '', s: ev?.s ?? doc.meta.start, e: ev?.e ?? ev?.s ?? doc.meta.start,
+            ty: ev?.ty ?? 'bar', st: ev?.st ?? 'plan', og: ev?.og ?? '', pg: ev?.pg ?? 0, note: ev?.note ?? '',
+            parent: id, tasks: [], place: { t: host.place.t, sp: 1, x: null, w: null, hd: null, align: 'middle', showNote: false },
+          });
+        }
+      } else {
+        // 뺀다 — 이 보드에서 이 이벤트의 자식이던 것을 문서에서 제거(다른 보드 배치는 그대로).
+        doc.items = doc.items.filter((x) => !(x.id === targetId && x.parent === id));
+      }
+    });
+    this.#renderCombine(item); this.#renderChildren(item);
   }
 
   #toggleSame(targetId, next) {
@@ -432,17 +469,6 @@ export class ItemPanel {
       const dup = (r) => r.type === 'same' && ((r.from === id && r.to === targetId) || (r.from === targetId && r.to === id));
       doc.relations = (doc.relations ?? []).filter((r) => !dup(r));
       if (next) doc.relations.push({ id: newId('r'), type: 'same', from: id, to: targetId });
-    });
-    this.#renderSame(item); this.#renderCombine(item); this.#renderChildren(item);
-  }
-
-  #toggleCombine(targetId, next) {
-    const item = this.item;
-    if (!item || targetId === item.id) return;
-    const id = item.id;
-    this.store.commit('조합', (doc) => {
-      doc.relations = (doc.relations ?? []).filter((r) => !(r.type === 'combine' && r.from === id && r.to === targetId));
-      if (next) doc.relations.push({ id: newId('r'), type: 'combine', from: id, to: targetId });
     });
     this.#renderSame(item); this.#renderCombine(item); this.#renderChildren(item);
   }
@@ -706,17 +732,20 @@ export class ItemPanel {
     }
   }
 
-  /** 이 이벤트가 매핑한 대상들 — 동일(same, 대칭)과 조합(combine). {id, kind}. */
+  /**
+   * 상세에 부품 그룹으로 따로 보여 줄 대상 — 동일(same)로 묶인 이벤트뿐. 조합은 이제 포함이라
+   * 위(1) 하위 카드로 이미 나온다. (동일은 병합으로 재작성 예정 — 그때 이 목록도 정리된다.)
+   */
   #mappedParts(item) {
     const id = item?.id;
     if (!id) return [];
     const out = [];
     const seen = new Set();
     for (const r of this.store.relations) {
-      let pid = null; let kind = null;
-      if (r.type === 'same' && (r.from === id || r.to === id)) { pid = r.from === id ? r.to : r.from; kind = '동일'; }
-      else if (r.type === 'combine' && r.from === id) { pid = r.to; kind = '조합'; }
-      if (pid && !seen.has(pid)) { seen.add(pid); out.push({ id: pid, kind }); }
+      if (r.type === 'same' && (r.from === id || r.to === id)) {
+        const pid = r.from === id ? r.to : r.from;
+        if (!seen.has(pid)) { seen.add(pid); out.push({ id: pid, kind: '동일' }); }
+      }
     }
     return out;
   }

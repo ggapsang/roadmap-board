@@ -19,6 +19,8 @@ const ROOT = path.join(HERE, '..');
 const DEV = process.argv.includes('--dev');
 /** --smoke : 창을 띄워 렌더 결과를 점검하고 바로 종료한다 (npm test) */
 const SMOKE = process.argv.includes('--smoke');
+/** --repro : --db(복사본)로 조합=포함 왕복을 점검한다. DB 삭제 안 함(디버그). */
+const REPRO = process.argv.includes('--repro');
 /** --shot <디렉터리> : 스모크 중 화면을 캡처한다 */
 function shotDir() {
   const i = process.argv.indexOf('--shot');
@@ -111,6 +113,13 @@ function createWindow() {
     win.webContents.on('did-fail-load', (_e, code, desc, url) =>
       console.log(`[renderer] 로드 실패 ${code} ${desc} ${url}`));
     win.webContents.once('did-finish-load', () => runSmoke(win));
+  }
+  if (REPRO) {
+    win.webContents.on('console-message', (e) => {
+      const level = ['debug', 'info', 'warn', 'error'][e.level] ?? e.level;
+      console.log(`[renderer:${level}] ${e.message}`);
+    });
+    win.webContents.once('did-finish-load', () => runRepro(win));
   }
   if (DEV) win.webContents.openDevTools({ mode: 'detach' });
 
@@ -962,9 +971,9 @@ async function runSmoke(target) {
     })()`);
     console.log('[smoke] same-card ' + JSON.stringify(sameCheck));
 
-    // 매핑 — 동일(same)과 조합(combine)은 별개 관계다. 동일 목록은 same만, 조합 목록은 combine만
-    // 만든다. 자기 자신은 동일 목록 맨 위에 항상 체크로 보이고 토글되지 않는다. 조합한 대상은
-    // 동일 후보에서 사라진다(모순 방지 — 같은 쌍이 동일이면서 조합일 수 없다).
+    // 매핑 — 동일(same, 자기 자신 항상 체크) + 조합(포함). 조합 후보에서 '이미 이 보드에 놓인'
+    // 이벤트는 빠진다(§5.3: 같은 보드에서 부모가 둘이면 순서축 위치 모순). 시드 보드가 하나뿐이라
+    // 조합 후보(다른 보드 이벤트)는 비어 있는 게 정상. 크로스보드 조합=포함 왕복은 --repro가 검증.
     combineCheck = await target.webContents.executeJavaScript(`(async () => {
       const run = (async () => {
         const r = window.__roadmap;
@@ -974,40 +983,26 @@ async function runSmoke(target) {
         document.querySelector('[data-id="' + id + '"]').click();
         await sleep(350);
         document.querySelector('#pItem .ptab[data-tab="rel"]').click();
-        await sleep(80);
+        await sleep(120);
         const cntSame = () => r.store.relations.filter((x) => x.type === 'same' && (x.from === id || x.to === id)).length;
-        const cntComb = () => r.store.relations.filter((x) => x.type === 'combine' && x.from === id).length;
-        // 자기 자신 — 동일 목록에 있고 체크되어 있으며, 눌러도 관계가 안 생긴다(항상 동일).
+        // 동일 목록 — 자기 자신 항상 체크, 눌러도 관계 안 생김.
         const selfOpt = document.querySelector('#i-same .fl-opt[data-id="' + id + '"]');
         const selfShown = !!selfOpt;
         const selfChecked = !!selfOpt && selfOpt.getAttribute('aria-selected') === 'true';
         if (selfOpt) selfOpt.click(); await sleep(120);
         const selfNoToggle = cntSame() === 0;
-        // 동일 후보 하나 클릭 → same 1, combine 0.
-        const sameCand = [...document.querySelectorAll('#i-same .fl-opt')].filter((o) => o.dataset.id !== id);
-        sameCand[0].click(); await sleep(150);
-        const afterSame = { same: cntSame(), combine: cntComb() };
-        // 조합 후보 하나 클릭 → combine 1, same 그대로 1 (둘은 독립).
-        const combCand = [...document.querySelectorAll('#i-combine .fl-opt')].filter((o) => o.dataset.id !== id);
-        const combId = combCand[0] ? combCand[0].dataset.id : null;
-        if (combCand[0]) combCand[0].click(); await sleep(150);
-        const afterComb = { same: cntSame(), combine: cntComb() };
-        // 조합한 대상은 동일 후보 목록에서 빠진다(모순 방지).
-        const combExcludedFromSame = combId
-          ? ![...document.querySelectorAll('#i-same .fl-opt')].some((o) => o.dataset.id === combId)
-          : false;
-        // 동일 해제 → same 0, combine 그대로 1.
-        const stillSame = [...document.querySelectorAll('#i-same .fl-opt')].filter((o) => o.dataset.id !== id && o.getAttribute('aria-selected') === 'true');
-        if (stillSame[0]) stillSame[0].click(); await sleep(150);
-        const afterUnsame = { same: cntSame(), combine: cntComb() };
+        // 조합 후보 — 같은 보드 이벤트(트랙·카드)는 하나도 안 뜬다(전부 이 보드 것).
+        const combIds = [...document.querySelectorAll('#i-combine .fl-opt')].map((o) => o.dataset.id);
+        const ownIds = new Set([...r.store.tracks.map((t) => t.id), ...r.store.items.map((x) => x.id)]);
+        const combExcludesOwn = combIds.every((cid) => !ownIds.has(cid));
         document.querySelector('#pItem [data-close]').click();
         r.store.commit('smoke 원복', (doc) => { doc.relations = snapRel; });
-        return { selfShown, selfChecked, selfNoToggle, afterSame, afterComb, combExcludedFromSame, afterUnsame };
+        return { selfShown, selfChecked, selfNoToggle, combExcludesOwn, combCount: combIds.length };
       })();
       const guard = new Promise((res) => setTimeout(() => res({ error: 'timeout' }), 8000));
       return Promise.race([run.catch((e) => ({ error: String(e) })), guard]);
     })()`);
-    console.log('[smoke] map-split ' + JSON.stringify(combineCheck));
+    console.log('[smoke] map-model ' + JSON.stringify(combineCheck));
 
     // 재현 — 카드 이름을 바꾼 뒤에도 조합·동일 후보(다른 트랙들)가 그대로 떠야 한다.
     renameKeepsCandidates = await target.webContents.executeJavaScript(`(async () => {
@@ -1087,34 +1082,28 @@ async function runSmoke(target) {
 
     // 상세 탭 '구성' — 조합한 이벤트마다 그 안의 카드가 자기 그룹에 뜨고(부품별 컨테이너),
     // 하위 카드와 같은 모양이며, 헤더를 눌러 접고 편다.
+    // 상세(구성) — 이 이벤트가 품은 하위 이벤트(포함=조합 포함)가 트리로 나오고, 접기 그룹이 접힌다.
     progressCheck = await target.webContents.executeJavaScript(`(async () => {
       const run = (async () => {
         const r = window.__roadmap;
         const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
-        const id = r.store.items.find((i) => !i.parent).id;
-        const home = r.store.item(id).place.t;
-        const hasCard = (tid) => r.store.items.some((x) => !x.parent && x.place.t === tid && x.id !== id);
-        const others = r.store.tracks.filter((t) => t.id !== home && hasCard(t.id)).slice(0, 2).map((t) => t.id);
-        const snap = JSON.parse(JSON.stringify(r.store.relations));
-        r.store.commit('smoke 조합', (doc) => {
-          doc.relations.push({ id: 'rcx1', type: 'combine', from: id, to: others[0] });
-          doc.relations.push({ id: 'rcx2', type: 'combine', from: id, to: others[1] });
-        });
-        document.querySelector('[data-id="' + id + '"]').click();
+        // 자식(포함)을 가진 최상위 카드 하나
+        const host = r.store.items.find((x) => !x.parent && r.store.items.some((k) => k.parent === x.id));
+        if (!host) return { error: 'no container card' };
+        document.querySelector('[data-id="' + host.id + '"]').click();
         await sleep(350);
         document.querySelector('#pItem .ptab[data-tab="task"]').click();
-        await sleep(120);
+        await sleep(400);
+        const childRows = document.querySelectorAll('#i-children .detail-row').length;
         const groups = [...document.querySelectorAll('#i-children .detail-group')];
-        await sleep(350);   // eventCards 비동기 대기
-        const kidCounts = groups.map((g) => g.querySelectorAll(':scope > .detail-kids > .detail-row').length);
-        const eachHasKids = groups.length === 2 && kidCounts.every((n) => n > 0);
-        // 첫 그룹 접기 → 자식칸 숨김
-        groups[0].querySelector('.detail-parent').click();
-        await sleep(60);
-        const collapsedHidden = getComputedStyle(groups[0].querySelector(':scope > .detail-kids')).display === 'none';
+        let collapsedHidden = true;
+        if (groups.length) {
+          groups[0].querySelector('.detail-parent').click();
+          await sleep(60);
+          collapsedHidden = getComputedStyle(groups[0].querySelector(':scope > .detail-kids')).display === 'none';
+        }
         document.querySelector('#pItem [data-close]').click();
-        r.store.commit('원복', (doc) => { doc.relations = snap; });
-        return { groups: groups.length, kidCounts, eachHasKids, collapsedHidden };
+        return { childRows, groups: groups.length, showsChildren: childRows > 0, collapsedHidden };
       })();
       const guard = new Promise((res) => setTimeout(() => res({ error: 'timeout' }), 12000));
       return Promise.race([run.catch((e) => ({ error: String(e) })), guard]);
@@ -1594,16 +1583,11 @@ async function runSmoke(target) {
     && sameCheck?.hasTrack === true && sameCheck?.hasBoardIds === true && sameCheck?.pickerOpts > 0
     && sameCheck?.ownTrackExcluded === true
     && combineCheck?.selfShown === true && combineCheck?.selfChecked === true && combineCheck?.selfNoToggle === true
-    && combineCheck?.afterSame?.same === 1 && combineCheck?.afterSame?.combine === 0
-    && combineCheck?.afterComb?.same === 1 && combineCheck?.afterComb?.combine === 1
-    && combineCheck?.combExcludedFromSame === true
-    && combineCheck?.afterUnsame?.same === 0 && combineCheck?.afterUnsame?.combine === 1
-    && renameKeepsCandidates?.combAfter === renameKeepsCandidates?.combBefore
+    && combineCheck?.combExcludesOwn === true
     && renameKeepsCandidates?.sameAfter === renameKeepsCandidates?.sameBefore
-    && renameKeepsCandidates?.combBefore > 0
     && xition?.promoted?.isCard === true && xition?.promoted?.notTask === true
     && xition?.backTask === true && xition?.stillCard === false
-    && progressCheck?.eachHasKids === true && progressCheck?.collapsedHidden === true
+    && progressCheck?.showsChildren === true && progressCheck?.collapsedHidden === true
     && spanForce?.spanUnderForce === true && spanForce?.hasWidthGrip === true
     && trim?.trimmed === true && trim?.shrank === true
     && monthResize?.made === true && monthResize?.scale < 1 && monthResize?.shrank === true
@@ -1624,6 +1608,68 @@ async function runSmoke(target) {
   for (const suffix of ['', '-wal', '-shm']) fs.rmSync(file + suffix, { force: true });
 
   app.exit(ok ? 0 : 1);
+}
+
+/** --repro : 실제 데이터에서 '조합=포함' 왕복 점검(다른 보드 이벤트를 하위로 품고 저장/재로드). */
+async function runRepro(target) {
+  const boardId = (() => { const i = process.argv.indexOf('--board'); return i >= 0 ? Number(process.argv[i + 1]) : 1; })();
+  try {
+    await new Promise((r) => setTimeout(r, 700));
+    const out = await target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+      const boards = (await r.adapter.listProjects()).map((p) => p.id);
+      for (const b of boards) { await r.tabs.openBoard(b); await sleep(300); }
+      await r.tabs.openBoard(${boardId});
+      r.launcher.hide();
+      await sleep(500);
+      const activeStr = String(${boardId});
+      const evs = await r.adapter.listEvents();
+      // 다른 보드 트랙 하나를 조합 대상으로
+      const otherTrack = evs.find((e) => e.kind === 'track' && !String(e.boardIds||'').split(',').includes(activeStr));
+      const card = r.store.items.find((x) => !x.parent && x.ty !== 'ms' && x.ti);
+      if (!otherTrack || !card) return { error: 'no target/card', otherTrack: !!otherTrack, card: !!card };
+      const cid = card.id, tgt = otherTrack.id, tgtTitle = otherTrack.title;
+      document.querySelector('[data-id="' + cid + '"]').click();
+      await sleep(300);
+      document.querySelector('#pItem .ptab[data-tab="rel"]').click();
+      await sleep(350);
+      // 조합 후보에 다른 보드 트랙이 뜨나 + 같은 보드 트랙은 안 뜨나
+      const combIds = [...document.querySelectorAll('#i-combine .fl-opt')].map((o) => o.dataset.id);
+      const ownTrackIds = r.store.tracks.map((t) => t.id);
+      const otherShown = combIds.includes(tgt);
+      const ownHidden = !ownTrackIds.some((id) => combIds.includes(id));
+      // 조합(포함) 실행 — 대상 클릭
+      const opt = document.querySelector('#i-combine .fl-opt[data-id="' + tgt + '"]');
+      if (opt) opt.click();
+      await sleep(250);
+      const becameChild = r.store.item(tgt) && r.store.item(tgt).parent === cid;
+      // 상세 탭에 나오나
+      document.querySelector('#pItem .ptab[data-tab="task"]').click();
+      await sleep(400);
+      const detailText = document.getElementById('i-children').textContent;
+      const inDetail = detailText.includes(tgtTitle);
+      // 저장 대기 후 재로드해서 지속 확인
+      await sleep(400);
+      await r.openProject(${boardId});
+      await sleep(500);
+      const persisted = !!r.store.item(tgt) && r.store.item(tgt).parent === cid;
+      // 원복 — 뺀다
+      document.querySelector('[data-id="' + cid + '"]').click();
+      await sleep(300);
+      document.querySelector('#pItem .ptab[data-tab="rel"]').click();
+      await sleep(300);
+      const off = document.querySelector('#i-combine .fl-opt[data-id="' + tgt + '"][aria-selected="true"]');
+      if (off) off.click();
+      await sleep(300);
+      return { otherShown, ownHidden, becameChild, inDetail, persisted, target: tgtTitle, card: card.ti };
+    })()`);
+    console.log('[repro] ' + JSON.stringify(out));
+  } catch (err) {
+    console.log('[repro] ERROR ' + String(err));
+  }
+  try { db.close(); } catch { /* noop */ }
+  app.exit(0);
 }
 
 /** --shot이 켜져 있으면 현재 화면을 PNG로 남긴다 */
@@ -1838,7 +1884,7 @@ function registerIpc() {
 
 app.whenReady().then(() => {
   const file = resolveDbPath();
-  if (!SMOKE) adoptLegacyDatabase(file);
+  if (!SMOKE && !REPRO) adoptLegacyDatabase(file);
   console.log('[db] 파일:', file);
   db = openDatabase(file);
   repo = new BoardRepository(db);   // 프로젝트는 런처에서 연다
