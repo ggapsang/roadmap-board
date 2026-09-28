@@ -23,7 +23,7 @@ export function dialogOpen() {
 }
 
 /** 끌어도 드래그가 시작되지 않는 곳 — 입력·버튼·목록은 원래 동작(클릭·선택·스크롤)을 지킨다 */
-const NO_DRAG = 'input,textarea,select,button,a,label,[contenteditable],.dlg-tree,.trash-list,.dlg-choices,.dlg-tabs,.help-body,.help-toc';
+const NO_DRAG = 'input,textarea,select,button,a,label,[contenteditable],.dlg-tree,.trash-list,.dlg-choices,.dlg-tabs,.help-body,.help-toc,.help-resize';
 /** 이만큼 움직여야 드래그로 본다(px) — 그 전에는 클릭 */
 const DRAG_SLOP = 3;
 
@@ -33,12 +33,13 @@ const DRAG_SLOP = 3;
  * 리스너는 window에 붙였다 뗀다 — 드래그 중 포인터가 팝업 밖으로 나가도 이어지게(규약 14와 같은 이유).
  */
 export function makeMovable(box) {
-  let dx = 0, dy = 0;
   box.classList.add('movable');
   box.addEventListener('pointerdown', (e) => {
     if (e.button !== 0 || e.target.closest(NO_DRAG)) return;
     const sx = e.clientX, sy = e.clientY;
-    const x0 = dx, y0 = dy;
+    // 지금 위치는 매번 style에서 읽는다 — 크기 조절(도움말)처럼 다른 곳이 transform을 바꿔도 튀지 않게
+    const cur = /translate\((-?[\d.]+)px,\s*(-?[\d.]+)px\)/.exec(box.style.transform || '');
+    const x0 = cur ? Number(cur[1]) : 0, y0 = cur ? Number(cur[2]) : 0;
     const r0 = box.getBoundingClientRect();
     let moving = false;
     const move = (ev) => {
@@ -50,8 +51,7 @@ export function makeMovable(box) {
       const keep = 48;
       const nx = Math.min(innerWidth - keep - r0.left, Math.max(keep - r0.right, mx));
       const ny = Math.min(innerHeight - keep - r0.top, Math.max(-r0.top, my));
-      dx = x0 + nx; dy = y0 + ny;
-      box.style.transform = `translate(${dx}px, ${dy}px)`;
+      box.style.transform = `translate(${x0 + nx}px, ${y0 + ny}px)`;
     };
     const up = () => {
       window.removeEventListener('pointermove', move);

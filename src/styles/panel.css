@@ -296,7 +296,14 @@ body.panel-open{--panel-w:var(--panel-size)}
 .fill-sw[data-fill="pink"]{--sw:var(--fill-pink)}
 
 /* ── 도움말 팝업 (src/ui/help.js, docs/HELP.md) ─────────── */
-.help-dlg{max-width:920px;width:94vw;height:min(82vh,860px);display:flex;flex-direction:column;padding:var(--u4) var(--u5)}
+.help-dlg{position:relative;max-width:920px;width:94vw;height:min(82vh,860px);display:flex;flex-direction:column;padding:var(--u4) var(--u5)}
+.help-dlg.resizing{user-select:none}
+/* 오른쪽 아래 모서리 — 끌어 크기 조절 */
+.help-resize{position:absolute;right:2px;bottom:2px;width:var(--u4);height:var(--u4);cursor:nwse-resize;
+  background:linear-gradient(135deg,transparent 0 55%,var(--border-strong) 55% 62%,transparent 62% 72%,var(--border-strong) 72% 79%,transparent 79%)}
+.help-resize:hover{background:linear-gradient(135deg,transparent 0 55%,var(--accent) 55% 62%,transparent 62% 72%,var(--accent) 72% 79%,transparent 79%)}
+.help-zoom .seg-btn{height:var(--u7);padding:0 var(--u2-5);font-size:12px}
+.help-fs{display:inline-block;min-width:3.2em;text-align:center;font-variant-numeric:tabular-nums}
 .help-head{display:flex;align-items:center;gap:var(--u3);padding-bottom:var(--u3);border-bottom:1px solid var(--border-subtle)}
 .help-head h2{margin:0}
 .help-head .btn.sm{margin-top:0}
@@ -305,19 +312,20 @@ body.panel-open{--panel-w:var(--panel-size)}
 .help-toc-item{appearance:none;border:0;background:none;text-align:left;padding:var(--u1-5) var(--u2);
   border-radius:var(--r-control);font-size:13px;color:var(--text-secondary);cursor:pointer}
 .help-toc-item:hover{background:var(--bg-hover);color:var(--text-primary)}
+/* 글자 배율(--help-fs)은 본문 전체에 — 제목·표·코드도 em으로 따라 커진다 */
 .help-body{flex:1;min-width:0;overflow:auto;padding-right:var(--u2);cursor:auto;user-select:text;
-  font-size:13px;line-height:21px;color:var(--text-primary)}
+  font-size:calc(13px * var(--help-fs,1));line-height:1.62;color:var(--text-primary)}
 .help-body:focus{outline:none}
 .help-sec{padding-bottom:var(--u4)}
-.help-body h3{margin:var(--u2) 0 var(--u2);font-size:16px;line-height:24px;font-weight:600}
-.help-body h4{margin:var(--u3) 0 var(--u1);font-size:14px;line-height:20px;font-weight:600}
+.help-body h3{margin:var(--u2) 0 var(--u2);font-size:1.23em;line-height:1.5;font-weight:600}
+.help-body h4{margin:var(--u3) 0 var(--u1);font-size:1.08em;line-height:1.45;font-weight:600}
 .help-body p{margin:0 0 var(--u2)}
 .help-body ul{margin:0 0 var(--u2);padding-left:var(--u5)}
 .help-body li{margin:2px 0}
-.help-body code{font-family:ui-monospace,Consolas,monospace;font-size:12px;padding:1px var(--u1);
+.help-body code{font-family:ui-monospace,Consolas,monospace;font-size:.92em;padding:1px var(--u1);
   border-radius:var(--u1);background:var(--bg-hover)}
 .help-body strong{font-weight:600}
-.help-body table{width:100%;border-collapse:collapse;margin:0 0 var(--u3);font-size:12.5px}
+.help-body table{width:100%;border-collapse:collapse;margin:0 0 var(--u3);font-size:.96em}
 .help-body th,.help-body td{border-bottom:1px solid var(--border-subtle);padding:var(--u1-5) var(--u2);text-align:left;vertical-align:top}
 .help-body th{font-weight:600;color:var(--text-secondary);background:var(--bg-hover)}
 .help-body td:first-child{white-space:nowrap;font-weight:500}

@@ -1741,6 +1741,43 @@ async function runSmoke(target) {
         tables: document.querySelectorAll('.help-body table').length,
         noSystemTalk: !/순서 기반 이벤트|전개 시스템/.test(hb?.textContent ?? ''),
       };
+      // 글자 크기 — 가＋ 두 번, Ctrl - 한 번 = 110%. 보드 글자 크기는 그대로(도움말이 가로챈다)
+      const savedHelp = localStorage.getItem('wolfpack:help-view');
+      localStorage.removeItem('wolfpack:help-view');
+      const zoomBtns = [...document.querySelectorAll('.help-zoom .seg-btn')];
+      zoomBtns[1].click();                                         // 원래 크기(100%)부터
+      const boardFs = r.store.meta.display.fontScale;
+      const px = () => parseFloat(getComputedStyle(hb).fontSize);
+      const px0 = px();
+      zoomBtns[2].click(); zoomBtns[2].click();
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: '-', ctrlKey: true, bubbles: true }));
+      await sleep(50);
+      help.fontLabel = document.querySelector('.help-fs').textContent;
+      help.fontGrew = Math.abs(px() - px0 * 1.1) < 0.2;
+      help.boardFontKept = r.store.meta.display.fontScale === boardFs;
+      // 크기 조절 — 모서리를 끌면 커지고, 왼쪽 위 모서리는 제자리
+      const dlg = document.querySelector('.help-dlg');
+      const grip = document.querySelector('.help-resize');
+      const b0 = dlg.getBoundingClientRect();
+      const g = grip.getBoundingClientRect();
+      const at = (x, y) => ({ bubbles: true, clientX: x, clientY: y, button: 0, pointerId: 13 });
+      grip.dispatchEvent(new PointerEvent('pointerdown', at(g.left + 5, g.top + 5)));
+      window.dispatchEvent(new PointerEvent('pointermove', at(g.left - 95, g.top - 55)));
+      window.dispatchEvent(new PointerEvent('pointerup', at(g.left - 95, g.top - 55)));
+      await sleep(50);
+      const b1 = dlg.getBoundingClientRect();
+      help.resized = Math.round(b0.width - b1.width) === 100 && Math.round(b0.height - b1.height) === 60;
+      help.cornerKept = Math.abs(b1.left - b0.left) < 1 && Math.abs(b1.top - b0.top) < 1;
+      // 크기 조절 뒤 끌어 옮겨도 튀지 않는다(위치를 매번 style에서 읽음)
+      const h2 = dlg.querySelector('h2').getBoundingClientRect();
+      dlg.querySelector('h2').dispatchEvent(new PointerEvent('pointerdown', at(h2.left + 5, h2.top + 5)));
+      window.dispatchEvent(new PointerEvent('pointermove', at(h2.left + 45, h2.top + 25)));
+      window.dispatchEvent(new PointerEvent('pointerup', at(h2.left + 45, h2.top + 25)));
+      const b2 = dlg.getBoundingClientRect();
+      help.moveAfterResize = Math.round(b2.left - b1.left) === 40 && Math.round(b2.top - b1.top) === 20;
+      const pref = JSON.parse(localStorage.getItem('wolfpack:help-view') ?? '{}');
+      help.remembered = pref.fs === 1.1 && Math.round(pref.w) === Math.round(b1.width);
+      if (savedHelp == null) localStorage.removeItem('wolfpack:help-view'); else localStorage.setItem('wolfpack:help-view', savedHelp);
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       await sleep(80);
       help.escClosed = !document.querySelector('.help-scrim');
@@ -2099,9 +2136,10 @@ async function runSmoke(target) {
         const released = big.fx == null && big.fy == null;
         // 중력 조절
         const slider = document.querySelector('#graphView .gv-slider input');
+        const slider0 = slider.value;                        // 사용자가 정해 둔 값일 수 있다 — 그대로 되돌린다
         slider.value = '0'; slider.dispatchEvent(new Event('input', { bubbles: true }));
         await sleep(300);
-        slider.value = '0.5'; slider.dispatchEvent(new Event('input', { bubbles: true }));
+        slider.value = slider0; slider.dispatchEvent(new Event('input', { bubbles: true }));
         await sleep(200);
         // 다시 열면 같은 배치(결정적)
         r.tabs.closeTab(r.tabs.tabs.findIndex((t) => t.kind === 'graph')); await sleep(150);
@@ -2185,6 +2223,9 @@ async function runSmoke(target) {
     && launcherGraph?.help?.sections >= 8 && launcherGraph?.help?.toc === launcherGraph?.help?.sections - 1
     && launcherGraph?.help?.tables >= 3 && launcherGraph?.help?.noSystemTalk === true && launcherGraph?.help?.escClosed === true
     && launcherGraph?.help?.f1 === true
+    && launcherGraph?.help?.fontLabel === '110%' && launcherGraph?.help?.fontGrew === true && launcherGraph?.help?.boardFontKept === true
+    && launcherGraph?.help?.resized === true && launcherGraph?.help?.cornerKept === true && launcherGraph?.help?.moveAfterResize === true
+    && launcherGraph?.help?.remembered === true
     && launcherGraph?.ownTab === true && launcherGraph?.shown === true && launcherGraph?.nodes > 0
     && launcherGraph?.single === true && launcherGraph?.noBoardKeys === true && launcherGraph?.closed === true
     && trashUi?.asked === true && trashUi?.gone === true && trashUi?.purged === true && trashUi?.closed === true
