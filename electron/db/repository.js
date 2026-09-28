@@ -761,6 +761,7 @@ export class BoardRepository {
     };
 
     const out = emptyProjection();
+    out.root = root;
     const { events, edges, disp, rels, parents } = out;
     parents.add(root);
     const addEvent = (id, fields, insert) => {
@@ -829,13 +830,15 @@ export class BoardRepository {
       });
     }
 
-    // 조합(구성) — 이 보드의 트랙·카드가 품은 이벤트. 대상은 어느 보드의 것이든 된다.
+    // 조합(구성) — 이 보드의 트랙·카드가 품은 다른 보드의 이벤트. 이 보드 화면에 있는 이벤트(합치기로
+    // 공유된 것 포함)는 이미 이 보드의 포함 그래프 안이라 조합 대상이 될 수 없다(SYSTEM.md §7.1) — 뺀다.
     const cOrd = new Map();
     for (const c of (Array.isArray(doc.compose) ? doc.compose : [])) {
       if (!c || typeof c.parent !== 'string' || typeof c.child !== 'string') continue;
       const parent = itemIds.has(c.parent) ? c.parent : docTrack.get(c.parent) ?? c.parent;
       if (parent === root || !parents.has(parent)) continue;
       const child = itemIds.has(c.child) ? c.child : docTrack.get(c.child) ?? c.child;
+      if (events.has(child)) continue;                     // 같은 보드의 이벤트 — 모순
       const n = cOrd.get(parent) ?? 0;
       if (addEdge(parent, child, 0, 1, n)) cOrd.set(parent, n + 1);
     }
@@ -1028,6 +1031,19 @@ export class BoardRepository {
       if (!next.events.has(b.from) || !next.events.has(b.to)) continue;
       delRel.run(id);
       touched.relEnds.add(b.from).add(b.to);
+    }
+
+    // 4-b) 같은 보드 이벤트를 조합으로 품은 옛 간선 — 모순이라(SYSTEM.md §7.1) 이 보드 저장이 걷어 낸다.
+    //      투영이 이런 간선을 만들지 않으므로 기준·새 상태 비교로는 안 지워진다. 그래서 따로 본다.
+    const composeKids = this.db.prepare('SELECT child_id FROM containment WHERE parent_id = ? AND compose = 1');
+    for (const p of next.parents) {
+      if (p === next.root) continue;                     // 보드 → 트랙은 구성이 맞다
+      for (const { child_id: c } of composeKids.all(p)) {
+        if (!next.events.has(c)) continue;
+        delEdge.run(p, c);
+        delDisp.run(p, c);
+        touched.parents.add(p);
+      }
     }
 
     // 5) 방금 만든 것 — 이번에 부모를 모두 잃었으면 휴지통을 거치지 않고 없앤다 (§7).

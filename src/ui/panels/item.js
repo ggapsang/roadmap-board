@@ -6,7 +6,7 @@
  *          이 이벤트가 이루어진 것(순서 없는 포함, 태스크와 다름). 관계 타입은 선행·포함뿐.
  *          (docs/SYSTEM.md, docs/SAVE.md §5)
  *   스타일 채우기(카드 면 색)·글자 정렬·비고 표시(기본 숨김)·크기 강제 — 이 보드에서의 표현(place)
- *   상세   이 이벤트를 이루는 것 — 하위 카드 트리 + 조합 대상과 그 안쪽 카드(eventCards)
+ *   상세   태스크 + 세부내역(조합한 이벤트와 그 안쪽 카드, 조합이 없으면 하위 카드 트리)
  */
 import { shortMD, dayIndex, parseDate, inclusiveDays } from '../../core/dates.js';
 import { newId, ALIGNS } from '../../core/schema.js';
@@ -569,7 +569,7 @@ export class ItemPanel {
     if (!item || this.store.readonly) return;
     const exclude = new Set([item.id, ...this.#descendantsOf(item.id)]);
     const nodes = this.#boardTreeNodes({ exclude, noMs: true });
-    const picked = await askTree({ title: '상위관계설정', message: '이 카드를 품을 상위 일정 하나를 고르세요(같은 보드).', nodes, select: 'single' });
+    const picked = await askTree({ title: '상위관계설정', message: '이 카드를 품을 상위 일정을 고르세요(같은 보드).', nodes, select: 'single' });
     if (typeof picked === 'string') this.#setParent(picked);
   }
 
@@ -679,9 +679,9 @@ export class ItemPanel {
   #syncProgUI() {}
 
   /**
-   * 구성 — 이 이벤트를 이루는 것을 트리로 보여 준다. 하위 카드(같은 보드)와 조합한 이벤트
-   * (다른 보드일 수 있음)를 **같은 모양**으로 그린다: [▸] 상태점 이름 (열기). 자식이 있으면
-   * 헤더를 눌러 펼치고 접는다. 여기서 카드를 새로 만들지 않는다 — 보드에서 만든다.
+   * 세부내역 — 조합한 이벤트가 있으면 그것을, 없으면 하위 카드를 트리로 보여 준다(같은 모양:
+   * [▸] 상태점 이름 (열기)). 자식이 있으면 헤더를 눌러 펼치고 접는다. 여기서 카드를 새로 만들지
+   * 않는다 — 보드에서 만든다.
    */
   #renderChildren(item) {
     const box = $('i-children');
@@ -708,7 +708,36 @@ export class ItemPanel {
       return { row: group, kids };
     };
 
-    // (1) 같은 보드 하위 카드 — 조합과 같은 모양의 트리. '태스크로 내림'만 뒤에 붙인다.
+    // 세부내역 — 조합한 이벤트가 있으면 그것(이 이벤트를 이루는 것)을, 없으면 하위 카드를 보여 준다.
+    const refs = (this.store.doc.compose ?? []).filter((r) => r.parent === item.id);
+
+    // (1) 조합한 다른 보드 이벤트 — doc.compose(메모리)에서 바로 읽는다(해제하면 즉시 사라짐).
+    //     각 대상은 접기 그룹으로, 그 안쪽 카드는 eventCards(DB, 최신)로 채운다.
+    if (refs.length) {
+      for (const ref of refs) {
+        const pev = this.#eventInfo(ref.child);
+        const partBoard = pev ? (pev.boardId ?? (Number(String(pev.boardIds ?? '').split(',')[0]) || null)) : null;
+        const { row, kids } = node({
+          title: pev?.title || '(다른 보드 이벤트)', status: pev?.st ?? 'plan', tag: '조합', hasKids: true,
+          onOpen: partBoard ? () => this.openProject?.(partBoard) : null,
+        });
+        box.append(row);
+        kids.append(el('div.empty', { text: '불러오는 중…' }));
+        this.adapter?.eventCards?.(ref.child).then((cards) => {
+          if (this._detailGen !== gen || this.item?.id !== item.id) return;
+          clear(kids);
+          if (!(cards && cards.length)) { kids.append(el('div.empty', { text: '하위 일정 없음' })); return; }
+          for (const c of cards) {
+            const r = node({ title: c.title, status: c.status, hasKids: false, onOpen: partBoard ? () => this.openProject?.(partBoard) : null });
+            if (c.depth) r.row.style.paddingLeft = `${8 + c.depth * 14}px`;
+            kids.append(r.row);
+          }
+        }).catch(() => { if (this._detailGen === gen && this.item?.id === item.id) { clear(kids); kids.append(el('div.empty', { text: '불러오지 못함' })); } });
+      }
+      return;
+    }
+
+    // (2) 조합이 없으면 — 같은 보드 하위 카드 트리. '태스크로 내림'을 뒤에 붙인다.
     const renderKid = (c, container) => {
       const subKids = this.store.items.filter((x) => x.parent === c.id);
       const demote = el('button.task-del.task-demote.no-toggle', {
@@ -724,31 +753,7 @@ export class ItemPanel {
     const own = this.store.items.filter((x) => x.parent === item.id);
     for (const c of own) renderKid(c, box);
 
-    // (2) 조합 대상 — doc.compose(메모리)에서 바로 읽는다(해제하면 즉시 사라짐).
-    //     각 대상은 접기 그룹으로, 그 안쪽 카드는 eventCards(DB, 최신)로 채운다.
-    const refs = (this.store.doc.compose ?? []).filter((r) => r.parent === item.id);
-    for (const ref of refs) {
-      const pev = this.#eventInfo(ref.child);
-      const partBoard = pev ? (pev.boardId ?? (Number(String(pev.boardIds ?? '').split(',')[0]) || null)) : null;
-      const { row, kids } = node({
-        title: pev?.title || '(다른 보드 이벤트)', status: pev?.st ?? 'plan', tag: '조합', hasKids: true,
-        onOpen: partBoard ? () => this.openProject?.(partBoard) : null,
-      });
-      box.append(row);
-      kids.append(el('div.empty', { text: '불러오는 중…' }));
-      this.adapter?.eventCards?.(ref.child).then((cards) => {
-        if (this._detailGen !== gen || this.item?.id !== item.id) return;
-        clear(kids);
-        if (!(cards && cards.length)) { kids.append(el('div.empty', { text: '하위 일정 없음' })); return; }
-        for (const c of cards) {
-          const r = node({ title: c.title, status: c.status, hasKids: false, onOpen: partBoard ? () => this.openProject?.(partBoard) : null });
-          if (c.depth) r.row.style.paddingLeft = `${8 + c.depth * 14}px`;
-          kids.append(r.row);
-        }
-      }).catch(() => { if (this._detailGen === gen && this.item?.id === item.id) { clear(kids); kids.append(el('div.empty', { text: '불러오지 못함' })); } });
-    }
-
-    if (!own.length && !refs.length) box.append(el('div.empty', { text: '구성이 없습니다.' }));
+    if (!own.length) box.append(el('div.empty', { text: '세부내역이 없습니다 — 조합한 이벤트도, 하위 카드도 없습니다.' }));
   }
 
   /** 다른 보드의 이벤트(카드·트랙·프로젝트)를 받아 동일·조합 후보·구성 일정을 갱신. */

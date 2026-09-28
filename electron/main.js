@@ -1544,22 +1544,35 @@ async function runSmoke(target) {
       save(B, b);
       const stale2 = { affectedB: rA.affected.includes(B), kept: db.prepare("SELECT count(*) n FROM containment WHERE child_id = 'eSMOKEKID'").get().n === 1 };
 
-      // 조합(구성) — 같은 보드 이벤트 둘로 X를 이룬다. 구성으로 저장(태스크 아님), 다시 읽어도 doc.compose.
+      // 조합(구성) — 다른 보드(B)의 이벤트 둘로 X를 이룬다. 구성으로 저장(태스크 아님), 다시 읽어도 doc.compose.
+      // 같은 보드(A)의 이벤트는 조합할 수 없다 — 이미 A의 그래프 안이다(SYSTEM.md §7.1).
       a = openV(A);
-      const parts = a.items.filter((i) => !i.parent && i.id !== X.id && i.ty !== 'ms').slice(0, 2).map((i) => i.id);
-      a.compose = [...(a.compose ?? []), ...parts.map((c) => ({ parent: X.id, child: c }))];
-      save(A, a);
+      const bNow = peek(B);
+      const parts = bNow.items.filter((i) => !i.parent && i.ty !== 'ms' && i.id !== bOnly && !a.items.some((k) => k.id === i.id)).slice(0, 2).map((i) => i.id);
+      const sameA = a.items.filter((i) => !i.parent && i.id !== X.id && i.ty !== 'ms').slice(0, 2).map((i) => i.id);
+      a.compose = [...(a.compose ?? []), ...parts.map((c) => ({ parent: X.id, child: c })), ...sameA.map((c) => ({ parent: X.id, child: c }))];
+      const normalized = prepare(structuredClone(a)).doc;                  // 정규화가 같은 보드 조합을 끊는다
+      save(A, a);                                                          // 정규화 없이 저장해도 저장이 뺀다
       const edgesC = db.prepare('SELECT ordered, compose FROM containment WHERE parent_id = ? AND child_id IN (?, ?)').all(X.id, ...parts);
       const back = peek(A);
       const compose = {
-        stored: edgesC.length === 2 && edgesC.every((e) => e.compose === 1 && e.ordered === 0),
+        stored: parts.length === 2 && edgesC.length === 2 && edgesC.every((e) => e.compose === 1 && e.ordered === 0),
         inDoc: parts.every((c) => back.compose.some((x) => x.parent === X.id && x.child === c)),
         notTasks: !back.items.find((i) => i.id === X.id).tasks.some((k) => parts.includes(k.id)),
-        stillCards: parts.every((c) => back.items.some((i) => i.id === c)),
+        sameBoardDropped: !normalized.compose.some((x) => sameA.includes(x.child))
+          && db.prepare('SELECT count(*) n FROM containment WHERE parent_id = ? AND compose = 1 AND child_id IN (?, ?)').get(X.id, ...sameA).n === 0,
       };
+      // 같은 보드 조합이 옛 데이터로 DB에 남아 있으면 그 보드를 저장할 때 걷어 낸다
+      db.prepare('INSERT OR IGNORE INTO containment (parent_id, child_id, ordered, compose, ord) VALUES (?, ?, 0, 1, 99)').run(X.id, sameA[0]);
       a = openV(A);
-      a.compose.push({ parent: X.id, child: a.items.find((i) => i.id === X.id).place.t });   // 자기 트랙 = 조상
-      compose.cycleRejected = save(A, a).rejected.length === 1;
+      a.items.find((i) => i.id === X.id).note = 'cleanup';
+      save(A, a);
+      compose.legacyCleaned = db.prepare('SELECT count(*) n FROM containment WHERE parent_id = ? AND child_id = ?').get(X.id, sameA[0]).n === 0;
+      // 보드를 넘는 순환 — X를 품은 A 트랙을, B 카드가 조합으로 품고 그 B 카드를 X가 품으면 순환 → 거부
+      const bb = openV(B);
+      const loopCard = parts[0];
+      bb.compose = [...(bb.compose ?? []), { parent: loopCard, child: a.items.find((i) => i.id === X.id).place.t }];
+      compose.cycleRejected = save(B, bb).rejected.length === 1;
 
       // 보드 삭제 — B에만 있던 것은 지우고, A와 공유한 X와 그 안쪽 구조는 그대로
       const pre = t.deletePreview(B);
@@ -1718,6 +1731,16 @@ async function runSmoke(target) {
         await sleep(300);
         const titles = [...document.querySelectorAll('#pItem .map-title')].map((h) => h.textContent.trim());
         const btns = ['i-same', 'i-combine', 'i-parent', 'i-deps'].map((x) => document.querySelector('#' + x + ' > button.btn')?.textContent.trim());
+        // 조합설정 팝업 — 현재 보드의 이벤트는 트리에 나오지 않는다(모순). 다른 보드를 하나 두고 본다.
+        const other = await r.adapter.duplicateProject(r.adapter.projectId, '조합 후보 보드');
+        document.querySelector('#i-combine > button.btn').click();
+        await sleep(600);
+        const rowIds = [...document.querySelectorAll('.dlg-tree-row')].map((x) => x.dataset.id);
+        const hereIds = new Set([...r.store.tracks.map((t) => t.id), ...r.store.items.map((x) => x.id)]);
+        const noCurrentInCombine = rowIds.length > 0 && !rowIds.some((x) => hereIds.has(x));
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        await sleep(100);
+        await r.adapter.deleteProject(other);
         // 팝업 — 제목을 잡고 끌면 옮겨지고, 막 위에서 놓아도 닫히지 않는다
         document.querySelector('#i-deps > button.btn').click();
         await sleep(300);
@@ -1742,7 +1765,10 @@ async function runSmoke(target) {
         await sleep(50);
         const closedOnScrim = scrim.hidden;
         document.querySelector('#pItem [data-close]')?.click();
-        return { id, tabName, filled, painted, hiddenByDefault, noteShown, noteHidden, titles, btns, moved, stillOpen, closedOnScrim };
+        const detailLabel = document.querySelector('#i-children').closest('.fld').querySelector('label').firstChild.textContent.trim();
+        const sizeLabel = document.getElementById('i-fixedh').closest('.fld').querySelector('label').textContent.trim();
+        const descBlock = getComputedStyle(document.querySelector('#pItem .fld > label .desc')).display === 'block';
+        return { id, tabName, filled, painted, hiddenByDefault, noteShown, noteHidden, titles, btns, moved, stillOpen, closedOnScrim, noCurrentInCombine, detailLabel, sizeLabel, descBlock };
       })();
       const guard = new Promise((res) => setTimeout(() => res({ error: 'timeout' }), 10000));
       return Promise.race([run.catch((e) => ({ error: String(e) })), guard]);
@@ -1775,6 +1801,8 @@ async function runSmoke(target) {
       await show('disp', theme); await capture(target, `style-tab-${theme}`);
       await show('rel', theme); await capture(target, `map-tab-${theme}`);
     }
+    await show('attr', 'light'); await capture(target, 'attr-tab-light');
+    await show('task', 'light'); await capture(target, 'task-tab-light');
     await target.webContents.executeJavaScript(`(() => {
       const r = window.__roadmap;
       r.store.commit('shot 원복', () => { for (const c of r.store.items) c.place.fill = null; });
@@ -1792,7 +1820,7 @@ async function runSmoke(target) {
     && saveModel?.stale1?.merged === true && saveModel?.stale1?.kids === 2 && saveModel?.stale1?.zGone === true && saveModel?.stale1?.xOnB === true
     && saveModel?.stale2?.affectedB === true && saveModel?.stale2?.kept === true
     && saveModel?.compose?.stored === true && saveModel?.compose?.inDoc === true && saveModel?.compose?.notTasks === true
-    && saveModel?.compose?.stillCards === true && saveModel?.compose?.cycleRejected === true
+    && saveModel?.compose?.sameBoardDropped === true && saveModel?.compose?.legacyCleaned === true && saveModel?.compose?.cycleRejected === true
     && saveModel?.del?.preShared === true && saveModel?.del?.xKept === true && saveModel?.del?.kids >= 2 && saveModel?.del?.bOnlyGone === true
     && saveModel?.tr?.oldInTrash === true && saveModel?.tr?.freshGone === true && saveModel?.tr?.structure === true
     && saveModel?.tr?.purged === true && saveModel?.tr?.emptied === true
@@ -1804,6 +1832,7 @@ async function runSmoke(target) {
     && JSON.stringify(styleUi?.titles) === JSON.stringify(['항등설정', '조합설정', '상위관계설정', '선행관계설정'])
     && (styleUi?.btns ?? []).length === 4 && styleUi.btns.every((t) => t === '편집')
     && styleUi?.moved === true && styleUi?.stillOpen === true && styleUi?.closedOnScrim === true
+    && styleUi?.noCurrentInCombine === true && styleUi?.detailLabel === '세부내역' && styleUi?.sizeLabel === '사이즈 수동 설정' && styleUi?.descBlock === true
     && relCheck?.allDep === true && relCheck?.added === true && relCheck?.removed === true
     && orderCheck?.topoOk === true && orderCheck?.edges > 0 && orderCheck?.maxRank > 0
     && orderMode?.hasOrderAxis === true && orderMode?.ordered === true && orderMode?.cards > 0 && orderMode?.back === true
@@ -1917,7 +1946,7 @@ async function runRepro(target) {
       // 상세 탭에 나오나(조합 그룹)
       document.querySelector('#pItem .ptab[data-tab="task"]').click();
       await sleep(450);
-      const inDetail = !document.getElementById('i-children').textContent.includes('구성이 없습니다');
+      const inDetail = !document.getElementById('i-children').textContent.includes('세부내역이 없습니다');
       // 저장 대기 후 재로드해서 지속 확인
       await sleep(400);
       await r.openProject(${boardId});

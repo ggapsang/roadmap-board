@@ -510,48 +510,30 @@ function normalizeRelations(doc, itemIds) {
 /**
  * 조합(구성) 정리 — doc.compose = [{parent, child}] (docs/SAVE.md §5).
  * 조합은 여러 이벤트로 한 이벤트가 만들어진 것이다. 부모는 이 보드의 트랙·카드여야 하고(보드→트랙은
- * doc.tracks가 맡는다), 대상은 어느 보드의 이벤트든 된다 — 대상 쪽은 이 문서가 다 알지 못한다.
- * 문서 안에서 알 수 있는 구조 위반만 끊는다: 자기 자신, 자기 조상(순환), 같은 쌍의 다른 포함(이미
- * 하위 카드·태스크·트랙 위 카드로 담긴 것 — 한 쌍에 간선은 하나다). 보드를 넘는 순환은 저장이 거부한다.
+ * doc.tracks가 맡는다), 대상은 **다른 보드의 이벤트**여야 한다. 같은 보드의 이벤트(트랙·카드·태스크)는
+ * 명시적 관계가 없어도 이미 이 보드의 포함 그래프 안에 있다 — 그것을 다시 조합으로 품는 것은 모순이다
+ * (2026-09-28 사용자 정의, SYSTEM.md §7.1). 대상이 이 문서에 보이면 끊는다. 보드를 넘는 순환·공유
+ * 이벤트는 저장이 거부한다.
  */
 function normalizeCompose(doc, warnings) {
-  const itemById = new Map(doc.items.map((i) => [i.id, i]));
   const trackIds = new Set(doc.tracks.map((t) => t.id));
-  // 문서 안에서 부모 → 자식 (하위 카드·태스크·트랙 위 카드)
-  const kids = new Map();
-  const addKid = (p, c) => { if (!kids.has(p)) kids.set(p, new Set()); kids.get(p).add(c); };
-  for (const it of doc.items) {
-    if (it.parent) addKid(it.parent, it.id);
-    else for (const t of (it.place?.tracks ?? [it.place?.t])) addKid(t, it.id);
-    for (const k of (it.tasks ?? [])) addKid(it.id, k.id);
-  }
-  // 이 부모의 조상 (문서 안) — 카드면 상위 카드 사슬 + 트랙, 트랙이면 없음
-  const ancestors = (id) => {
-    const out = new Set();
-    let cur = itemById.get(id);
-    let guard = 0;
-    while (cur && guard++ < 256) {
-      if (cur.parent) { out.add(cur.parent); cur = itemById.get(cur.parent); continue; }
-      for (const t of (cur.place?.tracks ?? [cur.place?.t])) out.add(t);
-      break;
-    }
-    return out;
-  };
+  const itemIds = new Set(doc.items.map((i) => i.id));
+  const here = new Set([...trackIds, ...itemIds]);     // 이 보드의 이벤트 — 조합 대상이 될 수 없다
+  for (const it of doc.items) for (const k of (it.tasks ?? [])) here.add(k.id);
 
   const seen = new Set();
   const before = Array.isArray(doc.compose) ? doc.compose.length : 0;
   doc.compose = (Array.isArray(doc.compose) ? doc.compose : []).filter((c) => {
     if (!isObj(c) || typeof c.parent !== 'string' || typeof c.child !== 'string') return false;
     if (!c.parent || !c.child || c.parent === c.child) return false;
-    if (!itemById.has(c.parent) && !trackIds.has(c.parent)) return false;   // 부모가 이 보드에 없다
-    if (ancestors(c.parent).has(c.child)) return false;                     // 자기 조상을 품으면 순환
-    if (kids.get(c.parent)?.has(c.child)) return false;                      // 같은 쌍이 이미 다른 포함
+    if (!itemIds.has(c.parent) && !trackIds.has(c.parent)) return false;   // 부모가 이 보드에 없다
+    if (here.has(c.child)) return false;                                     // 같은 보드 이벤트 — 모순
     const key = `${c.parent}\u0001${c.child}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   }).map((c) => ({ parent: c.parent, child: c.child }));
-  if (doc.compose.length < before) warnings.push('맞지 않는 조합(구성)을 정리했습니다.');
+  if (doc.compose.length < before) warnings.push('같은 보드 이벤트 등 맞지 않는 조합(구성)을 정리했습니다.');
 }
 
 /** 0~1 비율. 비어 있으면 null (= 자동 배치) */

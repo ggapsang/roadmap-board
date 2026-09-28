@@ -19,7 +19,9 @@ body.panel-open{--panel-w:var(--panel-size)}
 .panel footer .btn{flex:1;justify-content:center}
 
 .fld{margin-bottom:var(--u3)}
-.fld>label{display:block;font-size:11px;line-height:16px;font-weight:500;color:var(--text-tertiary);margin-bottom:var(--u1)}
+/* 필드 제목 — 읽히는 크기로. 부연 설명(.desc)은 제목 아래 한 줄 내려 작게 */
+.fld>label{display:block;font-size:13px;line-height:18px;font-weight:600;color:var(--text-primary);margin-bottom:var(--u1-5)}
+.fld>label .desc{display:block;margin-top:2px;font-size:11px;line-height:16px;font-weight:400;color:var(--text-tertiary)}
 .fld input[type=text],.fld input[type=date],.fld input[type=number],.fld select,.fld textarea{
   width:100%;height:var(--u8);padding:0 var(--u2-5);background:var(--bg-input);
   border:1px solid var(--border-default);border-radius:var(--u1-5);font-size:13px}
