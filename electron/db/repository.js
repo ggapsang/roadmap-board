@@ -258,6 +258,19 @@ export class BoardRepository {
     return out;
   }
 
+  /**
+   * 그래프 뷰 재료 — 이벤트·포함·관계를 저장소에서 **그대로** 읽는다(G-02: 사본·별도 스키마 없음).
+   * 모든 이벤트(보드 화면 밖·휴지통 포함)가 노드다. 정렬은 id순 — 같은 데이터면 같은 배치(G-22).
+   * 읽기만 한다(G-01).
+   */
+  graphData() {
+    return {
+      events: this.db.prepare('SELECT id, title, status FROM event ORDER BY id').all(),
+      contain: this.db.prepare("SELECT parent_id, child_id, ordered, compose FROM containment WHERE child_id NOT LIKE 'board:%' ORDER BY parent_id, child_id").all(),
+      rels: this.db.prepare('SELECT id, type, from_id, to_id FROM rel ORDER BY id').all(),
+    };
+  }
+
   /** 이벤트 몇 개의 본질 — 조합 대상처럼 어느 보드 화면에도 없는 것의 이름을 보여 줄 때. */
   eventsById(ids) {
     return [...this.#essence(Array.isArray(ids) ? ids : []).values()];

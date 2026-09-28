@@ -1942,6 +1942,123 @@ async function runSmoke(target) {
     console.log('[smoke] tab-ui ' + JSON.stringify(tabUi));
   }
 
+  // 그래프 뷰 — 개발요청서 5장 완료 판정 1~9. 합성 데이터(메인, 순수 계산) + 실제 화면(렌더러).
+  let graphCheck = null;
+  if (wrote) {
+    try {
+      const G = await import('../src/core/graph.js');
+      const { GRAPH } = await import('../src/config/index.js');
+      // 합성: 루트 둘·3단 포함(구성·순서 있음·순서 없음)·다중 소속·선행 사슬·흐름 교차 순환(선행+원인)·참조 순환
+      const events = []; const contain = []; const rels = [];
+      const E = (id) => events.push({ id, title: id });
+      const C = (pp, c, o = 1, k = 0) => contain.push({ parent_id: pp, child_id: c, ordered: o, compose: k });
+      const R = (t, a, b) => rels.push({ id: `${t}${a}${b}`, type: t, from_id: a, to_id: b });
+      for (const r of ['B1', 'B2']) { E(r); for (let t = 0; t < 3; t++) { E(`${r}t${t}`); C(r, `${r}t${t}`, 0, 1);
+        for (let c = 0; c < 4; c++) { const id = `${r}t${t}c${c}`; E(id); C(`${r}t${t}`, id); if (c) R('dep', `${r}t${t}c${c - 1}`, id);
+          for (let k = 0; k < 2; k++) { E(`${id}k${k}`); C(id, `${id}k${k}`, 0); } } } }
+      C('B2t0', 'B1t1c1');
+      R('cause', 'B1t0c3', 'B1t0c2');
+      R('ref', 'B1t2c0', 'B2t2c0'); R('ref', 'B2t2c0', 'B1t2c0');
+      const run = (sliders, cfg = GRAPH, data = { events, contain, rels }) => {
+        const g = G.buildGraph(data, cfg); G.initialLayout(g, cfg); const sim = G.createSimulation(g, sliders, cfg);
+        const ticks = G.settle(sim, 3000); return { g, ticks };
+      };
+      const pos = (g) => g.nodes.map((n) => `${n.x.toFixed(4)},${n.y.toFixed(4)}`).join(';');
+      const frac = (g, fam, axis) => { const ls = g.links.filter((l) => l.family === fam && !l.inCycle); return ls.filter((l) => l.target[axis] > l.source[axis]).length / ls.length; };
+      const mid = run({ structure: 0.5, flow: 0.5 });
+      const c1 = { one: mid.g.nodes.filter((n) => n.id === 'B1t1c1').length === 1,
+        twoIn: mid.g.links.filter((l) => l.family === 'contain' && l.to === 'B1t1c1').length === 2 };
+      // 2: 두 중력 0 = 방향 중력이 없는 시뮬레이션과 똑같다
+      const noDir = structuredClone(GRAPH); for (const f of Object.values(noDir.families)) f.u = null;
+      const zero = run({ structure: 0, flow: 0 });
+      const c2 = pos(zero.g) === pos(run({ structure: 0, flow: 0 }, noDir).g);
+      // 3: 구조만 → 부모가 위, 흐름만 → 앞이 왼쪽
+      const c3 = { structure: frac(run({ structure: 1, flow: 0 }).g, 'contain', 'y'), flow: frac(run({ structure: 0, flow: 1 }).g, 'flow', 'x') };
+      // 4: 참조는 어느 중력에서도 방향이 없다 — 참조만 있는 그래프는 중력 세기와 무관하게 같은 배치
+      const refOnly = { events: events.slice(0, 6), contain: [], rels: [{ id: 'x1', type: 'ref', from_id: events[1].id, to_id: events[2].id }, { id: 'x2', type: 'ref', from_id: events[2].id, to_id: events[1].id }] };
+      const c4 = pos(run({ structure: 1, flow: 1 }, GRAPH, refOnly).g) === pos(run({ structure: 0, flow: 0 }, GRAPH, refOnly).g);
+      // 5: 흐름 교차 순환이 있어도 수렴하고, 그 엣지는 순환 표시
+      const cyc = mid.g.links.filter((l) => l.inCycle).map((l) => l.id).sort();
+      const c5 = { converged: mid.ticks < 3000, finite: mid.g.nodes.every((n) => Number.isFinite(n.x) && Number.isFinite(n.y)), cyc };
+      // 6: 가장 큰 노드 = 하위가 가장 많은 이벤트, 트랙(한 단계 아래)이 보드보다 크지 않다 + 3.1 예시 그대로
+      const big = [...mid.g.nodes].sort((a, b) => b.desc - a.desc)[0];
+      const ex = G.buildGraph({ events: ['Y1', 'R1', 'R2', 'AT', 'SET', 'VER', 'MON', 'DWG', 'DEL'].map((id) => ({ id })),
+        contain: [['Y1', 'R1'], ['Y1', 'R2'], ['R1', 'SET'], ['R1', 'VER'], ['AT', 'SET'], ['SET', 'DWG'], ['SET', 'DEL'], ['R2', 'MON']].map(([a, b]) => ({ parent_id: a, child_id: b, ordered: 1, compose: 0 })), rels: [] });
+      const exD = Object.fromEntries(ex.nodes.map((n) => [n.id, [n.desc, Number(n.r.toFixed(1))]]));
+      const c6 = { biggest: big.id, boardGeTrack: mid.g.byId.get('B1').r >= mid.g.byId.get('B1t0').r,
+        example: JSON.stringify([exD.Y1, exD.R1, exD.AT, exD.SET, exD.R2, exD.VER]) === JSON.stringify([[7, 12.9], [4, 11], [3, 10.2], [2, 9.2], [1, 8], [0, 5]]) };
+      // 7: 같은 데이터 → 같은 배치
+      const c7 = pos(mid.g) === pos(run({ structure: 0.5, flow: 0.5 }).g);
+      // 9: 그래프 코드에 역할 이름 분기가 없다(주석·문자열 빼고)
+      const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '').replace(/(['"`])(?:\\.|(?!\1).)*\1/g, '""');
+      const code = ['src/core/graph.js', 'src/ui/graph.js'].map((f) => strip(fs.readFileSync(path.join(ROOT, f), 'utf8'))).join('\n');
+      const c9 = !/\b(track|board|card|task)s?\b|트랙|보드|카드|태스크/i.test(code);
+      graphCheck = { c1, c2, c3, c4, c5, c6, c7, c9 };
+    } catch (err) { graphCheck = { error: String(err?.stack ?? err) }; }
+
+    // 실제 화면 — 열기·노드 수·재현성·끌기/호버/중력 조절 후 데이터 불변(8)
+    const fingerprint = () => JSON.stringify([
+      db.prepare('SELECT * FROM event ORDER BY id').all(), db.prepare('SELECT * FROM containment ORDER BY parent_id, child_id').all(),
+      db.prepare('SELECT * FROM disp ORDER BY parent_id, child_id').all(), db.prepare('SELECT * FROM rel ORDER BY id').all(),
+    ]);
+    const before = fingerprint();
+    const eventCount = db.prepare('SELECT count(*) n FROM event').get().n;
+    const ui = await target.webContents.executeJavaScript(`(async () => {
+      const run = (async () => {
+        const r = window.__roadmap;
+        const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+        const savedPref = localStorage.getItem('wolfpack:graph-view');   // 사용자 설정 — 끝나고 되돌린다
+        document.getElementById('btnGraph').click();
+        await sleep(600);
+        const gv = r.graphView;
+        const circles = document.querySelectorAll('#graphView .gv-node').length;
+        const ids = [...document.querySelectorAll('#graphView .gv-node')].map((c) => c.dataset.id);
+        const uniq = new Set(ids).size === ids.length;
+        const posA = gv.graph.nodes.map((n) => n.x.toFixed(3) + ',' + n.y.toFixed(3)).join(';');
+        const edgeLabelsIdle = document.querySelectorAll('#graphView .gv-edge-label').length;
+        const arrows = [...document.querySelectorAll('#graphView .gv-link')].every((p) => /url\\(#gv-arrow-/.test(p.getAttribute('marker-end')));
+        // 호버 — 이어진 엣지에만 라벨, 배치는 그대로
+        const big = [...gv.graph.nodes].sort((a, b) => b.degree - a.degree)[0];
+        const bx = big.x, by = big.y;
+        const el = document.querySelector('#graphView .gv-node[data-id="' + big.id + '"]');
+        el.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
+        await sleep(80);
+        const hoverLabels = document.querySelectorAll('#graphView .gv-edge-label').length;
+        const hoverKeptLayout = big.x === bx && big.y === by;
+        // 끌기 — 놓으면 고정이 풀린다
+        const b = el.getBoundingClientRect();
+        const at = (x, y) => ({ bubbles: true, clientX: x, clientY: y, button: 0, pointerId: 11 });
+        el.dispatchEvent(new PointerEvent('pointerdown', at(b.left + b.width / 2, b.top + b.height / 2)));
+        window.dispatchEvent(new PointerEvent('pointermove', at(b.left + 120, b.top + 60)));
+        await sleep(100);
+        const pinned = big.fx != null;
+        window.dispatchEvent(new PointerEvent('pointerup', at(b.left + 120, b.top + 60)));
+        const released = big.fx == null && big.fy == null;
+        // 중력 조절
+        const slider = document.querySelector('#graphView .gv-slider input');
+        slider.value = '0'; slider.dispatchEvent(new Event('input', { bubbles: true }));
+        await sleep(300);
+        slider.value = '0.5'; slider.dispatchEvent(new Event('input', { bubbles: true }));
+        await sleep(200);
+        // 다시 열면 같은 배치(결정적)
+        gv.close(); await sleep(50);
+        document.getElementById('btnGraph').click();
+        await sleep(600);
+        const posB = gv.graph.nodes.map((n) => n.x.toFixed(3) + ',' + n.y.toFixed(3)).join(';');
+        const hasStorage = !!localStorage.getItem('wolfpack:graph-view');
+        if (savedPref == null) localStorage.removeItem('wolfpack:graph-view'); else localStorage.setItem('wolfpack:graph-view', savedPref);
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        await sleep(80);
+        return { nodes: gv.graph.nodes.length, circles, uniq, edgeLabelsIdle, arrows, hoverLabels, hoverKeptLayout, pinned, released, sameReopen: posA === posB, closed: document.getElementById('graphView').hidden, hasStorage };
+      })();
+      const guard = new Promise((res) => setTimeout(() => res({ error: 'timeout' }), 15000));
+      return Promise.race([run.catch((e) => ({ error: String(e) })), guard]);
+    })()`);
+    await new Promise((res) => setTimeout(res, 300));
+    graphCheck = { ...graphCheck, ui: { ...ui, eventCount, c8unchanged: fingerprint() === before } };
+    console.log('[smoke] graph ' + JSON.stringify(graphCheck));
+  }
+
   // 스타일·매핑 탭 모습 — --shot일 때만 (라이트·다크). 카드 몇 장에 채우기를 입혀 본다.
   if (wrote && shotDir()) {
     const show = (tab, theme) => target.webContents.executeJavaScript(`(async () => {
@@ -1966,6 +2083,13 @@ async function runSmoke(target) {
     await show('rel', 'light');
     await target.webContents.executeJavaScript(`(async () => { document.querySelector('#i-parent > button.btn').click(); await new Promise((r) => setTimeout(r, 300)); return true; })()`);
     await capture(target, 'parent-child-popup');
+    for (const theme of ['light', 'dark']) {
+      await target.webContents.executeJavaScript(`(async () => { document.documentElement.dataset.theme = ${JSON.stringify(theme)}; document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); document.getElementById('btnGraph').click(); await new Promise((r) => setTimeout(r, 700)); return true; })()`);
+      await capture(target, `graph-${theme}`);
+      await target.webContents.executeJavaScript(`(async () => { const gv = window.__roadmap.graphView; const big = [...gv.graph.nodes].sort((a, b) => b.degree - a.degree)[0]; document.querySelector('#graphView .gv-node[data-id="' + big.id + '"]').dispatchEvent(new PointerEvent('pointerover', { bubbles: true })); await new Promise((r) => setTimeout(r, 120)); return true; })()`);
+      await capture(target, `graph-hover-${theme}`);
+      await target.webContents.executeJavaScript(`(() => { window.__roadmap.graphView.close(); return true; })()`);
+    }
     await target.webContents.executeJavaScript(`(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return true; })()`);
     await target.webContents.executeJavaScript(`(() => {
       const r = window.__roadmap;
@@ -2002,6 +2126,15 @@ async function runSmoke(target) {
     && parentChild?.ancestorBlocked === true && parentChild?.undone === true
     && tabUi?.boardTabsMoved === true && tabUi?.activeKept === true && tabUi?.noTextSelected === true && tabUi?.noteH === 565
     && tabUi?.panelTabsMoved === true && tabUi?.dragDidNotSelect === true && tabUi?.tabKept === true && tabUi?.restored === true
+    && graphCheck?.c1?.one === true && graphCheck?.c1?.twoIn === true && graphCheck?.c2 === true
+    && graphCheck?.c3?.structure >= 0.95 && graphCheck?.c3?.flow >= 0.95 && graphCheck?.c4 === true
+    && graphCheck?.c5?.converged === true && graphCheck?.c5?.finite === true && graphCheck?.c5?.cyc?.length === 2
+    && graphCheck?.c6?.biggest?.startsWith('B') && graphCheck?.c6?.biggest?.length === 2 && graphCheck?.c6?.boardGeTrack === true && graphCheck?.c6?.example === true
+    && graphCheck?.c7 === true && graphCheck?.c9 === true
+    && graphCheck?.ui?.nodes === graphCheck?.ui?.eventCount && graphCheck?.ui?.circles === graphCheck?.ui?.nodes && graphCheck?.ui?.uniq === true
+    && graphCheck?.ui?.edgeLabelsIdle === 0 && graphCheck?.ui?.arrows === true && graphCheck?.ui?.hoverLabels > 0 && graphCheck?.ui?.hoverKeptLayout === true
+    && graphCheck?.ui?.pinned === true && graphCheck?.ui?.released === true && graphCheck?.ui?.sameReopen === true && graphCheck?.ui?.closed === true
+    && graphCheck?.ui?.c8unchanged === true
     && styleUi?.noCurrentInCombine === true && styleUi?.detailLabel === '세부내역' && styleUi?.sizeLabel === '사이즈 수동 설정' && styleUi?.descBlock === true
     && relCheck?.allDep === true && relCheck?.added === true && relCheck?.removed === true
     && orderCheck?.topoOk === true && orderCheck?.edges > 0 && orderCheck?.maxRank > 0
@@ -2350,6 +2483,8 @@ function registerIpc() {
   ipcMain.handle('event:cards', guard((_e, id) => repo.eventCards(id)));
   // 이벤트 몇 개의 본질 · 조상(조합 대상에서 빼야 순환이 안 생긴다)
   ipcMain.handle('event:get', guard((_e, ids) => repo.eventsById(ids)));
+  // 그래프 뷰 — 이벤트·포함·관계 전체(읽기 전용)
+  ipcMain.handle('graph:data', guard(() => repo.graphData()));
   ipcMain.handle('event:ancestors', guard((_e, id) => repo.ancestorsOf(id)));
   // 휴지통 — 부모를 모두 잃은 이벤트 (docs/SAVE.md §7)
   ipcMain.handle('trash:list', guard(() => repo.listTrash()));

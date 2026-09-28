@@ -1,0 +1,73 @@
+/* ── 그래프 뷰 (src/ui/graph.js) — 표현 층 · 읽기 전용 ─────────────
+   모든 이벤트가 같은 원(크기만 다름, G-07·G-08). 엣지는 굵기 같고 색 계열 넷(G-14), 화살촉(G-15).
+   호버·선택은 색·불투명도만(G-28). 떠 있는 층이 아니라 보드 자리를 덮는 작업 화면이라 그림자 없음. */
+.graphview{position:fixed;top:var(--tab-h);left:0;right:0;bottom:0;z-index:89;
+  background:var(--bg-canvas);display:flex;flex-direction:column}
+.graphview[hidden]{display:none}
+.gv-bar{display:flex;align-items:center;gap:var(--u3);padding:var(--u2) var(--u4);
+  background:var(--bg-header);border-bottom:1px solid var(--border-subtle);flex-wrap:wrap}
+.gv-bar h2{margin:0;font-size:15px;line-height:22px;font-weight:600}
+.gv-count{font-size:12px;color:var(--text-tertiary);font-variant-numeric:tabular-nums}
+.gv-controls{display:flex;align-items:center;gap:var(--u4);flex-wrap:wrap}
+.gv-slider{display:flex;align-items:center;gap:var(--u2);font-size:12px;color:var(--text-secondary)}
+.gv-slider input{width:120px;accent-color:var(--accent)}
+.gv-slider output{width:var(--u8);font-variant-numeric:tabular-nums;color:var(--text-tertiary)}
+.gv-check{display:flex;align-items:center;gap:var(--u1-5);font-size:12px;color:var(--text-secondary)}
+.gv-controls .btn.sm{margin-top:0}
+.gv-sub{display:flex;align-items:center;gap:var(--u4);padding:var(--u1-5) var(--u4);flex-wrap:wrap;
+  border-bottom:1px solid var(--border-subtle)}
+.gv-legend{display:flex;gap:var(--u3);font-size:11px;color:var(--text-secondary)}
+.gv-key{display:inline-flex;align-items:center;gap:var(--u1-5)}
+.gv-swatch{display:inline-block;width:18px;height:0;border-top:2px solid var(--graph-contain)}
+.gv-swatch[data-family="flow"]{border-top-color:var(--graph-flow)}
+.gv-swatch[data-family="cause"]{border-top-color:var(--graph-cause)}
+.gv-swatch[data-family="ref"]{border-top:2px dashed var(--graph-ref)}
+.gv-note{margin:0;font-size:11px;color:var(--text-tertiary)}
+.gv-stage{position:relative;flex:1;min-height:0}
+.gv-svg{position:absolute;inset:0;width:100%;height:100%;cursor:grab;touch-action:none;user-select:none}
+.gv-svg.panning{cursor:grabbing}
+
+/* 엣지 — 굵기 모두 1.5px, 색 계열 넷 */
+.gv-link{fill:none;stroke-width:1.5;stroke:var(--graph-contain);opacity:.85}
+.gv-link.gv-f-flow{stroke:var(--graph-flow)}
+.gv-link.gv-f-cause{stroke:var(--graph-cause)}
+.gv-link.gv-f-ref{stroke:var(--graph-ref);stroke-dasharray:4 4}
+.gv-link.dim{opacity:.12}
+.gv-link.hl{stroke:var(--accent);opacity:1}
+.gv-arrowhead{fill:var(--graph-contain)}
+.gv-arrowhead.gv-f-flow{fill:var(--graph-flow)}
+.gv-arrowhead.gv-f-cause{fill:var(--graph-cause)}
+.gv-arrowhead.gv-f-ref{fill:var(--graph-ref)}
+.gv-arrowhead.gv-f-hl{fill:var(--accent)}
+
+/* 노드 — 모두 같은 원 */
+.gv-node{fill:var(--graph-node);stroke:var(--graph-node-edge);stroke-width:1.5;cursor:pointer;
+  transition:opacity .12s ease,fill .12s ease}
+@media (prefers-reduced-motion:reduce){.gv-node{transition:none}}
+.gv-node.dim{opacity:.18}
+.gv-node.near{fill:var(--text-secondary)}
+.gv-node.focus,.gv-node.sel{fill:var(--accent)}
+
+/* 라벨 — 멀리서는 큰 노드만, 호버·선택과 그 이웃은 늘 (4.5) */
+.gv-label{font-size:11px;fill:var(--graph-label);pointer-events:none;display:none;
+  paint-order:stroke;stroke:var(--bg-canvas);stroke-width:3px;stroke-linejoin:round}
+.gv-label.show{display:block}
+.gv-label.dim{opacity:.25}
+.gv-edge-label{font-size:10px;font-weight:600;fill:var(--accent);pointer-events:none;
+  paint-order:stroke;stroke:var(--bg-canvas);stroke-width:3px;stroke-linejoin:round}
+
+/* 선택한 노드 정보 (읽기 전용) — 떠 있는 층 */
+.gv-info{position:absolute;top:var(--u3);right:var(--u3);width:280px;max-height:calc(100% - var(--u6));overflow:auto;
+  background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:var(--r-panel);
+  box-shadow:var(--shadow-pop);padding:var(--u3)}
+.gv-info[hidden]{display:none}
+.gv-info-title{font-size:14px;line-height:20px;font-weight:600;color:var(--text-primary)}
+.gv-info-sub{font-size:11px;color:var(--text-tertiary);margin:2px 0 var(--u2)}
+.gv-info-list{display:flex;flex-direction:column;gap:2px}
+.gv-info-row{display:flex;align-items:baseline;gap:var(--u1-5);font-size:12px}
+.gv-info-row .linklike{background:none;border:0;padding:0;color:var(--text-primary);cursor:pointer;text-align:left;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.gv-info-row .linklike:hover{color:var(--accent);text-decoration:underline}
+.gv-info-row em{font-size:11px;color:var(--text-tertiary);font-style:normal;flex:none}
+.gv-info-dir{color:var(--text-tertiary);flex:none}
+.gv-info .empty{font-size:12px;color:var(--text-tertiary)}

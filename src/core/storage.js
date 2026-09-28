@@ -27,6 +27,8 @@ export class StorageAdapter {
   async listEvents() { return []; }
   async eventCards() { return []; }
   async eventsById() { return []; }
+  /** 그래프 뷰 재료 {events, contain, rels} — 저장소에서 그대로. 지원 안 하면 null */
+  async graphData() { return null; }
   async eventAncestors(id) { return [id]; }
   /** 휴지통 — 부모를 모두 잃은 이벤트 (docs/SAVE.md §7) */
   get hasTrash() { return false; }
@@ -71,6 +73,7 @@ export class ElectronAdapter extends StorageAdapter {
   async listEvents() { return this.api.listEvents ? this.api.listEvents() : []; }
   async eventCards(id) { return this.api.eventCards ? this.api.eventCards(id) : []; }
   async eventsById(ids) { return this.api.eventsById ? this.api.eventsById(ids) : []; }
+  async graphData() { return this.api.graphData ? this.api.graphData() : null; }
   async eventAncestors(id) { return this.api.eventAncestors ? this.api.eventAncestors(id) : [id]; }
   get hasTrash() { return !!this.api.listTrash; }
   async listTrash() { return this.api.listTrash ? this.api.listTrash() : []; }

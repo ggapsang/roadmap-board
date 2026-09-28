@@ -29,6 +29,7 @@ import { PanelManager } from './ui/panels/manager.js';
 import { ItemPanel } from './ui/panels/item.js';
 import { ConfigPanel } from './ui/panels/config.js';
 import { DataPanel } from './ui/panels/data.js';
+import { GraphView } from './ui/graph.js';
 
 async function boot() {
   initTheme();
@@ -79,6 +80,10 @@ async function boot() {
     store, view, panels, adapter,
     onReplaced: () => { rebuild(); configPanel.render(); },
   });
+
+  // 그래프 뷰 — 모든 이벤트·포함·관계(읽기 전용). 열 때마다 저장소에서 받는다.
+  const graphView = new GraphView({ adapter, store });
+  $('btnGraph').addEventListener('click', () => { panels.close(); graphView.open(); });
 
   const launcher = new Launcher({
     adapter,
@@ -311,7 +316,7 @@ async function boot() {
   }
 
   // 개발자 도구에서 바로 만질 수 있게
-  Object.assign(globalThis, { __roadmap: { store, view, board, adapter, launcher, tabs, openProject } });
+  Object.assign(globalThis, { __roadmap: { store, view, board, adapter, launcher, tabs, openProject, graphView } });
 }
 
 /** 프로젝트를 열기 전의 빈 문서 */

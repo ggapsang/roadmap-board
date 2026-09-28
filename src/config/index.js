@@ -77,6 +77,48 @@ export const RELATION_KEYS = RELATION_TYPES.map((r) => r.key);
 export const DEFAULT_RELATION = 'dep';
 
 /**
+ * 그래프 뷰 (refs/WOLFPACK_그래프뷰_개발요청서.md) — 관계 종류별 방향 중력·선·라벨을 **이 한 곳**에서 정한다(G-21).
+ *
+ * 엣지 종류 = 포함(containment 세 종류는 모두 'contain') + 관계 종류(rel.type). 종류 → 계열(family) → 힘·색.
+ *   contain  부모 → 자식, 아래(0,1), '구조 중력' 슬라이더
+ *   flow     선행·합류 — 앞 → 뒤, 오른쪽(1,0), '흐름 중력' 슬라이더
+ *   cause    원인 → 결과, 오른쪽(1,0), '흐름 중력' 슬라이더
+ *   ref      참조 — 방향 중력 없음(G-18, 순환 허용), 약한 스프링만
+ * 합류·원인·참조는 아직 만들 수 없는 관계지만(RELATION_TYPES 주석), 생기면 여기 계열이 그대로 적용된다.
+ * 방향 중력은 목표 좌표로 끌지 않고 **최소 간격(gap)에 못 미칠 때만** 벌린다(G-20).
+ */
+export const GRAPH = {
+  /** 엣지 종류 → 계열 */
+  typeFamily: { contain: 'contain', dep: 'flow', merge: 'flow', cause: 'cause', ref: 'ref' },
+  /** 계열별 방향 중력(u·gap·strength·slider)과 스프링 세기 */
+  families: {
+    // strength·gap은 합성 데이터(2보드·3단 포함·다중 소속·흐름 교차 순환)로 맞췄다: 구조만 켜면 부모가 위 99%,
+    // 흐름만 켜면 앞이 왼쪽 100%, 둘 다 0.5면 96%·100%, 300틱 안에 수렴. 위치만으로 방향이 보장되진 않아
+    // 화살촉을 단다(G-15).
+    contain: { u: [0, 1], gap: 100, strength: 1, slider: 'structure', spring: 0.35 },
+    flow:    { u: [1, 0], gap: 90, strength: 1, slider: 'flow', spring: 0.35 },
+    cause:   { u: [1, 0], gap: 90, strength: 1, slider: 'flow', spring: 0.35 },
+    ref:     { u: null, spring: 0.08 },
+  },
+  /** 호버 라벨 — 엣지 종류(포함은 세부 종류까지) */
+  labels: {
+    // 짧게 — 한 노드에 엣지가 몰리면 라벨이 겹친다. 순서 있는/없는 포함은 라벨로만 구분(G-14)
+    'contain:ordered': '포함', 'contain:unordered': '포함·순서 없음', 'contain:compose': '구성(조합)',
+    dep: '선행', merge: '합류', cause: '원인', ref: '참조',
+  },
+  /** 노드 반지름 r = min(rMax, rMin + k·√(하위 이벤트 수)) — 3.1 */
+  node: { rMin: 5, k: 3, rMax: 40 },
+  /** 힘 — 반발(Barnes-Hut θ)·스프링 길이·충돌 여백·약한 중심 복귀 */
+  sim: { charge: -140, theta: 0.9, linkDistance: 60, collidePad: 4, center: 0.03 },
+  /** 초기 배치 간격(px) — y=포함 깊이, x=흐름 순위 (3.3) */
+  init: { dy: 90, dx: 110, jitter: 24 },
+  /** 두 중력의 시작 세기 0~1 (Q-5: 중간값에서 시작) */
+  sliders: { structure: 0.5, flow: 0.5 },
+  /** 라벨을 보이는 최소 화면 반지름(px) — 멀리서는 큰 노드만 (4.5) */
+  labelMinScreenRadius: 9,
+};
+
+/**
  * 카드 색 채우기 팔레트 (스타일 탭 — 파워포인트·엑셀의 '채우기'). 사용자가 고르는 표현이다.
  * 데이터에는 key만 남고, 색은 styles/tokens.css의 `--fill-{key}`가 테마별로 정한다(HEX 직접 금지).
  * Orange는 넣지 않는다 — 오늘·선택·진행·CTA 신호색이라 채우기로 쓰면 선택과 헷갈린다(가이드 §14).

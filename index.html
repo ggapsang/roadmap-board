@@ -4,8 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta http-equiv="Content-Security-Policy"
-      content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; script-src 'self'">
+      content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; script-src 'self' 'sha256-pN+uRemO275q1Uio82PrUJrKSuJoFKoovG7x8UMNRWk='">
 <title>WOLFPACK</title>
+<!-- 그래프 뷰의 d3-force(ESM)가 서로를 이름으로 부른다('d3-quadtree' 등). 번들러가 없어 import map으로 잇는다.
+     CSP는 이 한 덩어리만 해시로 허용한다 — 내용을 바꾸면 위 script-src의 sha256도 다시 계산해야 한다. -->
+<script type="importmap">{"imports":{"d3-force":"./node_modules/d3-force/src/index.js","d3-quadtree":"./node_modules/d3-quadtree/src/index.js","d3-dispatch":"./node_modules/d3-dispatch/src/index.js","d3-timer":"./node_modules/d3-timer/src/index.js"}}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -46,6 +49,8 @@
 
   <button class="btn" id="btnTracks" type="button">
     <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V15z"/></svg>설정</button>
+  <button class="btn" id="btnGraph" type="button" title="그래프 — 모든 이벤트와 포함·관계를 한눈에 (읽기 전용)">
+    <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="9" cy="18" r="2.5"/><path d="M8.2 7.2 15.7 8M7 8.3l1.3 7.4M16.6 10.1l-5.9 6.2"/></svg>그래프</button>
   <button class="btn icon" id="btnSelect" type="button" aria-pressed="false"
           title="텍스트 선택 모드 (Ctrl+I) — 켜면 카드 글자를 긁어 복사할 수 있고 드래그 이동은 멈춥니다"
           aria-label="텍스트 선택 모드">
@@ -332,6 +337,9 @@
     <p class="lfoot" id="l-foot"></p>
   </div>
 </div>
+
+<!-- ── 그래프 뷰 (표현 층 · 읽기 전용) — src/ui/graph.js ──── -->
+<section class="graphview" id="graphView" hidden aria-label="그래프"></section>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 

@@ -15,7 +15,8 @@
   "author": "다임리서치",
   "license": "UNLICENSED",
   "dependencies": {
-    "better-sqlite3": "^13.0.3"
+    "better-sqlite3": "^13.0.3",
+    "d3-force": "^3.0.0"
   },
   "build": {
     "appId": "kr.daim.wolfpack",

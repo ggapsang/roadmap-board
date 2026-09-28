@@ -93,6 +93,15 @@
   --fill-purple:rgba(139,92,246,.15);
   --fill-pink:rgba(236,72,153,.14);
 
+  /* ── 그래프 뷰 — 노드는 한 색(G-08), 엣지는 계열 네 가지 색(G-14). Orange는 호버·선택 강조에만 */
+  --graph-node:var(--neutral-400);
+  --graph-node-edge:var(--neutral-50);
+  --graph-label:var(--text-secondary);
+  --graph-contain:var(--neutral-400);
+  --graph-flow:var(--success-500);
+  --graph-cause:var(--warning-700);
+  --graph-ref:var(--neutral-300);
+
   /* 그림자는 "떠 있는 계층"에만. 카드에는 쓰지 않는다 (가이드 §14) */
   --shadow-pop:0 var(--u1) var(--u3) rgba(12,10,9,.10), 0 1px 2px rgba(12,10,9,.06);
   --shadow-dialog:0 var(--u5) var(--u10) rgba(12,10,9,.18);
@@ -158,6 +167,14 @@
   --fill-purple:rgba(139,92,246,.26);
   --fill-pink:rgba(236,72,153,.22);
 
+  --graph-node:var(--neutral-400);
+  --graph-node-edge:var(--neutral-900);
+  --graph-label:var(--text-secondary);
+  --graph-contain:var(--neutral-500);
+  --graph-flow:#60A5FA;
+  --graph-cause:var(--warning-500);
+  --graph-ref:var(--neutral-600);
+
   /* 다크에서 강한 그림자는 쓰지 않는다. 명도 차이로 깊이를 만든다 (가이드 §11) */
   --shadow-pop:0 var(--u1) var(--u3) rgba(0,0,0,.40);
   --shadow-dialog:0 var(--u5) var(--u10) rgba(0,0,0,.55);
@@ -205,6 +222,14 @@
   --fill-blue:rgba(59,130,246,.24);
   --fill-purple:rgba(139,92,246,.26);
   --fill-pink:rgba(236,72,153,.22);
+
+  --graph-node:var(--neutral-400);
+  --graph-node-edge:var(--neutral-900);
+  --graph-label:var(--text-secondary);
+  --graph-contain:var(--neutral-500);
+  --graph-flow:#60A5FA;
+  --graph-cause:var(--warning-500);
+  --graph-ref:var(--neutral-600);
 
   --shadow-pop:0 var(--u1) var(--u3) rgba(0,0,0,.40);
   --shadow-dialog:0 var(--u5) var(--u10) rgba(0,0,0,.55);
