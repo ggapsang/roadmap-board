@@ -62,6 +62,9 @@ npm run dist
 - 데이터는 설치판·포터블 모두 각자 PC의 `%APPDATA%\wolfpack\wolfpack.db`에 저장된다(포터블도 exe 옆이 아니다). `npm start`로 쓰는 것과 **같은 폴더**라,
   한 PC에서 설치판과 `npm start`를 함께 쓰면 같은 보드가 보인다(둘을 동시에 켜 두지는 말 것).
 - 새 버전을 낼 때는 `package.json`의 `version`을 올린 뒤 다시 만든다. 설치 파일을 다시 실행하면 덮어 설치되고 데이터는 그대로 남는다.
+- `npm run dist`는 `scripts/dist.mjs`로 electron-builder를 돌린다. 막 풀어 놓은 `WOLFPACK.exe`를 Windows Defender 검사나
+  `dist` 폴더를 연 탐색기가 잡고 있으면 `EBUSY: resource busy or locked`로 실패하는데, 그때만 몇 초 뒤 최대 3번 다시 한다.
+  `dist`의 exe가 켜져 있으면 빌드 전에 알려 주고 멈춘다. 계속 걸리면 Windows 보안에서 `dist` 폴더를 검사 제외로 둔다(관리자).
 - **업데이트 = 새 설치 파일을 그대로 실행.** 먼저 지울 필요가 없다. 설치 파일이 옛 버전 제거 프로그램을 조용히 돌린 뒤
   새 파일을 놓는데, 그 제거가 막히거나 실패해도(아래 스마트 앱 컨트롤) 멈추지 않고 덮어 설치한다(`build/installer.nsh`).
   보드 DB는 건드리지 않고, 새 버전이 처음 열 때 필요한 마이그레이션을 백업 뒤 적용한다.
