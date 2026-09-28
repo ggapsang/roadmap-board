@@ -15,6 +15,10 @@ import { $, el, clear, icon, ICONS } from '../dom.js';
 import { askConfirm, askChoice, askTree, askTreeTabs } from '../dialog.js';
 import { openCombinePicker, pickEventForMerge, composedOf } from '../combine.js';
 import { toast } from '../toast.js';
+import { attachTabReorder } from '../reorder.js';
+
+/** 편집 패널 탭 순서 — 사용자가 끌어 바꾼 순서를 이 PC에 영구 보관한다(문서가 아니라 사용자 설정). */
+const TAB_ORDER_KEY = 'wolfpack:item-tab-order';
 
 /** 값이 바로 문서로 반영되는 단순 입력들 (트랙·관계·별칭·진척은 매핑 탭 UI가 맡는다) */
 const F = {
@@ -95,10 +99,22 @@ export class ItemPanel {
       }));
     }
     $('i-fixedh').append(icon(ICONS.resize));
-    // 탭
-    for (const tab of $('pItem').querySelectorAll('.ptab')) {
+    // 탭 — 저장된 순서가 있으면 그 순서로, 끌어서 바꾸면 그 순서를 영구 보관한다.
+    const bar = $('pItem').querySelector('.ptabs');
+    this.#applyTabOrder(bar);
+    for (const tab of bar.querySelectorAll('.ptab')) {
       tab.addEventListener('click', () => this.#showTab(tab.dataset.tab));
     }
+    attachTabReorder(bar, {
+      item: '.ptab',
+      onReorder: (from, to) => {
+        const tabs = [...bar.querySelectorAll('.ptab')];
+        const [moved] = tabs.splice(from, 1);
+        tabs.splice(to, 0, moved);
+        bar.append(...tabs);
+        try { localStorage.setItem(TAB_ORDER_KEY, JSON.stringify(tabs.map((t) => t.dataset.tab))); } catch { /* 저장 못 해도 이번 실행엔 적용 */ }
+      },
+    });
   }
 
   /** 관계 3종을 같은 검색 리스트로. 선택은 문서가 진실이라 isSelected를 매번 물어본다. */
@@ -179,7 +195,18 @@ export class ItemPanel {
     $('i-dup').addEventListener('click', () => this.duplicate());
   }
 
+  /** 저장된 탭 순서를 적용한다. 모르는 탭은 버리고, 저장 뒤 새로 생긴 탭은 제자리(뒤)에 둔다. */
+  #applyTabOrder(bar) {
+    let order = null;
+    try { order = JSON.parse(localStorage.getItem(TAB_ORDER_KEY) ?? 'null'); } catch { order = null; }
+    if (!Array.isArray(order)) return;
+    const tabs = [...bar.querySelectorAll('.ptab')];
+    const rank = (t) => { const i = order.indexOf(t.dataset.tab); return i < 0 ? order.length + tabs.indexOf(t) : i; };
+    bar.append(...tabs.sort((a, b) => rank(a) - rank(b)));
+  }
+
   #showTab(name) {
+    this._tab = name;                  // 다른 카드를 열어도 이 탭을 그대로 보여 준다
     for (const b of $('pItem').querySelectorAll('.ptab')) {
       b.setAttribute('aria-selected', String(b.dataset.tab === name));
     }
@@ -228,7 +255,8 @@ export class ItemPanel {
     this.#renderChildren(item);        // 상세 — 자기·동일·조합 카드
     this.#loadCrossBoard(item);        // 모든 보드 이벤트 로드 → 후보·상세 갱신
 
-    this.#showTab('attr');
+    // 탭은 초기화하지 않는다 — 스타일 탭을 보다가 다른 카드를 누르면 그 카드도 스타일 탭으로 연다.
+    this.#showTab(this._tab ?? 'attr');
     this.panels.open('pItem');
     this.onChange?.();
   }

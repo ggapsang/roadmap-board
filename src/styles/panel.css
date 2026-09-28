@@ -26,6 +26,8 @@ body.panel-open{--panel-w:var(--panel-size)}
   width:100%;height:var(--u8);padding:0 var(--u2-5);background:var(--bg-input);
   border:1px solid var(--border-default);border-radius:var(--u1-5);font-size:13px}
 .fld textarea{height:auto;min-height:var(--u10);padding:var(--u2) var(--u2-5);resize:vertical;line-height:20px}
+/* 비고 — 넉넉한 기본 높이(사용자 지정 565px). 모서리를 끌어 줄이고 늘릴 수 있다 */
+.fld textarea#i-note{height:565px}
 /* 제목 textarea — 한 줄 높이에서 시작해 내용만큼 자란다 (Shift+Enter로 줄바꿈) */
 .fld textarea#i-title{min-height:var(--u8);overflow:hidden}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:var(--u2)}
@@ -40,7 +42,10 @@ body.panel-open{--panel-w:var(--panel-size)}
 .pick button[aria-pressed="true"]{border-color:var(--text-primary);background:var(--text-primary);color:var(--bg-panel);font-weight:600}
 
 /* ── 편집 패널 탭 (PPT 서식창식) ── */
-.ptabs{display:flex;gap:var(--u1);padding:0 var(--u4);border-bottom:1px solid var(--border-subtle);flex:none}
+.ptabs{display:flex;gap:var(--u1);padding:0 var(--u4);border-bottom:1px solid var(--border-subtle);flex:none;position:relative}
+.ptab{user-select:none}
+.ptabs.reordering .ptab{cursor:grabbing}
+.ptab.dragging{opacity:.45}
 .ptab{appearance:none;border:0;background:none;padding:var(--u2-5) var(--u2);margin-bottom:-1px;
   font-size:12px;font-weight:500;color:var(--text-tertiary);cursor:pointer;border-bottom:2px solid transparent}
 .ptab:hover{color:var(--text-secondary)}

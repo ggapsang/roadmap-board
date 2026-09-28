@@ -11,9 +11,11 @@
  *
  *   +          새 보드 선택 탭
  *   탭 클릭    그 보드로 전환 (캐시가 있으면 즉시)
+ *   탭 끌기    순서 바꾸기 (브라우저처럼)
  *   탭 ×       탭 닫기 (마지막 하나면 선택 화면으로)
  */
 import { $, el, clear, icon, ICONS } from './dom.js';
+import { attachTabReorder } from './reorder.js';
 
 export class BoardTabs {
   /**
@@ -37,6 +39,18 @@ export class BoardTabs {
     this.seq = 0;
     this.docs = new Map();  // boardId -> 메모리 문서(살아 있는 참조)
     this.stale = new Set(); // 다른 보드의 저장·합치기로 화면이 달라진 보드 — 돌아갈 때 다시 읽는다
+    // 탭을 끌어 순서를 바꾼다. 탭 요소는 render마다 새로 그려지므로 컨테이너(mount)에 붙인다.
+    attachTabReorder(mount, { item: '.tab', exclude: '.tab-x', onReorder: (from, to) => this.move(from, to) });
+  }
+
+  /** 탭 순서 바꾸기 — 활성 탭은 그대로 활성으로 따라간다. 보드 전환은 일어나지 않는다. */
+  move(from, to) {
+    if (from === to || from < 0 || to < 0 || from >= this.tabs.length || to >= this.tabs.length) return;
+    const activeTab = this.tabs[this.active];
+    const [t] = this.tabs.splice(from, 1);
+    this.tabs.splice(to, 0, t);
+    this.active = this.tabs.indexOf(activeTab);
+    this.render();
   }
 
   /** 처음엔 보드 선택 탭 하나. */
@@ -172,12 +186,13 @@ export class BoardTabs {
         className: 'tab' + (i === this.active ? ' active' : ''),
         attrs: { role: 'tab', 'aria-selected': String(i === this.active) },
         dataset: { boardId: t.boardId == null ? '' : String(t.boardId) },
-        on: { click: () => this.activate(i) },
+        // 인덱스가 아니라 탭 자체로 찾는다 — 끌어 순서를 바꾼 뒤 옛 요소에 늦게 온 click이 엉뚱한 탭을 열지 않게
+        on: { click: (e) => { if (e.currentTarget.isConnected) this.activate(this.tabs.indexOf(t)); } },
       }, [
         el('span.tab-name', { text: t.boardId == null ? '보드 선택' : (t.name || '보드') }),
         el('button.tab-x', {
           type: 'button', title: '탭 닫기', attrs: { 'aria-label': '탭 닫기' },
-          on: { click: (e) => { e.stopPropagation(); this.closeTab(i); } },
+          on: { click: (e) => { e.stopPropagation(); if (e.currentTarget.isConnected) this.closeTab(this.tabs.indexOf(t)); } },
         }, [icon(ICONS.close)]),
       ]);
       this.mount.append(tab);

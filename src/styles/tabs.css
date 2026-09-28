@@ -1,7 +1,7 @@
 /* ── 보드 탭줄 ─────────────────────────────────────────
    여러 보드를 동시에 열어 두고 오간다. 브라우저 탭과 같은 구성 —
    '+'로 새 보드 선택 탭을 연다. 활성 탭만 Orange 밑줄로 표시(가이드 7). */
-.tabbar{height:var(--tab-h);flex:none;display:flex;align-items:stretch;
+.tabbar{position:relative;height:var(--tab-h);flex:none;display:flex;align-items:stretch;
   gap:2px;padding:0 var(--u2);background:var(--bg-header);
   border-bottom:1px solid var(--border-subtle);overflow-x:auto;scrollbar-width:none}
 .tabbar::-webkit-scrollbar{display:none}
@@ -12,6 +12,13 @@
   border-bottom:2px solid transparent}
 .tab:hover{background:var(--bg-hover);color:var(--text-primary)}
 .tab.active{color:var(--text-primary);border-bottom-color:var(--accent)}
+/* 탭 끌어 순서 바꾸기 (reorder.js) — 글자가 긁히지 않게 선택을 막고, 놓을 자리를 세로선으로 */
+.tab,.tab-add{user-select:none}
+.tab.dragging{opacity:.45}
+.tabbar.reordering .tab{cursor:grabbing}
+.tab-drop{position:absolute;top:var(--u1);bottom:var(--u1);width:2px;border-radius:1px;
+  background:var(--accent);pointer-events:none;z-index:2}
+body.reordering-tabs{user-select:none;cursor:grabbing}
 .tab-name{overflow:hidden;text-overflow:ellipsis}
 
 .tab-x{display:inline-flex;align-items:center;justify-content:center;flex:none;
