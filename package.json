@@ -8,14 +8,13 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
-    "dist": "electron-builder",
+    "dist": "electron-builder --win --x64",
     "test": "electron . --smoke"
   },
   "author": "다임리서치",
   "license": "UNLICENSED",
   "dependencies": {
-    "better-sqlite3": "^13.0.3",
-    "electron": "^44.4.4"
+    "better-sqlite3": "^13.0.3"
   },
   "build": {
     "appId": "kr.daim.wolfpack",
@@ -43,6 +42,7 @@
     }
   },
   "devDependencies": {
+    "electron": "^44.4.4",
     "electron-builder": "^26.15.3"
   },
   "allowScripts": {
