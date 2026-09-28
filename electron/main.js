@@ -1716,6 +1716,18 @@ async function runSmoke(target) {
         const filled = node()?.dataset.fill === 'blue' && r.store.item(id).place.fill === 'blue';
         const bg = node() ? getComputedStyle(node()).backgroundImage : '';
         const painted = /gradient/.test(bg);
+        // 점 마일스톤·하위 카드도 채우기가 보인다(자체 배경 규칙이 채우기를 덮던 버그)
+        const pointMs = r.store.items.find((x) => x.ty === 'ms' && x.s === x.e && !x.parent);
+        const childCard = r.store.items.find((x) => x.parent && x.ty !== 'ms');
+        r.store.commit('채우기 점검', () => { pointMs.place.fill = 'green'; childCard.place.fill = 'pink'; });
+        await sleep(120);
+        const painted2 = (el) => !!el && /gradient/.test(getComputedStyle(el).backgroundImage);
+        const pmEl = document.querySelector('.col [data-id="' + pointMs.id + '"]');
+        const chEl = document.querySelector('[data-id="' + childCard.id + '"]');
+        const msFilled = painted2(pmEl);
+        const childFilled = painted2(chEl);
+        r.store.commit('채우기 점검 원복', () => { pointMs.place.fill = null; childCard.place.fill = null; });
+        await sleep(80);
         // 비고 — 기본 숨김, 켜면 카드에
         const hiddenByDefault = noteBefore === false && !node()?.querySelector('.card-note');
         r.store.commit('비고', () => { r.store.item(id).note = '스모크 비고'; });
@@ -1768,7 +1780,7 @@ async function runSmoke(target) {
         const detailLabel = document.querySelector('#i-children').closest('.fld').querySelector('label').firstChild.textContent.trim();
         const sizeLabel = document.getElementById('i-fixedh').closest('.fld').querySelector('label').textContent.trim();
         const descBlock = getComputedStyle(document.querySelector('#pItem .fld > label .desc')).display === 'block';
-        return { id, tabName, filled, painted, hiddenByDefault, noteShown, noteHidden, titles, btns, moved, stillOpen, closedOnScrim, noCurrentInCombine, detailLabel, sizeLabel, descBlock };
+        return { id, tabName, filled, painted, msFilled, childFilled, hiddenByDefault, noteShown, noteHidden, titles, btns, moved, stillOpen, closedOnScrim, noCurrentInCombine, detailLabel, sizeLabel, descBlock };
       })();
       const guard = new Promise((res) => setTimeout(() => res({ error: 'timeout' }), 10000));
       return Promise.race([run.catch((e) => ({ error: String(e) })), guard]);
@@ -1885,7 +1897,7 @@ async function runSmoke(target) {
     && staleTab?.merged === true && staleTab?.marked === true && staleTab?.fresh === true && staleTab?.cleared === true
     && trashUi?.leftBoard === true && trashUi?.btnShown === true && trashUi?.listed === true
     && trashUi?.asked === true && trashUi?.gone === true && trashUi?.purged === true && trashUi?.closed === true
-    && styleUi?.tabName === '스타일' && styleUi?.filled === true && styleUi?.painted === true && styleUi?.dbFill === 'blue'
+    && styleUi?.tabName === '스타일' && styleUi?.filled === true && styleUi?.painted === true && styleUi?.msFilled === true && styleUi?.childFilled === true && styleUi?.dbFill === 'blue'
     && styleUi?.hiddenByDefault === true && styleUi?.noteShown === true && styleUi?.noteHidden === true
     && JSON.stringify(styleUi?.titles) === JSON.stringify(['항등설정', '조합설정', '모자관계설정', '선행관계설정'])
     && (styleUi?.btns ?? []).length === 4 && styleUi.btns.every((t) => t === '편집')
