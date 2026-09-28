@@ -23,7 +23,7 @@ export function dialogOpen() {
 }
 
 /** 끌어도 드래그가 시작되지 않는 곳 — 입력·버튼·목록은 원래 동작(클릭·선택·스크롤)을 지킨다 */
-const NO_DRAG = 'input,textarea,select,button,a,label,[contenteditable],.dlg-tree,.trash-list,.dlg-choices';
+const NO_DRAG = 'input,textarea,select,button,a,label,[contenteditable],.dlg-tree,.trash-list,.dlg-choices,.dlg-tabs';
 /** 이만큼 움직여야 드래그로 본다(px) — 그 전에는 클릭 */
 const DRAG_SLOP = 3;
 
@@ -169,15 +169,75 @@ export function askConfirm({ title, message = '', confirmLabel = '확인', dange
 }
 
 /**
- * 펼칠 수 있는 트리 + 텍스트 검색으로 다른 프로젝트의 이벤트를 고른다.
+ * 펼칠 수 있는 트리 + 텍스트 검색 (팝업 안에 넣는 부품).
+ *   mode 'multi' 체크박스 여럿 · 'radio' 하나만(다시 누르면 해제) · 'pick' 이름을 누르면 onPick(id)
+ *   sel  선택 상태 Set — 이 부품이 직접 고친다(바깥이 들고 있다가 적용 때 읽는다)
+ * nodes = [{ id, label, sub?, checkable?, children? }] (중첩)
+ */
+function treeView({ nodes = [], sel = new Set(), mode = 'multi', onPick = null, onChange = null, emptyText = '고를 이벤트가 없습니다.' }) {
+  const expanded = new Set();
+  (function markAll(list) { for (const n of list) if (n.children?.length) { expanded.add(n.id); markAll(n.children); } })(nodes);
+  const matchesDeep = (n, q) => `${n.label} ${n.sub ?? ''}`.toLowerCase().includes(q) || (n.children ?? []).some((c) => matchesDeep(c, q));
+
+  const search = el('input.dlg-tree-search', { type: 'text', placeholder: '검색…', attrs: { 'aria-label': '검색' } });
+  const treeBox = el('div.dlg-tree');
+  const radioName = `tree-${Math.random().toString(36).slice(2)}`;
+
+  function paint() {
+    const q = search.value.trim().toLowerCase();
+    clear(treeBox);
+    const render = (list, depth) => {
+      for (const n of list) {
+        if (q && !matchesDeep(n, q)) continue;
+        const hasKids = !!(n.children && n.children.length);
+        const row = el('div.dlg-tree-row', { dataset: { id: n.id }, style: { paddingLeft: `${6 + depth * 16}px` } });
+        if (hasKids) {
+          const open = expanded.has(n.id) || !!q;
+          row.append(el('button.dlg-tree-chev', { type: 'button', text: open ? '▾' : '▸', attrs: { 'aria-label': open ? '접기' : '펼치기' }, on: { click: (e) => { e.stopPropagation(); if (expanded.has(n.id)) expanded.delete(n.id); else expanded.add(n.id); paint(); } } }));
+        } else row.append(el('span.dlg-tree-chev-none'));
+        const can = n.checkable !== false;
+        if (can && mode === 'multi') {
+          const cb = el('input', { type: 'checkbox', checked: sel.has(n.id) });
+          cb.addEventListener('change', () => { if (cb.checked) sel.add(n.id); else sel.delete(n.id); onChange?.(); });
+          row.append(cb);
+        } else if (can && mode === 'radio') {
+          const rb = el('input', { type: 'radio', name: radioName, checked: sel.has(n.id) });
+          // 켜진 것을 다시 누르면 해제(= 없음)
+          rb.addEventListener('click', () => {
+            const was = sel.has(n.id);
+            sel.clear();
+            if (!was) sel.add(n.id);
+            paint(); onChange?.();
+          });
+          row.append(rb);
+        } else if (!can) row.classList.add('dlg-tree-head');
+        const clickable = mode === 'pick' && can;
+        const label = el('span.dlg-tree-label' + (clickable ? '.linklike' : ''), { text: n.label || '(제목 없음)' });
+        if (clickable) label.addEventListener('click', () => onPick?.(n.id));
+        else if (can && mode !== 'pick') label.addEventListener('click', () => row.querySelector('input')?.click());
+        row.append(label);
+        if (n.sub) row.append(el('em.dlg-tree-sub', { text: n.sub }));
+        treeBox.append(row);
+        if (hasKids && (expanded.has(n.id) || q)) render(n.children, depth + 1);
+      }
+    };
+    render(nodes, 0);
+    if (!treeBox.children.length) treeBox.append(el('div.empty', { text: q ? '검색 결과 없음' : emptyText }));
+  }
+  search.addEventListener('input', paint);
+  paint();
+  return { search, treeBox, paint, parts: [el('div.fl-search', {}, [icon(ICONS.search), search]), treeBox] };
+}
+
+/**
+ * 펼칠 수 있는 트리 + 텍스트 검색으로 이벤트를 고른다.
  *   select='multi' : 체크박스 여러 개 → '적용'. minSelect로 최소 개수 강제(조합은 2). 0개(전부
  *                    해제)는 허용, 1~(minSelect-1)개면 적용 비활성(조합은 둘 이상의 묶음이므로).
  *   select='single': 행을 누르면 그 id로 바로 확정(동일 합치기 대상 고르기).
- * @param {{title, message?, nodes, checked?:Set, select?:'multi'|'single', minSelect?:number}} o
- *   nodes = [{ id, label, sub?, checkable?, children? }] (중첩)
+ * @param {{title, message?, nodes, checked?:Set, select?:'multi'|'single', minSelect?:number, emptyText?:string}} o
  * @returns {Promise<Set<string>|string|null>} multi=Set, single=id, 취소=null
  */
-export function askTree({ title, message = '', nodes = [], checked = new Set(), select = 'multi', minSelect = 0 }) {
+export function askTree({ title, message = '', nodes = [], checked = new Set(), select = 'multi', minSelect = 0, emptyText }) {
   const scrim = ensureHost();
   return new Promise((resolve) => {
     let settled = false;
@@ -193,49 +253,12 @@ export function askTree({ title, message = '', nodes = [], checked = new Set(), 
     const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(null); } };
     document.addEventListener('keydown', onKey, true);
 
-    const expanded = new Set();
-    (function markAll(list) { for (const n of list) if (n.children?.length) { expanded.add(n.id); markAll(n.children); } })(nodes);
-
-    const matchesDeep = (n, q) => `${n.label} ${n.sub ?? ''}`.toLowerCase().includes(q) || (n.children ?? []).some((c) => matchesDeep(c, q));
-
-    const search = el('input.dlg-tree-search', { type: 'text', placeholder: '검색…', attrs: { 'aria-label': '검색' } });
-    const treeBox = el('div.dlg-tree');
     const applyBtn = el('button.btn.cta', { type: 'button', text: '적용', on: { click: () => finish(sel) } });
     const updateApply = () => { applyBtn.disabled = sel.size > 0 && sel.size < minSelect; };
-
-    function paint() {
-      const q = search.value.trim().toLowerCase();
-      clear(treeBox);
-      const render = (list, depth) => {
-        for (const n of list) {
-          if (q && !matchesDeep(n, q)) continue;
-          const hasKids = !!(n.children && n.children.length);
-          const row = el('div.dlg-tree-row', { dataset: { id: n.id }, style: { paddingLeft: `${6 + depth * 16}px` } });
-          if (hasKids) {
-            const open = expanded.has(n.id) || !!q;
-            row.append(el('button.dlg-tree-chev', { type: 'button', text: open ? '▾' : '▸', attrs: { 'aria-label': open ? '접기' : '펼치기' }, on: { click: (e) => { e.stopPropagation(); if (expanded.has(n.id)) expanded.delete(n.id); else expanded.add(n.id); paint(); } } }));
-          } else row.append(el('span.dlg-tree-chev-none'));
-          if (n.checkable !== false) {
-            if (select === 'multi') {
-              const cb = el('input', { type: 'checkbox', checked: sel.has(n.id) });
-              cb.addEventListener('change', () => { if (cb.checked) sel.add(n.id); else sel.delete(n.id); updateApply(); });
-              row.append(cb);
-            }
-          } else row.classList.add('dlg-tree-head');
-          const clickable = select === 'single' && n.checkable !== false;
-          const label = el('span.dlg-tree-label' + (clickable ? '.linklike' : ''), { text: n.label || '(제목 없음)' });
-          if (clickable) label.addEventListener('click', () => finish(n.id));
-          row.append(label);
-          if (n.sub) row.append(el('em.dlg-tree-sub', { text: n.sub }));
-          treeBox.append(row);
-          if (hasKids && (expanded.has(n.id) || q)) render(n.children, depth + 1);
-        }
-      };
-      render(nodes, 0);
-      if (!treeBox.children.length) treeBox.append(el('div.empty', { text: q ? '검색 결과 없음' : '다른 프로젝트에 담을 이벤트가 없습니다.' }));
-    }
-    search.addEventListener('input', paint);
-    paint();
+    const tree = treeView({
+      nodes, sel, mode: select === 'multi' ? 'multi' : 'pick',
+      onPick: (id) => finish(id), onChange: updateApply, emptyText,
+    });
     updateApply();
 
     const actions = select === 'multi'
@@ -245,14 +268,73 @@ export function askTree({ title, message = '', nodes = [], checked = new Set(), 
     const box = el('div.dlg.dlg-wide', { on: { click: (e) => e.stopPropagation() } }, [
       el('h2', { text: title }),
       message ? el('p.note', { text: message }) : null,
-      el('div.fl-search', {}, [icon(ICONS.search), search]),
-      treeBox,
+      ...tree.parts,
       actions,
     ]);
     scrim.replaceChildren(makeMovable(box));
     scrim.hidden = false;
     closeOnScrim(scrim, () => finish(null));
-    search.focus();
+    tree.search.focus();
+  });
+}
+
+/**
+ * 탭으로 나눈 트리 고르기 — 한 팝업에서 여러 선택을 함께 고친다(모자관계: 부모 설정 / 자식 설정).
+ * 탭을 오가도 각 탭의 선택은 유지되고, '적용'을 누르면 전부 한 번에 돌려준다.
+ * @param {{title, tabs:{key,label,message?,nodes,checked?:Set,select:'radio'|'multi',emptyText?}[], initial?:string}} o
+ * @returns {Promise<Record<string, Set<string>>|null>} 탭 key → 선택 Set (radio는 0~1개), 취소=null
+ */
+export function askTreeTabs({ title, tabs = [], initial = null }) {
+  const scrim = ensureHost();
+  return new Promise((resolve) => {
+    let settled = false;
+    const sels = Object.fromEntries(tabs.map((t) => [t.key, new Set(t.checked ?? [])]));
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      scrim.hidden = true;
+      scrim.replaceChildren();
+      document.removeEventListener('keydown', onKey, true);
+      resolve(result);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(null); } };
+    document.addEventListener('keydown', onKey, true);
+
+    const bar = el('div.dlg-tabs', { attrs: { role: 'tablist' } });
+    const body = el('div.dlg-tab-body');
+    const count = (t) => (sels[t.key].size ? ` ${sels[t.key].size}` : '');
+    let current = tabs.some((t) => t.key === initial) ? initial : tabs[0]?.key;
+    let tree = null;
+    const show = (key) => {
+      current = key;
+      const t = tabs.find((x) => x.key === key);
+      clear(bar);
+      for (const x of tabs) {
+        bar.append(el('button.dlg-tab', {
+          type: 'button', text: x.label + count(x), dataset: { tab: x.key },
+          attrs: { role: 'tab', 'aria-selected': String(x.key === key) },
+          on: { click: () => show(x.key) },
+        }));
+      }
+      tree = treeView({ nodes: t.nodes, sel: sels[key], mode: t.select, emptyText: t.emptyText, onChange: () => {
+        for (const b of bar.querySelectorAll('.dlg-tab')) { const x = tabs.find((y) => y.key === b.dataset.tab); b.textContent = x.label + count(x); }
+      } });
+      body.replaceChildren(t.message ? el('p.note', { text: t.message }) : '', ...tree.parts);
+      tree.search.focus();
+    };
+
+    const box = el('div.dlg.dlg-wide', { on: { click: (e) => e.stopPropagation() } }, [
+      el('h2', { text: title }),
+      bar, body,
+      el('div.dlg-actions', {}, [
+        el('button.btn.outline', { type: 'button', text: '취소', on: { click: () => finish(null) } }),
+        el('button.btn.cta', { type: 'button', text: '적용', on: { click: () => finish(sels) } }),
+      ]),
+    ]);
+    scrim.replaceChildren(makeMovable(box));
+    scrim.hidden = false;
+    closeOnScrim(scrim, () => finish(null));
+    show(current);
   });
 }
 

@@ -215,6 +215,14 @@ body.panel-open{--panel-w:var(--panel-size)}
 .dlg-choice-sub{font-size:12px;color:var(--text-secondary)}
 /* 조합·동일 트리 팝업 */
 .dlg-wide{max-width:560px;width:92vw}
+/* 팝업 안 탭 (모자관계: 부모 설정 / 자식 설정) — 편집 패널 탭과 같은 모양 */
+.dlg-tabs{display:flex;gap:var(--u4);border-bottom:1px solid var(--border-subtle);margin-top:var(--u2)}
+.dlg-tab{appearance:none;background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;
+  padding:var(--u2) 0;font-size:13px;font-weight:600;color:var(--text-tertiary);cursor:pointer}
+.dlg-tab:hover{color:var(--text-primary)}
+.dlg-tab[aria-selected="true"]{color:var(--text-primary);border-bottom-color:var(--accent)}
+.dlg-tab-body .note{margin-top:var(--u2)}
+.dlg-tree-row input[type=radio]{width:14px;height:14px;flex:0 0 auto;margin:0}
 .dlg .fl-search{margin-top:var(--u3)}
 .dlg .fl-search input{border:none;height:var(--u7);background:transparent;box-shadow:none}
 .dlg-tree{max-height:48vh;overflow:auto;margin-top:var(--u2);border:1px solid var(--border-default);border-radius:var(--u1-5)}
@@ -233,6 +241,7 @@ body.panel-open{--panel-w:var(--panel-size)}
 .combine-summary{display:flex;flex-direction:column;gap:4px;margin-top:var(--u2)}
 .combine-chip{display:flex;align-items:center;gap:var(--u2);font-size:13px;padding:2px 0}
 .combine-summary .empty{font-size:12px;line-height:18px;font-weight:400;color:var(--text-tertiary)}
+.combine-summary .pc-head{font-size:11px;line-height:16px;font-weight:600;color:var(--text-secondary);margin-top:var(--u1)}
 .combine-chip-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* ── 휴지통 팝업 (첫 화면) — docs/SAVE.md §7 ─────────────── */

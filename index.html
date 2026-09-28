@@ -131,7 +131,7 @@
       <div class="fld"><label for="i-note">비고 <span class="muted desc">카드에 보일지는 스타일 탭에서 정합니다(기본: 숨김)</span></label><textarea id="i-note"></textarea></div>
     </section>
 
-    <!-- 매핑 — 항등(같은 이벤트로 합치기)·조합(이 이벤트를 이루는 것)·상위(포함)·선행. 보드를 넘나든다.
+    <!-- 매핑 — 항등(같은 이벤트로 합치기)·조합(이 이벤트를 이루는 것)·모자(부모·자식 포함)·선행. 보드를 넘나든다.
          섹션마다 제목(큰 글씨) · 설명(작은 글씨) · '편집' 버튼. -->
     <section class="ptab-panel" data-panel="rel" hidden>
       <div class="map-sect">
@@ -145,8 +145,8 @@
         <div id="i-combine"></div>
       </div>
       <div class="map-sect">
-        <h3 class="map-title">상위관계설정</h3>
-        <p class="map-desc">이 카드를 품는 상위 일정</p>
+        <h3 class="map-title">모자관계설정</h3>
+        <p class="map-desc">부모(이 카드를 품는 카드)와 자식(이 카드에 넣을 카드) · 같은 트랙 안에서</p>
         <div id="i-parent"></div>
       </div>
       <div class="map-sect">

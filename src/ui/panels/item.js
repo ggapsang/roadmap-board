@@ -1,7 +1,7 @@
 /**
  * 일정 편집 패널 — PPT 서식창처럼 탭으로 나눈다.
  *   속성   제목·상태·소속 트랙·유형·기간·담당·비고
- *   매핑   항등·조합·상위관계·선행관계 설정 — 모두 '편집' 버튼 → 팝업 트리. 단 화면 말 ≠ 시스템 말:
+ *   매핑   항등·조합·모자관계·선행관계 설정 — 모두 '편집' 버튼 → 팝업 트리. 단 화면 말 ≠ 시스템 말:
  *          동일 = 두 이벤트를 하나로 '합치는 작업'(관계 아님, §7.2). 조합 = 구성(§7.1) — 여러 이벤트로
  *          이 이벤트가 이루어진 것(순서 없는 포함, 태스크와 다름). 관계 타입은 선행·포함뿐.
  *          (docs/SYSTEM.md, docs/SAVE.md §5)
@@ -12,7 +12,7 @@ import { shortMD, dayIndex, parseDate, inclusiveDays } from '../../core/dates.js
 import { newId, ALIGNS } from '../../core/schema.js';
 import { STATUSES, ITEM_TYPES, FILLS, statusList } from '../../config/index.js';
 import { $, el, clear, icon, ICONS } from '../dom.js';
-import { askConfirm, askChoice, askTree } from '../dialog.js';
+import { askConfirm, askChoice, askTree, askTreeTabs } from '../dialog.js';
 import { openCombinePicker, pickEventForMerge, composedOf } from '../combine.js';
 import { toast } from '../toast.js';
 
@@ -106,16 +106,20 @@ export class ItemPanel {
     // 동일·조합·상위·선행 모두 팝업 트리 버튼으로 다룬다(각 #render*가 버튼+요약을 그린다).
   }
 
-  /** 이 보드를 트랙 → 카드 트리 노드로. 상위·선행 후보 고르기에 쓴다(같은 보드 안). */
-  #boardTreeNodes({ exclude = new Set(), noMs = false } = {}) {
+  /**
+   * 이 보드를 트랙 → 카드 트리 노드로. 선행·모자관계 후보 고르기에 쓴다(같은 보드 안).
+   * tracks를 주면 그 트랙들만 — 모자관계는 트랙 안에서만 정한다(표현 계층의 기능 단위).
+   */
+  #boardTreeNodes({ exclude = new Set(), noMs = false, tracks = null, self = null } = {}) {
     const childrenOf = (pid) => this.store.items.filter((x) => x.parent === pid);
     const build = (it) => ({
       id: it.id, label: it.ti || '(제목 없음)',
-      sub: it.ty === 'ms' ? '마일스톤' : '',
+      sub: it.id === self ? '이 카드' : it.ty === 'ms' ? '마일스톤' : '',
       checkable: !exclude.has(it.id) && !(noMs && it.ty === 'ms'),
       children: childrenOf(it.id).map(build),
     });
-    return this.store.tracks.map((tr) => ({
+    const list = tracks ? this.store.tracks.filter((tr) => tracks.has(tr.id)) : this.store.tracks;
+    return list.map((tr) => ({
       id: tr.id, label: tr.name || '(트랙)', sub: '트랙', checkable: false,
       children: this.store.items.filter((x) => !x.parent && x.place?.t === tr.id).map(build),
     }));
@@ -366,7 +370,7 @@ export class ItemPanel {
     const item = this.item;
     if (!item || this.store.readonly) return;
     const checked = new Set(this.store.relations.filter((r) => r.type === 'dep' && r.to === item.id).map((r) => r.from));
-    const nodes = this.#boardTreeNodes({ exclude: new Set([item.id]) });
+    const nodes = this.#boardTreeNodes({ self: item.id, exclude: new Set([item.id]) });
     const result = await askTree({ title: '선행관계설정', message: '먼저 끝나야 하는 일정들(같은 보드)을 고르세요.', nodes, checked, select: 'multi' });
     if (!result) return;
     this.store.commit('선행 일정 변경', (doc) => {
@@ -548,46 +552,124 @@ export class ItemPanel {
     await this.#confirmMerge(targetId);
   }
 
-  /** 상위 일정 — '고르기' 버튼 + 현재 상위 요약. 팝업 트리(하나)에서 이 보드 카드를 고른다. */
+  /**
+   * 모자관계 — '편집' 버튼 + 지금의 부모·자식 요약. 팝업에서 부모 설정 / 자식 설정을 함께 고친다.
+   * 카드 하나를 만들고 그 안에 들 카드들을 한꺼번에 고르는 경우가 많아 자식 쪽에서도 정할 수 있게 한다.
+   */
   #renderParents(item) {
     const box = $('i-parent');
     clear(box);
-    box.append(el('button.btn.outline.sm', { type: 'button', text: '편집', title: '상위관계설정 — 이 카드를 품을 상위 일정 고르기', on: { click: () => this.#openParentPicker() } }));
+    box.append(el('button.btn.outline.sm', { type: 'button', text: '편집', title: '모자관계설정 — 부모(품는 카드)·자식(품을 카드) 고르기', on: { click: () => this.#openParentChildPicker() } }));
     const list = el('div.combine-summary');
-    if (!item.parent) list.append(el('div.empty', { text: '상위 없음 (트랙에 직접)' }));
-    else {
-      list.append(el('div.combine-chip', {}, [
-        el('span.combine-chip-name', { text: this.store.item(item.parent)?.ti || '(제목 없음)' }),
-        el('button.task-del', { type: 'button', title: '상위에서 빼기', on: { click: () => this.#setParent(null) } }, [icon(ICONS.close)]),
-      ]));
+    const chip = (text, title, onRemove) => el('div.combine-chip', {}, [
+      el('span.combine-chip-name', { text }),
+      el('button.task-del', { type: 'button', title, on: { click: onRemove } }, [icon(ICONS.close)]),
+    ]);
+    list.append(el('div.pc-head', { text: '부모' }));
+    if (!item.parent) list.append(el('div.empty', { text: '없음 (트랙에 직접)' }));
+    else list.append(chip(this.store.item(item.parent)?.ti || '(제목 없음)', '부모에서 빼기', () => this.#applyParentChild(item, { parent: null })));
+    const kids = this.store.items.filter((x) => x.parent === item.id);
+    list.append(el('div.pc-head', { text: `자식${kids.length ? ` ${kids.length}` : ''}` }));
+    if (!kids.length) list.append(el('div.empty', { text: '없음' }));
+    for (const k of kids) {
+      list.append(chip(k.ti || '(제목 없음)', '자식에서 빼기', () => {
+        this.#applyParentChild(item, { children: new Set(kids.filter((x) => x.id !== k.id).map((x) => x.id)) });
+      }));
     }
     box.append(list);
   }
 
-  async #openParentPicker() {
-    const item = this.item;
-    if (!item || this.store.readonly) return;
-    const exclude = new Set([item.id, ...this.#descendantsOf(item.id)]);
-    const nodes = this.#boardTreeNodes({ exclude, noMs: true });
-    const picked = await askTree({ title: '상위관계설정', message: '이 카드를 품을 상위 일정을 고르세요(같은 보드).', nodes, select: 'single' });
-    if (typeof picked === 'string') this.#setParent(picked);
+  /** 이 카드가 놓인 트랙들 — 모자관계 후보는 이 트랙 안의 카드뿐이다(하위 카드면 상위의 트랙). */
+  #homeTracks(item) {
+    if (item.parent) return new Set([item.place.t]);
+    return new Set(this.#memberTracks(item));
   }
 
-  #setParent(parentId) {
+  #ancestorsOf(id) {
+    const out = new Set();
+    let cur = this.store.item(id);
+    let guard = 0;
+    while (cur?.parent && guard++ < 256) { out.add(cur.parent); cur = this.store.item(cur.parent); }
+    return out;
+  }
+
+  async #openParentChildPicker() {
     const item = this.item;
-    if (!item) return;
-    this.store.commit('상위 일정 변경', () => {
-      item.parent = parentId;
-      if (parentId) {
-        const host = this.store.item(parentId);
-        if (host) { item.place.t = host.place.t; item.place.sp = 1; }
-      }
-      item.place.x = null;
-      item.place.w = null;
+    if (!item || this.store.readonly) return;
+    const tracks = this.#homeTracks(item);
+    // 부모 후보: 같은 트랙, 자기·자손 제외(순환), 점 마일스톤 제외(품을 몸이 없다)
+    const parentNodes = this.#boardTreeNodes({ tracks, self: item.id, noMs: true, exclude: new Set([item.id, ...this.#descendantsOf(item.id)]) });
+    // 자식 후보: 같은 트랙, 자기·조상 제외(순환)
+    const childNodes = this.#boardTreeNodes({ tracks, self: item.id, exclude: new Set([item.id, ...this.#ancestorsOf(item.id)]) });
+    const res = await askTreeTabs({
+      title: '모자관계설정',
+      initial: 'children',
+      tabs: [
+        {
+          key: 'parent', label: '부모 설정', select: 'radio', nodes: parentNodes,
+          checked: new Set(item.parent ? [item.parent] : []),
+          message: '이 카드를 품을 카드를 고릅니다(같은 트랙 안). 고른 것을 다시 누르면 부모 없음.',
+          emptyText: '같은 트랙에 부모로 둘 카드가 없습니다.',
+        },
+        {
+          key: 'children', label: '자식 설정', select: 'multi', nodes: childNodes,
+          checked: new Set(this.store.items.filter((x) => x.parent === item.id).map((x) => x.id)),
+          message: '이 카드 안에 넣을 카드들을 한꺼번에 고릅니다(같은 트랙 안). 체크를 풀면 트랙으로 나옵니다.',
+          emptyText: '같은 트랙에 자식으로 넣을 카드가 없습니다.',
+        },
+      ],
     });
-    // 상위에 담기면 트랙이 상위를 따르므로 트랙 매핑·요약을 갱신한다.
+    if (!res) return;
+    this.#applyParentChild(item, { parent: [...res.parent][0] ?? null, children: res.children });
+  }
+
+  /**
+   * 부모·자식을 한 번에 바꾼다(되돌리기 1단계). 넣으면 트랙은 부모를 따르고, 빼면 그 트랙 최상위로 나온다.
+   * 결과가 순환이면(고른 부모를 자식으로도 고른 경우 등) 바꾸지 않는다.
+   * @param {{parent?: string|null, children?: Set<string>}} next  빠진 쪽은 그대로
+   */
+  #applyParentChild(item, next) {
+    if (!item || this.store.readonly) return;
+    const byId = new Map(this.store.items.map((x) => [x.id, x]));
+    const parentOf = new Map(this.store.items.map((x) => [x.id, x.parent ?? null]));
+    const curKids = new Set(this.store.items.filter((x) => x.parent === item.id).map((x) => x.id));
+    if ('parent' in next) parentOf.set(item.id, next.parent);
+    if (next.children) {
+      for (const id of next.children) parentOf.set(id, item.id);
+      for (const id of curKids) if (!next.children.has(id)) parentOf.set(id, null);
+    }
+    // 순환 검사 — 모든 카드가 부모 사슬을 따라 최상위에 닿아야 한다
+    for (const id of parentOf.keys()) {
+      const seen = new Set([id]);
+      let p = parentOf.get(id);
+      while (p) {
+        if (seen.has(p)) { toast('부모와 자식이 서로를 품게 되어 적용하지 않았습니다', 'warn'); return; }
+        seen.add(p); p = parentOf.get(p);
+      }
+    }
+    const changed = [...parentOf].filter(([id, p]) => (byId.get(id)?.parent ?? null) !== p);
+    if (!changed.length) return;
+    this.store.commit('모자관계 설정', (doc) => {
+      const d = new Map(doc.items.map((x) => [x.id, x]));
+      for (const [id, p] of changed) {
+        const x = d.get(id);
+        if (!x) continue;
+        x.parent = p;
+        x.place.x = null; x.place.w = null; x.place.sp = 1;
+        if (!p) x.place.tracks = [x.place.t];            // 빼면 그 트랙 최상위로
+      }
+      // 트랙은 최상위 조상을 따른다(자손까지)
+      const top = (x, g = 0) => (x.parent && d.has(x.parent) && g < 256 ? top(d.get(x.parent), g + 1) : x);
+      for (const x of doc.items) {
+        if (!x.parent) continue;
+        const root = top(x);
+        x.place.t = root.place.t;
+        x.place.tracks = [root.place.t];
+      }
+    });
     this.#renderTrackMap(item);
     this.#renderParents(item);
+    this.#renderChildren(item);
   }
 
   #descendantsOf(id) {
