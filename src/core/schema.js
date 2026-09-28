@@ -12,10 +12,10 @@
 import {
   STATUS_KEYS, DEFAULT_STATUS, TYPE_KEYS, DEFAULT_TYPE,
   DEFAULT_ORGS, DEFAULT_DISPLAY, DISPLAY_LIMITS,
-  RELATION_TYPES, RELATION_KEYS, AXIS_KINDS, AXIS_DIRS,
+  RELATION_TYPES, RELATION_KEYS, AXIS_KINDS, AXIS_DIRS, FILL_KEYS,
 } from '../config/index.js';
 
-export const SCHEMA_VERSION = 16;
+export const SCHEMA_VERSION = 17;
 
 /**
  * v0 = P0 시안 문서(version 필드 없음).
@@ -199,6 +199,15 @@ function v15_to_v16(doc) {
   return doc;
 }
 
+function v16_to_v17(doc) {
+  // 카드 색 채우기(place.fill) — 스타일 탭. 팔레트 key 또는 null(채우지 않음). 표현이라 place에 둔다.
+  for (const it of doc.items ?? []) {
+    if (it.place && typeof it.place === 'object') it.place.fill = it.place.fill ?? null;
+  }
+  doc.version = 17;
+  return doc;
+}
+
 const MIGRATIONS = {
   0: v0_to_v1,
   1: v1_to_v2,
@@ -216,6 +225,7 @@ const MIGRATIONS = {
   13: v13_to_v14,
   14: v14_to_v15,
   15: v15_to_v16,
+  16: v16_to_v17,
 };
 
 export const ALIGNS = ['top', 'middle', 'bottom'];
@@ -373,6 +383,7 @@ export function normalize(doc) {
     for (let k = 1; k < mi.length; k += 1) { if (mi[k] === mi[k - 1] + 1) run += 1; else break; }
 
     const align = pl.align ?? it.align;
+    const fill = pl.fill ?? it.fill;
     const hd = pl.hd ?? it.hd;
     const w = pl.w ?? it.w;
     n.place = {
@@ -380,7 +391,9 @@ export function normalize(doc) {
       sp: run,
       tracks: members,
       align: ALIGNS.includes(align) ? align : 'middle',
-      showNote: (pl.showNote ?? it.showNote) === true,
+      showNote: (pl.showNote ?? it.showNote) === true,   // 비고를 카드에 보일지 — 기본은 숨김
+      // 색 채우기 — 팔레트 key만(모르는 값·HEX는 버린다). null = 채우지 않음.
+      fill: FILL_KEYS.includes(fill) ? fill : null,
       // 세로 크기 강제(일 단위). 없거나 잘못됐으면 null = 기간대로 자동.
       hd: (typeof hd === 'number' && hd >= 1) ? Math.round(hd) : null,
       x: ratio(pl.x ?? it.x),
@@ -388,7 +401,7 @@ export function normalize(doc) {
       // 1로 잘라 버리면 걸친 카드가 데이터 적용·재정규화 때 한 칸으로 쪼그라든다. 트랙 수까지 허용.
       w: w == null ? null : Math.min(doc.tracks.length || 1, Math.max(0.05, Number(w) || 0.05)),
     };
-    delete n.t; delete n.sp; delete n.align; delete n.showNote; delete n.hd; delete n.x; delete n.w;
+    delete n.t; delete n.sp; delete n.align; delete n.showNote; delete n.hd; delete n.x; delete n.w; delete n.fill;
     return n;
   });
 

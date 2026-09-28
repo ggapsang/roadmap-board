@@ -76,6 +76,24 @@ export const RELATION_TYPES = [
 export const RELATION_KEYS = RELATION_TYPES.map((r) => r.key);
 export const DEFAULT_RELATION = 'dep';
 
+/**
+ * 카드 색 채우기 팔레트 (스타일 탭 — 파워포인트·엑셀의 '채우기'). 사용자가 고르는 표현이다.
+ * 데이터에는 key만 남고, 색은 styles/tokens.css의 `--fill-{key}`가 테마별로 정한다(HEX 직접 금지).
+ * Orange는 넣지 않는다 — 오늘·선택·진행·CTA 신호색이라 채우기로 쓰면 선택과 헷갈린다(가이드 §14).
+ * 상태 표시(좌측 4px)는 채우기와 따로 그대로 보인다.
+ */
+export const FILLS = [
+  { key: 'gray',   label: '회색' },
+  { key: 'red',    label: '빨강' },
+  { key: 'yellow', label: '노랑' },
+  { key: 'green',  label: '초록' },
+  { key: 'teal',   label: '청록' },
+  { key: 'blue',   label: '파랑' },
+  { key: 'purple', label: '보라' },
+  { key: 'pink',   label: '분홍' },
+];
+export const FILL_KEYS = FILLS.map((f) => f.key);
+
 /** 행 높이(1주) 프리셋. px/일 = weekHeight / 7 */
 export const ZOOM_LEVELS = [
   { weekHeight: 40, label: '축소' },

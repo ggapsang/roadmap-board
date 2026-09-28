@@ -82,6 +82,17 @@
   --arrow-fill:#FFFFFF;
   --arrow-edge:var(--neutral-400);
 
+  /* ── 카드 채우기 (스타일 탭, config FILLS) — 사용자가 고르는 면 색. 알파 overlay라 카드 면 위에 얹힌다.
+     글자는 text-primary 그대로 읽혀야 하므로 옅게. Orange는 신호색이라 팔레트에 없다. */
+  --fill-gray:rgba(120,113,108,.14);
+  --fill-red:rgba(239,68,68,.15);
+  --fill-yellow:rgba(234,179,8,.20);
+  --fill-green:rgba(34,197,94,.17);
+  --fill-teal:rgba(20,184,166,.17);
+  --fill-blue:rgba(59,130,246,.15);
+  --fill-purple:rgba(139,92,246,.15);
+  --fill-pink:rgba(236,72,153,.14);
+
   /* 그림자는 "떠 있는 계층"에만. 카드에는 쓰지 않는다 (가이드 §14) */
   --shadow-pop:0 var(--u1) var(--u3) rgba(12,10,9,.10), 0 1px 2px rgba(12,10,9,.06);
   --shadow-dialog:0 var(--u5) var(--u10) rgba(12,10,9,.18);
@@ -137,6 +148,16 @@
   --arrow-fill:var(--neutral-800);
   --arrow-edge:var(--neutral-500);
 
+  /* 카드 채우기 — 어두운 면 위에서도 구분되게 조금 진하게(글자는 neutral-50이 그대로 읽힌다) */
+  --fill-gray:rgba(163,163,163,.14);
+  --fill-red:rgba(239,68,68,.22);
+  --fill-yellow:rgba(234,179,8,.20);
+  --fill-green:rgba(34,197,94,.20);
+  --fill-teal:rgba(20,184,166,.20);
+  --fill-blue:rgba(59,130,246,.24);
+  --fill-purple:rgba(139,92,246,.26);
+  --fill-pink:rgba(236,72,153,.22);
+
   /* 다크에서 강한 그림자는 쓰지 않는다. 명도 차이로 깊이를 만든다 (가이드 §11) */
   --shadow-pop:0 var(--u1) var(--u3) rgba(0,0,0,.40);
   --shadow-dialog:0 var(--u5) var(--u10) rgba(0,0,0,.55);
@@ -174,6 +195,16 @@
 
   --arrow-fill:var(--neutral-800);
   --arrow-edge:var(--neutral-500);
+
+  /* 카드 채우기 — 어두운 면 위에서도 구분되게 조금 진하게(글자는 neutral-50이 그대로 읽힌다) */
+  --fill-gray:rgba(163,163,163,.14);
+  --fill-red:rgba(239,68,68,.22);
+  --fill-yellow:rgba(234,179,8,.20);
+  --fill-green:rgba(34,197,94,.20);
+  --fill-teal:rgba(20,184,166,.20);
+  --fill-blue:rgba(59,130,246,.24);
+  --fill-purple:rgba(139,92,246,.26);
+  --fill-pink:rgba(236,72,153,.22);
 
   --shadow-pop:0 var(--u1) var(--u3) rgba(0,0,0,.40);
   --shadow-dialog:0 var(--u5) var(--u10) rgba(0,0,0,.55);

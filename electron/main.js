@@ -1681,11 +1681,114 @@ async function runSmoke(target) {
     console.log('[smoke] trash-ui ' + JSON.stringify(trashUi));
   }
 
+  // 스타일 탭(채우기·비고 표시) · 매핑 탭(제목·'편집') · 팝업 끌어 옮기기
+  let styleUi = null;
+  if (wrote) {
+    styleUi = await target.webContents.executeJavaScript(`(async () => {
+      const run = (async () => {
+        const r = window.__roadmap;
+        const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+        const it = r.store.items.find((x) => !x.parent && x.ty !== 'ms' && !r.store.items.some((k) => k.parent === x.id));
+        const id = it.id;
+        const node = () => document.querySelector('.col [data-id="' + id + '"]');
+        const noteBefore = it.place.showNote;
+        document.querySelector('[data-id="' + id + '"]').click();
+        await sleep(250);
+        const tabName = document.querySelector('#pItem .ptab[data-tab="disp"]').textContent.trim();
+        document.querySelector('#pItem .ptab[data-tab="disp"]').click();
+        await sleep(80);
+        // 채우기 — 파랑
+        document.querySelector('#i-fill .fill-sw[data-fill="blue"]').click();
+        await sleep(150);
+        const filled = node()?.dataset.fill === 'blue' && r.store.item(id).place.fill === 'blue';
+        const bg = node() ? getComputedStyle(node()).backgroundImage : '';
+        const painted = /gradient/.test(bg);
+        // 비고 — 기본 숨김, 켜면 카드에
+        const hiddenByDefault = noteBefore === false && !node()?.querySelector('.card-note');
+        r.store.commit('비고', () => { r.store.item(id).note = '스모크 비고'; });
+        await sleep(80);
+        document.querySelector('#i-shownote .seg-btn[data-note="on"]').click();
+        await sleep(150);
+        const noteShown = node()?.querySelector('.card-note')?.textContent === '스모크 비고';
+        document.querySelector('#i-shownote .seg-btn[data-note="off"]').click();
+        await sleep(120);
+        const noteHidden = !node()?.querySelector('.card-note');
+        // 매핑 — 제목 4개, 버튼 전부 '편집'
+        document.querySelector('#pItem .ptab[data-tab="rel"]').click();
+        await sleep(300);
+        const titles = [...document.querySelectorAll('#pItem .map-title')].map((h) => h.textContent.trim());
+        const btns = ['i-same', 'i-combine', 'i-parent', 'i-deps'].map((x) => document.querySelector('#' + x + ' > button.btn')?.textContent.trim());
+        // 팝업 — 제목을 잡고 끌면 옮겨지고, 막 위에서 놓아도 닫히지 않는다
+        document.querySelector('#i-deps > button.btn').click();
+        await sleep(300);
+        const box = document.querySelector('.dlg-scrim:not([hidden]) .dlg');
+        const h = box.querySelector('h2');
+        const b0 = box.getBoundingClientRect();
+        const hr = h.getBoundingClientRect();
+        const at = (x, y) => ({ bubbles: true, clientX: x, clientY: y, button: 0, pointerId: 7 });
+        h.dispatchEvent(new PointerEvent('pointerdown', at(hr.left + 20, hr.top + 5)));
+        window.dispatchEvent(new PointerEvent('pointermove', at(hr.left + 140, hr.top + 85)));
+        window.dispatchEvent(new PointerEvent('pointerup', at(hr.left + 140, hr.top + 85)));
+        const b1 = box.getBoundingClientRect();
+        const moved = Math.round(b1.left - b0.left) === 120 && Math.round(b1.top - b0.top) === 80;
+        // 막에서 누르지 않은 클릭(끌기 끝 등)은 닫지 않는다
+        const scrim = box.parentElement;
+        scrim.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        await sleep(50);
+        const stillOpen = !scrim.hidden && document.body.contains(box);
+        // 막에서 누르고 떼면 닫힌다
+        scrim.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+        scrim.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        await sleep(50);
+        const closedOnScrim = scrim.hidden;
+        document.querySelector('#pItem [data-close]')?.click();
+        return { id, tabName, filled, painted, hiddenByDefault, noteShown, noteHidden, titles, btns, moved, stillOpen, closedOnScrim };
+      })();
+      const guard = new Promise((res) => setTimeout(() => res({ error: 'timeout' }), 10000));
+      return Promise.race([run.catch((e) => ({ error: String(e) })), guard]);
+    })()`);
+    await new Promise((res) => setTimeout(res, 300));
+    // DB 왕복 — 채우기는 배치(disp)에 저장된다
+    try {
+      const row = db.prepare('SELECT fill FROM disp WHERE child_id = ?').get(styleUi?.id ?? '');
+      styleUi.dbFill = row?.fill ?? null;
+    } catch (err) { styleUi = { ...(styleUi ?? {}), dbError: String(err) }; }
+    console.log('[smoke] style-ui ' + JSON.stringify(styleUi));
+  }
+
+  // 스타일·매핑 탭 모습 — --shot일 때만 (라이트·다크). 카드 몇 장에 채우기를 입혀 본다.
+  if (wrote && shotDir()) {
+    const show = (tab, theme) => target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+      document.documentElement.dataset.theme = ${JSON.stringify(theme)};
+      const keys = ['gray', 'red', 'yellow', 'green', 'teal', 'blue', 'purple', 'pink'];
+      const cards = r.store.items.filter((x) => !x.parent && x.ty !== 'ms');
+      r.store.commit('shot 채우기', () => { cards.slice(0, keys.length).forEach((c, i) => { c.place.fill = keys[i]; }); });
+      document.querySelector('[data-id="' + cards[0].id + '"]').click();
+      await sleep(250);
+      document.querySelector('#pItem .ptab[data-tab="' + ${JSON.stringify(tab)} + '"]').click();
+      await sleep(350);
+      return true;
+    })()`);
+    for (const theme of ['light', 'dark']) {
+      await show('disp', theme); await capture(target, `style-tab-${theme}`);
+      await show('rel', theme); await capture(target, `map-tab-${theme}`);
+    }
+    await target.webContents.executeJavaScript(`(() => {
+      const r = window.__roadmap;
+      r.store.commit('shot 원복', () => { for (const c of r.store.items) c.place.fill = null; });
+      delete document.documentElement.dataset.theme;
+      document.querySelector('#pItem [data-close]')?.click();
+      return true;
+    })()`);
+  }
+
   const ok = !result.error && !opened?.error && !renamed?.error
     && shared === true && boardEvent === true && trackEvent === true && taskEvent === true
     && tabsCheck?.tabCount === 2 && tabsCheck?.hasAdd === true && tabsCheck?.name2 === '탭 테스트 보드'
     && tabsCheck?.nameBack === tabsCheck?.name1 && tabsCheck?.afterClose === 1
-    && saveModel?.seedCollision === true && saveModel?.schema === 19
+    && saveModel?.seedCollision === true && saveModel?.schema === 20
     && saveModel?.stale1?.merged === true && saveModel?.stale1?.kids === 2 && saveModel?.stale1?.zGone === true && saveModel?.stale1?.xOnB === true
     && saveModel?.stale2?.affectedB === true && saveModel?.stale2?.kept === true
     && saveModel?.compose?.stored === true && saveModel?.compose?.inDoc === true && saveModel?.compose?.notTasks === true
@@ -1696,6 +1799,11 @@ async function runSmoke(target) {
     && staleTab?.merged === true && staleTab?.marked === true && staleTab?.fresh === true && staleTab?.cleared === true
     && trashUi?.leftBoard === true && trashUi?.btnShown === true && trashUi?.listed === true
     && trashUi?.asked === true && trashUi?.gone === true && trashUi?.purged === true && trashUi?.closed === true
+    && styleUi?.tabName === '스타일' && styleUi?.filled === true && styleUi?.painted === true && styleUi?.dbFill === 'blue'
+    && styleUi?.hiddenByDefault === true && styleUi?.noteShown === true && styleUi?.noteHidden === true
+    && JSON.stringify(styleUi?.titles) === JSON.stringify(['항등설정', '조합설정', '상위관계설정', '선행관계설정'])
+    && (styleUi?.btns ?? []).length === 4 && styleUi.btns.every((t) => t === '편집')
+    && styleUi?.moved === true && styleUi?.stillOpen === true && styleUi?.closedOnScrim === true
     && relCheck?.allDep === true && relCheck?.added === true && relCheck?.removed === true
     && orderCheck?.topoOk === true && orderCheck?.edges > 0 && orderCheck?.maxRank > 0
     && orderMode?.hasOrderAxis === true && orderMode?.ordered === true && orderMode?.cards > 0 && orderMode?.back === true

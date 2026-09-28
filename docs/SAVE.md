@@ -99,5 +99,5 @@
 ## 9. 검증
 
 - 스모크: `stale-save`(재현 1·2가 더는 안 됨), `trash`(빼기→휴지통, 방금 만든 것은 즉시 삭제, 영구 삭제·비우기),
-  `board-delete-shared`(공유 이벤트 구조 보존), `compose`(같은 보드 조합, 태스크와 구분 저장), 스키마 v19.
+  `board-delete-shared`(공유 이벤트 구조 보존), `compose`(같은 보드 조합, 태스크와 구분 저장), DB 스키마 최신(user_version).
 - 실제 DB 복사본으로 마이그레이션 + `--repro` 왕복.

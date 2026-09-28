@@ -83,7 +83,7 @@ export async function openCombinePicker(store, adapter, eventId) {
   const nodes = await buildEventTree(adapter, { includeCurrent: true, blocked });
   const checked = composedOf(store, eventId);
   const result = await askTree({
-    title: '조합 — 여러 이벤트로 이 이벤트를 이루기',
+    title: '조합설정 — 여러 이벤트로 이 이벤트를 이루기',
     message: '체크한 트랙·카드로 이 이벤트가 이루어집니다(조합). 둘 이상 골라야 합니다. 어느 보드의 것이든 됩니다. 보드에 카드로 그리지 않고, 상세에서 보입니다.',
     nodes, checked, select: 'multi', minSelect: 2,
   });
@@ -103,7 +103,7 @@ export async function openCombinePicker(store, adapter, eventId) {
 export async function pickEventForMerge(adapter, selfId) {
   const nodes = await buildEventTree(adapter, { blocked: new Set([selfId]) });
   const result = await askTree({
-    title: '동일 — 같은 이벤트로 합치기',
+    title: '항등설정 — 같은 이벤트로 합치기',
     message: '이 이벤트와 하나로 합칠 다른 프로젝트의 이벤트를 하나 고르세요. 합치면 본질을 어느 쪽으로 남길지 다시 묻습니다.',
     nodes, select: 'single',
   });

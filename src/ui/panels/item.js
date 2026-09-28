@@ -1,16 +1,16 @@
 /**
  * 일정 편집 패널 — PPT 서식창처럼 탭으로 나눈다.
  *   속성   제목·상태·소속 트랙·유형·기간·담당·비고
- *   매핑   선행·상위·동일·조합 — 모두 팝업 트리 버튼. 단 화면 말 ≠ 시스템 말:
+ *   매핑   항등·조합·상위관계·선행관계 설정 — 모두 '편집' 버튼 → 팝업 트리. 단 화면 말 ≠ 시스템 말:
  *          동일 = 두 이벤트를 하나로 '합치는 작업'(관계 아님, §7.2). 조합 = 구성(§7.1) — 여러 이벤트로
  *          이 이벤트가 이루어진 것(순서 없는 포함, 태스크와 다름). 관계 타입은 선행·포함뿐.
  *          (docs/SYSTEM.md, docs/SAVE.md §5)
- *   표시   글자 정렬·비고 표시·크기 강제 — 아이콘 토글
+ *   스타일 채우기(카드 면 색)·글자 정렬·비고 표시(기본 숨김)·크기 강제 — 이 보드에서의 표현(place)
  *   상세   이 이벤트를 이루는 것 — 하위 카드 트리 + 조합 대상과 그 안쪽 카드(eventCards)
  */
 import { shortMD, dayIndex, parseDate, inclusiveDays } from '../../core/dates.js';
 import { newId, ALIGNS } from '../../core/schema.js';
-import { STATUSES, ITEM_TYPES, statusList } from '../../config/index.js';
+import { STATUSES, ITEM_TYPES, FILLS, statusList } from '../../config/index.js';
 import { $, el, clear, icon, ICONS } from '../dom.js';
 import { askConfirm, askChoice, askTree } from '../dialog.js';
 import { openCombinePicker, pickEventForMerge, composedOf } from '../combine.js';
@@ -68,8 +68,32 @@ export class ItemPanel {
     align.querySelectorAll('.seg-btn').forEach((b) =>
       b.addEventListener('click', () => this.#setAlign(b.dataset.align)));
 
-    // 표시 토글 아이콘
-    $('i-shownote').append(icon(ICONS.note));
+    // 채우기 팔레트 — '없음' + FILLS. 색은 토큰(--fill-*)이 테마별로 정한다.
+    const pal = $('i-fill');
+    clear(pal);
+    pal.append(el('button.fill-sw.none', {
+      type: 'button', title: '채우기 없음', dataset: { fill: '' },
+      attrs: { role: 'radio', 'aria-label': '채우기 없음', 'aria-checked': 'false' },
+    }, [icon(ICONS.close)]));
+    for (const f of FILLS) {
+      pal.append(el('button.fill-sw', {
+        type: 'button', title: f.label, dataset: { fill: f.key },
+        attrs: { role: 'radio', 'aria-label': `채우기 ${f.label}`, 'aria-checked': 'false' },
+      }));
+    }
+    pal.querySelectorAll('.fill-sw').forEach((b) =>
+      b.addEventListener('click', () => this.#setFill(b.dataset.fill || null)));
+
+    // 비고 표시 — 숨김(기본) / 카드에 표시
+    const nb = $('i-shownote');
+    clear(nb);
+    for (const [val, text] of [['off', '숨김'], ['on', '카드에 표시']]) {
+      nb.append(el('button.seg-btn', {
+        type: 'button', text, dataset: { note: val },
+        attrs: { role: 'radio', 'aria-pressed': 'false' },
+        on: { click: () => this.#setShowNote(val === 'on') },
+      }));
+    }
     $('i-fixedh').append(icon(ICONS.resize));
     // 탭
     for (const tab of $('pItem').querySelectorAll('.ptab')) {
@@ -127,14 +151,6 @@ export class ItemPanel {
     // 평상시엔 드롭다운을 숨긴다 — 검색(입력) 중에만 뜬다.
     $(F.title).addEventListener('blur', () => setTimeout(() => { $('i-title-drop').hidden = true; }, 120));
 
-    // 표시 토글 — 아이콘 버튼(aria-pressed)
-    $('i-shownote').addEventListener('click', () => {
-      const item = this.item;
-      if (!item) return;
-      const next = $('i-shownote').getAttribute('aria-pressed') !== 'true';
-      this.store.commit('비고 표시', () => { item.place.showNote = next; });
-      $('i-shownote').setAttribute('aria-pressed', String(next));
-    });
     // 크기 강제 — 켜면 현재 기간 길이(일)로 시작, 가로·세로를 드래그로. 끄면 자동 크기로.
     $('i-fixedh').addEventListener('click', () => {
       const item = this.item;
@@ -193,7 +209,7 @@ export class ItemPanel {
     this.#syncStatus(item);
     this.#syncAlign(item);
     this.#renderTrackMap(item);
-    $('i-shownote').setAttribute('aria-pressed', String(item.place?.showNote === true));
+    this.#syncStyle(item);
     $('i-fixedh').setAttribute('aria-pressed', String(item.place?.hd != null));
 
     // 다른 보드 이벤트 목록은 캐시를 그대로 두고 아래 #loadCrossBoard가 새로 받아 갱신한다.
@@ -237,6 +253,34 @@ export class ItemPanel {
     if (!item) return;
     this.store.commit('글자 정렬', () => { item.place.align = key; });
     this.#syncAlign(item);
+  }
+
+  /** 채우기 — 팔레트 key 또는 null(없음). 이 보드에서의 표현이라 place에 둔다. */
+  #setFill(key) {
+    const item = this.item;
+    if (!item) return;
+    this.store.commit('채우기', () => { item.place.fill = key; });
+    this.#syncStyle(item);
+  }
+
+  /** 비고를 보드 카드에 보일지 (기본 숨김) */
+  #setShowNote(on) {
+    const item = this.item;
+    if (!item) return;
+    this.store.commit('비고 표시', () => { item.place.showNote = on; });
+    this.#syncStyle(item);
+    if (on && !(item.note ?? '').trim()) toast('비고가 비어 있습니다 — 속성 탭에서 비고를 쓰면 카드에 보입니다');
+  }
+
+  #syncStyle(item) {
+    const fill = item.place?.fill ?? '';
+    for (const b of $('i-fill').querySelectorAll('.fill-sw')) {
+      b.setAttribute('aria-checked', String((b.dataset.fill || '') === fill));
+    }
+    const on = item.place?.showNote === true;
+    for (const b of $('i-shownote').querySelectorAll('.seg-btn')) {
+      b.setAttribute('aria-pressed', String((b.dataset.note === 'on') === on));
+    }
   }
 
   #syncAlign(item) {
@@ -305,7 +349,7 @@ export class ItemPanel {
   #renderDeps(item) {
     const box = $('i-deps');
     clear(box);
-    box.append(el('button.btn.outline.sm', { type: 'button', text: '고르기…', on: { click: () => this.#openDepsPicker() } }));
+    box.append(el('button.btn.outline.sm', { type: 'button', text: '편집', title: '선행관계설정 — 먼저 끝나야 하는 일정 고르기', on: { click: () => this.#openDepsPicker() } }));
     const cur = this.store.relations.filter((r) => r.type === 'dep' && r.to === item.id).map((r) => r.from);
     const list = el('div.combine-summary');
     if (!cur.length) list.append(el('div.empty', { text: '선행 일정이 없습니다.' }));
@@ -323,7 +367,7 @@ export class ItemPanel {
     if (!item || this.store.readonly) return;
     const checked = new Set(this.store.relations.filter((r) => r.type === 'dep' && r.to === item.id).map((r) => r.from));
     const nodes = this.#boardTreeNodes({ exclude: new Set([item.id]) });
-    const result = await askTree({ title: '선행 일정 고르기', message: '먼저 끝나야 하는 일정들(같은 보드)을 고르세요.', nodes, checked, select: 'multi' });
+    const result = await askTree({ title: '선행관계설정', message: '먼저 끝나야 하는 일정들(같은 보드)을 고르세요.', nodes, checked, select: 'multi' });
     if (!result) return;
     this.store.commit('선행 일정 변경', (doc) => {
       doc.relations = (doc.relations ?? []).filter((r) => !(r.type === 'dep' && r.to === item.id));
@@ -363,7 +407,7 @@ export class ItemPanel {
     const box = $('i-same');
     clear(box);
     box.append(el('button.btn.outline.sm', {
-      type: 'button', text: '합치기…',
+      type: 'button', text: '편집', title: '항등설정 — 같은 이벤트로 합칠 대상 고르기',
       on: { click: () => this.#openMergePicker() },
     }));
     // 제목 검색 드롭다운(합치기 후보) 재료 — 자기 자신 제외한 모든 보드 이벤트.
@@ -386,7 +430,7 @@ export class ItemPanel {
     const box = $('i-combine');
     clear(box);
     box.append(el('button.btn.outline.sm', {
-      type: 'button', text: '고르기…',
+      type: 'button', text: '편집', title: '조합설정 — 이 이벤트를 이루는 이벤트 고르기',
       on: { click: () => this.#openCombinePicker() },
     }));
     const children = [...this.#composedOf()];
@@ -423,7 +467,7 @@ export class ItemPanel {
     const mine = item.ti || '(제목 없음)';
     const theirs = ev?.title || '(제목 없음)';
     const choice = await askChoice({
-      title: '같은 이벤트로 합치기',
+      title: '항등설정 — 같은 이벤트로 합치기',
       message: '두 이벤트를 하나로 합칩니다. 남길 본질(제목·상태·날짜)을 고르세요.',
       choices: [
         { key: 'mine', label: '이 이벤트를 남긴다', sub: mine },
@@ -508,7 +552,7 @@ export class ItemPanel {
   #renderParents(item) {
     const box = $('i-parent');
     clear(box);
-    box.append(el('button.btn.outline.sm', { type: 'button', text: '고르기…', on: { click: () => this.#openParentPicker() } }));
+    box.append(el('button.btn.outline.sm', { type: 'button', text: '편집', title: '상위관계설정 — 이 카드를 품을 상위 일정 고르기', on: { click: () => this.#openParentPicker() } }));
     const list = el('div.combine-summary');
     if (!item.parent) list.append(el('div.empty', { text: '상위 없음 (트랙에 직접)' }));
     else {
@@ -525,7 +569,7 @@ export class ItemPanel {
     if (!item || this.store.readonly) return;
     const exclude = new Set([item.id, ...this.#descendantsOf(item.id)]);
     const nodes = this.#boardTreeNodes({ exclude, noMs: true });
-    const picked = await askTree({ title: '상위 일정 고르기', message: '이 카드를 품을 상위 일정 하나를 고르세요(같은 보드).', nodes, select: 'single' });
+    const picked = await askTree({ title: '상위관계설정', message: '이 카드를 품을 상위 일정 하나를 고르세요(같은 보드).', nodes, select: 'single' });
     if (typeof picked === 'string') this.#setParent(picked);
   }
 

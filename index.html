@@ -102,7 +102,7 @@
   <div class="ptabs" role="tablist" aria-label="편집 탭">
     <button class="ptab" type="button" role="tab" data-tab="attr" aria-selected="true">속성</button>
     <button class="ptab" type="button" role="tab" data-tab="rel"  aria-selected="false">매핑</button>
-    <button class="ptab" type="button" role="tab" data-tab="disp" aria-selected="false">표시</button>
+    <button class="ptab" type="button" role="tab" data-tab="disp" aria-selected="false">스타일</button>
     <button class="ptab" type="button" role="tab" data-tab="task" aria-selected="false">상세</button>
   </div>
   <div class="body2">
@@ -128,39 +128,51 @@
         <label>소속 트랙 <span class="muted">이 카드가 든 트랙 · 붙어 있으면 걸쳐서, 떨어져 있으면 각 트랙에 따로 표시됩니다</span></label>
         <div class="seg wrap" id="i-span"></div>
       </div>
-      <div class="fld"><label for="i-note">비고</label><textarea id="i-note"></textarea></div>
+      <div class="fld"><label for="i-note">비고 <span class="muted">보드 카드에 보일지는 스타일 탭에서 정합니다(기본: 숨김)</span></label><textarea id="i-note"></textarea></div>
     </section>
 
-    <!-- 매핑 — 동일(같은 이벤트)·조합(이 이벤트를 이루는 합)·상위(포함)·선행. 보드를 넘나든다. -->
+    <!-- 매핑 — 항등(같은 이벤트로 합치기)·조합(이 이벤트를 이루는 것)·상위(포함)·선행. 보드를 넘나든다.
+         섹션마다 제목(큰 글씨) · 설명(작은 글씨) · '편집' 버튼. -->
     <section class="ptab-panel" data-panel="rel" hidden>
-      <div class="fld">
-        <label>동일 <span class="muted">다른 프로젝트의 이벤트와 하나로 합칩니다(합치기 작업)</span></label>
+      <div class="map-sect">
+        <h3 class="map-title">항등설정</h3>
+        <p class="map-desc">다른 프로젝트의 이벤트와 하나로 합칩니다(합치기 작업) — 두 이벤트가 같은 것이 됩니다</p>
         <div id="i-same"></div>
       </div>
-      <div class="fld">
-        <label>조합 <span class="muted">이 이벤트를 이루는 이벤트들(어느 보드든) · 둘 이상 · 태스크와 다름 · 상세에 나옵니다</span></label>
+      <div class="map-sect">
+        <h3 class="map-title">조합설정</h3>
+        <p class="map-desc">이 이벤트를 이루는 이벤트들(어느 보드든) · 둘 이상 · 태스크와 다름 · 상세에 나옵니다</p>
         <div id="i-combine"></div>
       </div>
-      <div class="fld">
-        <label>상위 (포함) <span class="muted">이 카드를 품는 상위 일정 · 하나</span></label>
+      <div class="map-sect">
+        <h3 class="map-title">상위관계설정</h3>
+        <p class="map-desc">이 카드를 품는 상위 일정 · 하나</p>
         <div id="i-parent"></div>
       </div>
-      <div class="fld">
-        <label>선행 일정 <span class="muted">먼저 끝나야 하는 것 · 여럿</span></label>
+      <div class="map-sect">
+        <h3 class="map-title">선행관계설정</h3>
+        <p class="map-desc">먼저 끝나야 하는 일정 · 여럿</p>
         <div id="i-deps"></div>
       </div>
     </section>
 
-    <!-- 표시 — 아이콘 툴바 -->
+    <!-- 스타일 — 이 보드에서 카드가 어떻게 보이는가 (표현 · 보드마다 다를 수 있다) -->
     <section class="ptab-panel" data-panel="disp" hidden>
+      <div class="fld">
+        <label>채우기 <span class="muted">카드 면 색 · 상태 표시(왼쪽 막대)는 그대로 보입니다</span></label>
+        <div class="fill-pal" id="i-fill" role="radiogroup" aria-label="채우기"></div>
+      </div>
       <div class="fld"><label>글자 세로 정렬</label><div class="seg" id="i-align"></div></div>
       <div class="fld">
-        <label>카드 표시</label>
+        <label>비고 표시 <span class="muted">속성 탭의 비고를 보드 카드 위에 보여 줄지</span></label>
+        <div class="seg" id="i-shownote" role="radiogroup" aria-label="비고 표시"></div>
+      </div>
+      <div class="fld">
+        <label>크기</label>
         <div class="fmt-bar">
-          <button class="fmt-btn" id="i-shownote" type="button" aria-pressed="false" title="비고를 카드에 표시"></button>
           <button class="fmt-btn" id="i-fixedh" type="button" aria-pressed="false" title="카드 크기 강제 — 가로·세로를 드래그로 조절 (끄면 자동)"></button>
         </div>
-        <p class="note">비고 표시를 켜면 카드 안에 비고가 함께 보입니다. 크기 강제를 켜면 좌·우로 폭, 아래로 세로 길이를 날짜와 무관하게 끌 수 있습니다.</p>
+        <p class="note">크기 강제를 켜면 좌·우로 폭, 아래로 세로 길이를 날짜와 무관하게 끌 수 있습니다.</p>
       </div>
     </section>
 

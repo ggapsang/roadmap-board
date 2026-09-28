@@ -7,7 +7,7 @@
  * 영구 삭제 = SYSTEM.md의 '이벤트 삭제'(연결된 포함·배치·관계 전부 제거). 되돌릴 수 없어 매번 묻는다.
  */
 import { el, clear, icon, ICONS } from './dom.js';
-import { askConfirm, dialogOpen } from './dialog.js';
+import { askConfirm, dialogOpen, makeMovable, closeOnScrim } from './dialog.js';
 import { toast } from './toast.js';
 import { shortMD } from '../core/dates.js';
 
@@ -97,8 +97,8 @@ export function openTrash(adapter) {
       el('button.btn.outline', { type: 'button', text: '닫기', on: { click: () => close() } }),
     ]),
   ]);
-  scrim.append(box);
-  scrim.addEventListener('click', () => { if (!busy) close(); });
+  scrim.append(makeMovable(box));
+  closeOnScrim(scrim, () => { if (!busy) close(); });
   document.addEventListener('keydown', onKey, true);
   document.body.append(scrim);
   list.append(el('div.empty', { text: '불러오는 중…' }));

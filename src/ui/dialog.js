@@ -22,6 +22,60 @@ export function dialogOpen() {
   return !!host && !host.hidden;
 }
 
+/** 끌어도 드래그가 시작되지 않는 곳 — 입력·버튼·목록은 원래 동작(클릭·선택·스크롤)을 지킨다 */
+const NO_DRAG = 'input,textarea,select,button,a,label,[contenteditable],.dlg-tree,.trash-list,.dlg-choices';
+/** 이만큼 움직여야 드래그로 본다(px) — 그 전에는 클릭 */
+const DRAG_SLOP = 3;
+
+/**
+ * 팝업을 끌어 옮길 수 있게 한다. 입력·버튼·목록이 아닌 곳(제목·설명·여백)을 잡고 끈다.
+ * 화면 밖으로 완전히 나가지 않게 가둔다. 위치는 그 팝업이 떠 있는 동안만 유지된다(다음엔 가운데).
+ * 리스너는 window에 붙였다 뗀다 — 드래그 중 포인터가 팝업 밖으로 나가도 이어지게(규약 14와 같은 이유).
+ */
+export function makeMovable(box) {
+  let dx = 0, dy = 0;
+  box.classList.add('movable');
+  box.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || e.target.closest(NO_DRAG)) return;
+    const sx = e.clientX, sy = e.clientY;
+    const x0 = dx, y0 = dy;
+    const r0 = box.getBoundingClientRect();
+    let moving = false;
+    const move = (ev) => {
+      const mx = ev.clientX - sx, my = ev.clientY - sy;
+      if (!moving && Math.hypot(mx, my) < DRAG_SLOP) return;
+      if (!moving) { moving = true; box.classList.add('moving'); }
+      ev.preventDefault();
+      // 제목 줄이 늘 잡히도록 — 위는 화면 안, 옆·아래는 최소 48px이 남게
+      const keep = 48;
+      const nx = Math.min(innerWidth - keep - r0.left, Math.max(keep - r0.right, mx));
+      const ny = Math.min(innerHeight - keep - r0.top, Math.max(-r0.top, my));
+      dx = x0 + nx; dy = y0 + ny;
+      box.style.transform = `translate(${dx}px, ${dy}px)`;
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      box.classList.remove('moving');
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  });
+  return box;
+}
+
+/**
+ * 바깥(어두운 막)을 눌러 닫기. 누름과 뗌이 **둘 다 막 위에서** 일어났을 때만 닫는다 — 팝업을 끌다가
+ * 막 위에서 놓거나, 입력 칸을 긁다가 바깥에서 놓았을 때 닫혀 버리지 않게.
+ */
+export function closeOnScrim(scrim, close) {
+  let downOnScrim = false;
+  scrim.onpointerdown = (e) => { downOnScrim = e.target === scrim; };
+  scrim.onclick = (e) => { if (downOnScrim && e.target === scrim) close(); downOnScrim = false; };
+}
+
 /**
  * 한 줄 입력을 받는다.
  * @returns {Promise<string|null>} 취소하면 null
@@ -67,9 +121,9 @@ export function askText({ title, label = '', value = '', placeholder = '', confi
       ]),
     ]);
 
-    scrim.replaceChildren(box);
+    scrim.replaceChildren(makeMovable(box));
     scrim.hidden = false;
-    scrim.onclick = () => finish(null);
+    closeOnScrim(scrim, () => finish(null));
 
     input.focus();
     input.select();
@@ -108,9 +162,9 @@ export function askConfirm({ title, message = '', confirmLabel = '확인', dange
         }),
       ]),
     ]);
-    scrim.replaceChildren(box);
+    scrim.replaceChildren(makeMovable(box));
     scrim.hidden = false;
-    scrim.onclick = () => finish(false);
+    closeOnScrim(scrim, () => finish(false));
   });
 }
 
@@ -195,9 +249,9 @@ export function askTree({ title, message = '', nodes = [], checked = new Set(), 
       treeBox,
       actions,
     ]);
-    scrim.replaceChildren(box);
+    scrim.replaceChildren(makeMovable(box));
     scrim.hidden = false;
-    scrim.onclick = () => finish(null);
+    closeOnScrim(scrim, () => finish(null));
     search.focus();
   });
 }
@@ -234,8 +288,8 @@ export function askChoice({ title, message = '', choices = [] }) {
         el('button.btn.outline', { type: 'button', text: '취소', on: { click: () => finish(null) } }),
       ]),
     ]);
-    scrim.replaceChildren(box);
+    scrim.replaceChildren(makeMovable(box));
     scrim.hidden = false;
-    scrim.onclick = () => finish(null);
+    closeOnScrim(scrim, () => finish(null));
   });
 }

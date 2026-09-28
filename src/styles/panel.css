@@ -195,6 +195,11 @@ body.panel-open{--panel-w:var(--panel-size)}
 .dlg{width:100%;max-width:380px;background:var(--bg-elevated);border:1px solid var(--border-subtle);
   border-radius:var(--r-dialog);box-shadow:var(--shadow-dialog);padding:var(--u5)}
 .dlg h2{margin:0 0 var(--u3);font-size:15px;line-height:22px;font-weight:600}
+/* 팝업은 입력·목록이 아닌 곳(제목·설명·여백)을 잡고 끌어 옮긴다 (dialog.js makeMovable) */
+.dlg.movable{cursor:move;touch-action:none}
+.dlg.movable :is(input,textarea,select,button,a,label,.dlg-tree,.trash-list,.dlg-choices){cursor:auto}
+.dlg.movable :is(button,a,.linklike){cursor:pointer}
+.dlg.movable.moving{user-select:none;cursor:grabbing}
 .dlg label{display:block;font-size:11px;line-height:16px;font-weight:500;
   color:var(--text-tertiary);margin-bottom:var(--u1)}
 .dlg input{width:100%;height:var(--u8);padding:0 var(--u2-5);background:var(--bg-input);
@@ -225,6 +230,7 @@ body.panel-open{--panel-w:var(--panel-size)}
 /* 조합 요약(매핑 탭) */
 .combine-summary{display:flex;flex-direction:column;gap:4px;margin-top:var(--u2)}
 .combine-chip{display:flex;align-items:center;gap:var(--u2);font-size:13px;padding:2px 0}
+.combine-summary .empty{font-size:12px;line-height:18px;font-weight:400;color:var(--text-tertiary)}
 .combine-chip-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* ── 휴지통 팝업 (첫 화면) — docs/SAVE.md §7 ─────────────── */
@@ -244,3 +250,31 @@ body.panel-open{--panel-w:var(--panel-size)}
 .trash-row .trash-del{margin-top:0;flex:none;gap:var(--u1)}
 .trash-row .trash-del:hover{color:var(--error-500);border-color:var(--error-500)}
 .trash-dlg .dlg-actions{align-items:center}
+
+/* ── 매핑 탭 — 섹션 제목(큰 글씨) · 설명(작은 글씨) · '편집' 버튼 ─────── */
+.map-sect{padding:var(--u3) 0;border-bottom:1px solid var(--border-subtle)}
+.map-sect:first-child{padding-top:0}
+.map-sect:last-child{border-bottom:0}
+.map-title{margin:0;font-size:14px;line-height:20px;font-weight:600;color:var(--text-primary);letter-spacing:-.01em}
+.map-desc{margin:2px 0 var(--u2);font-size:11px;line-height:16px;color:var(--text-tertiary)}
+.map-sect .btn.sm{margin-top:0}
+
+/* ── 스타일 탭 — 채우기 팔레트 (파워포인트·엑셀의 '채우기') ─────────── */
+.fill-pal{display:flex;flex-wrap:wrap;gap:var(--u1-5)}
+.fill-sw{appearance:none;width:var(--u7);height:var(--u7);padding:0;cursor:pointer;
+  border:1px solid var(--border-default);border-radius:var(--r-control);
+  background:linear-gradient(var(--sw),var(--sw)),var(--surface-card);
+  display:flex;align-items:center;justify-content:center;color:var(--text-tertiary)}
+.fill-sw:hover{border-color:var(--border-strong)}
+.fill-sw[aria-checked="true"]{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.fill-sw:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.fill-sw.none{--sw:transparent}
+.fill-sw.none svg.ic{width:14px;height:14px}
+.fill-sw[data-fill="gray"]{--sw:var(--fill-gray)}
+.fill-sw[data-fill="red"]{--sw:var(--fill-red)}
+.fill-sw[data-fill="yellow"]{--sw:var(--fill-yellow)}
+.fill-sw[data-fill="green"]{--sw:var(--fill-green)}
+.fill-sw[data-fill="teal"]{--sw:var(--fill-teal)}
+.fill-sw[data-fill="blue"]{--sw:var(--fill-blue)}
+.fill-sw[data-fill="purple"]{--sw:var(--fill-purple)}
+.fill-sw[data-fill="pink"]{--sw:var(--fill-pink)}
