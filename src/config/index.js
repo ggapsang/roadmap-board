@@ -165,8 +165,7 @@ export const LAYOUT = {
    * 높이 기준이라 확대하면(일당 픽셀↑) 같은 일수도 충분히 높아져 자동 해제된다.
    */
   compactCardHeight: 40,
-  /** 클릭으로 만드는 새 일정 기본 길이(일) — 한 칸(1주). 끌어서 만들면 끈 길이. */
-  newItemDays: 7,
+  // 새 일정 기본 길이는 눈금 모드가 정한다(SCALE_MODES.newUnit).
 };
 
 /**
@@ -186,18 +185,36 @@ export const DEFAULT_DISPLAY = {
   /** 카드 글자 배율 */
   fontScale: 1.0,
   /**
-   * 세로축 눈금 종류 (docs/DIRECTION.md #4). 축은 본래 '순서'이고 달력은 그 위에
-   * 얹는 선택적 눈금이다. 'calendar'=날짜 눈금, 'order'=순서만.
-   * 지금은 'calendar'만 구현 — 'order'는 자리만 잡아 둔다.
+   * 세로축 눈금 (docs/SCALE.md). 축은 본래 '순서'이고 달력은 그 위에 얹는 선택적 눈금이다.
+   *   scale    SCALE_MODES의 key — 주-일 · 월-주 · 분기-월 · 눈금 없음
+   *   dated    false면 날짜 없는 보드 — 일정 위치는 칸(place.slot)뿐, 눈금은 '눈금 없음' 고정
+   *   slotUnit 날짜 있는 보드를 '눈금 없음'으로 볼 때 한 칸의 단위(전환 전 안쪽 단위)
    */
-  axis: 'calendar',
-  /** 축 방향 — 'vertical'(세로) | 'horizontal'(가로). 지금은 vertical만 구현. */
-  axisDir: 'vertical',
+  scale: 'month-week',
+  dated: true,
+  slotUnit: null,
 };
 
-/** 눈금 종류 · 축 방향 허용값 (표시 선택이지 데이터가 아니다) */
-export const AXIS_KINDS = ['calendar', 'order'];
-export const AXIS_DIRS = ['vertical', 'horizontal'];
+/**
+ * 세로축 눈금 모드 (docs/SCALE.md §3). outer=바깥 칸(구간 묶기 단위), inner=안쪽 칸,
+ * row=한 행(줌 높이)이 뜻하는 날 수(일당 픽셀 = 줌 높이 / row), step=드래그 정밀도, newUnit=새 일정 길이.
+ * 시·분은 아직 없다 — 생기면 여기에 모드를 더한다.
+ */
+export const SCALE_MODES = {
+  'week-day':      { key: 'week-day', label: '주-일', outer: 'week', inner: 'day', row: 1, step: 'day', newUnit: 'day' },
+  'month-week':    { key: 'month-week', label: '월-주', outer: 'month', inner: 'week', row: 7, step: 'day', newUnit: 'week' },
+  'quarter-month': { key: 'quarter-month', label: '분기-월', outer: 'quarter', inner: 'month', row: 30.44, step: 'week', newUnit: 'month' },
+  none:            { key: 'none', label: '눈금 없음', outer: null, inner: 'slot', row: null, step: null, newUnit: null },
+};
+export const SCALE_KEYS = Object.keys(SCALE_MODES);
+/** 날짜 없는 보드에 눈금을 입힐 때 고르는 한 칸의 단위 (시·분은 나중에) */
+export const SLOT_UNITS = [
+  { key: 'day', label: '일' }, { key: 'week', label: '주' }, { key: 'month', label: '월' }, { key: 'quarter', label: '분기' },
+];
+/** 날짜 있는 보드를 '눈금 없음'으로 볼 때의 칸 단위 = 전환 전 모드의 안쪽 단위 */
+export const SLOT_UNIT_OF = { 'week-day': 'day', 'month-week': 'week', 'quarter-month': 'month' };
+/** 눈금 없음에서 한 칸이 뜻하는 날 수(일당 픽셀 계산용) */
+export const UNIT_DAYS = { day: 1, week: 7, month: 30.44, quarter: 91.3 };
 
 export const DISPLAY_LIMITS = {
   arrowWidth: { min: 1, max: 24, step: 1 },

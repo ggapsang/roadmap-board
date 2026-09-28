@@ -11,7 +11,6 @@
  *
  * 마일스톤은 레인 계산에서 제외하고 폭 기준 오버레이로 그린다.
  */
-import { dayIndex } from './dates.js';
 import { LAYOUT } from '../config/index.js';
 
 /**
@@ -24,13 +23,16 @@ import { LAYOUT } from '../config/index.js';
  *
  * @returns {number} 최대 레인 수
  */
-function assignLanes(siblings, origin, placement, { includeMilestones = false, keyOf = (it) => it.id } = {}) {
+function assignLanes(siblings, timeline, placement, { includeMilestones = false, keyOf = (it) => it.id } = {}) {
   // 최상위에서 레인 계산에서 빼는 건 '점' 마일스톤(s===e)뿐이다. 기간을 가진
   // 마일스톤(전시회 등)은 막대처럼 자리를 차지하므로 형제와 레인을 나눈다 —
   // 안 그러면 트랙 폭을 가로질러 그 기간의 막대들을 덮는다.
+  // 위치는 timeline이 읽는다 — 날짜 있는 보드는 일 인덱스, 날짜 없는 보드는 칸 인덱스.
   const bars = siblings
-    .filter((i) => includeMilestones || i.ty !== 'ms' || i.s !== i.e)
-    .map((i) => ({ item: i, s: dayIndex(i.s, origin), e: dayIndex(i.e, origin) }))
+    .filter((i) => includeMilestones || !timeline.isPoint(i))
+    .map((i) => ({ item: i, p: timeline.pos(i) }))
+    .filter((b) => b.p)
+    .map((b) => ({ item: b.item, s: b.p.s, e: b.p.e }))
     .sort((a, b) => a.s - b.s || a.e - b.e);
 
   let maxLanes = 1;
@@ -67,11 +69,11 @@ function assignLanes(siblings, origin, placement, { includeMilestones = false, k
 /**
  * @param {object[]} tracks
  * @param {object[]} items
- * @param {Date} origin  보드 시작일
+ * @param {object} timeline 위치 읽기 (core/timeline.js — pos·isPoint)
  * @param {(item) => boolean} isVisible
  * @returns {{placement: Map, trackLanes: Map, childrenOf: Map, depthOf: Map}}
  */
-export function computeLayout(tracks, items, origin, isVisible = () => true, rootId = null) {
+export function computeLayout(tracks, items, timeline, isVisible = () => true, rootId = null) {
   const placement = new Map();
   const trackLanes = new Map();
 
@@ -104,13 +106,13 @@ export function computeLayout(tracks, items, origin, isVisible = () => true, roo
   const roots = childrenOf.get(rootId) ?? [];
   for (const track of tracks) {
     const own = roots.filter((i) => runHomeIds(i).has(track.id) && isVisible(i));
-    trackLanes.set(track.id, assignLanes(own, origin, placement, { keyOf: (it) => `${it.id}@${track.id}` }));
+    trackLanes.set(track.id, assignLanes(own, timeline, placement, { keyOf: (it) => `${it.id}@${track.id}` }));
   }
 
   // 상위 일정 안에서 자식들끼리 다시 나눈다
   for (const [parentId, kids] of childrenOf) {
     if (parentId === null) continue;
-    assignLanes(kids.filter(isVisible), origin, placement, { includeMilestones: true });
+    assignLanes(kids.filter(isVisible), timeline, placement, { includeMilestones: true });
   }
 
   // 렌더 순서를 정하기 위한 깊이

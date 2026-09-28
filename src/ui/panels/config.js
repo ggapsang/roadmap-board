@@ -9,8 +9,10 @@
  * 그 조직을 쓰는 일정을 함께 갱신해야 한다. #renameOrg가 그 일을 한다.
  */
 import { newId } from '../../core/schema.js';
-import { DISPLAY_LIMITS, STATUSES, statusList } from '../../config/index.js';
+import { DISPLAY_LIMITS, STATUSES, statusList, SCALE_MODES, SCALE_KEYS, SLOT_UNIT_OF, SLOT_UNITS } from '../../config/index.js';
+import { applyCalendar } from '../../core/timeline.js';
 import { $, el, clear, button, ICONS } from '../dom.js';
+import { askCalendar } from '../dialog.js';
 import { openCombinePicker, composedOf } from '../combine.js';
 import { toast } from '../toast.js';
 
@@ -44,12 +46,40 @@ export class ConfigPanel {
     }
     this._displayFields = fields;
 
-    // 순서 축 토글 (초안) — 켜면 날짜가 아니라 선행 순서(rank)로 배치한다.
-    $('v-order').addEventListener('change', (e) => {
-      this.store.commit('축 모드', (doc) => {
-        doc.meta.display.axis = e.target.checked ? 'order' : 'calendar';
+    // 세로축 눈금 (docs/SCALE.md) — 표시만 바꾼다. 날짜 있는 보드를 '눈금 없음'으로 돌리면
+    // 한 칸 = 전환 전 모드의 안쪽 단위(월-주였다면 1주). 날짜 없는 보드는 '눈금 없음' 고정.
+    const sel = $('v-scale');
+    for (const k of SCALE_KEYS) sel.append(el('option', { value: k, text: SCALE_MODES[k].label }));
+    sel.addEventListener('change', () => {
+      const next = sel.value;
+      this.store.commit('눈금', (doc) => {
+        const d = doc.meta.display;
+        if (d.dated === false) return;
+        if (next === 'none' && d.scale !== 'none') d.slotUnit = SLOT_UNIT_OF[d.scale] ?? 'week';
+        if (next !== 'none') d.slotUnit = null;
+        d.scale = next;
       });
+      this.#renderDisplay();
     });
+    $('v-calendar').addEventListener('click', () => this.#applyCalendar());
+  }
+
+  /** 날짜 없는 보드에 눈금 입히기 — 칸 k = 1번 칸 날짜 + k단위. 되돌리기 1단계. */
+  async #applyCalendar() {
+    if (this.store.readonly || this.store.meta.display?.dated !== false) return;
+    const now = new Date();
+    const iso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const got = await askCalendar({
+      title: '눈금 설정',
+      message: '칸마다 날짜를 매깁니다. 모든 일정이 칸 위치대로 날짜를 얻고, 보드는 날짜 있는 보드가 됩니다. 되돌리기(Ctrl+Z)로 취소할 수 있습니다.',
+      units: SLOT_UNITS.map((u) => ({ key: u.key, label: u.label })),
+      unit: 'week',
+      start: iso,
+    });
+    if (!got) return;
+    this.store.commit('눈금 설정', (doc) => { applyCalendar(doc, got.unit, got.start); });
+    toast('눈금을 입혔습니다');
+    this.#renderDisplay();
   }
 
   #renderDisplay() {
@@ -58,7 +88,18 @@ export class ConfigPanel {
       $(id).value = display[key];
       $(`${id}-out`).textContent = format(display[key]);
     }
-    $('v-order').checked = display.axis === 'order';
+    const dated = display.dated !== false;
+    const sel = $('v-scale');
+    sel.value = dated ? (display.scale ?? 'month-week') : 'none';
+    sel.disabled = !dated || !!this.store.readonly;
+    $('v-calendar').hidden = dated;
+    const note = $('v-scale-note');
+    note.hidden = false;
+    note.textContent = !dated
+      ? '날짜 없는 보드입니다 — 일정은 칸(순서)만 가집니다. 눈금 설정으로 칸마다 날짜를 매길 수 있습니다.'
+      : display.scale === 'none'
+        ? `한 칸 = ${({ day: '하루', week: '1주', month: '한 달' })[display.slotUnit] ?? '1주'}. 날짜 표시만 감춥니다.`
+        : '구간 묶기·높이는 눈금마다 따로 기억합니다.';
   }
 
   open(trackId = null) {

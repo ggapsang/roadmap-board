@@ -225,8 +225,8 @@ async function runSmoke(target) {
   let compressed = null;
   let nested = null;
   let relCheck = null;
-  let orderCheck = null;
-  let orderMode = null;
+  let scaleCheck = null;
+  let dateless = null;
   let containCheck = null;
   let taskCheck = null;
   let idCheck = null;
@@ -351,46 +351,60 @@ async function runSmoke(target) {
     })()`);
     console.log('[smoke] relations ' + JSON.stringify(relCheck));
 
-    // 순서상 위치 계산 — 선행 그래프의 위상 순위가 정합적인가 (DIRECTION #4-b)
-    orderCheck = await target.webContents.executeJavaScript(`(async () => {
+    // 세로축 눈금 모드 (docs/SCALE.md) — 설정 › 표시의 고르기로 바꾼다. 일정 날짜는 그대로, 축만 바뀐다.
+    // 구간은 모드마다 따로 기억한다. 눈금 없음은 날짜 표시를 걷고 칸 번호(한 칸 = 전환 전 안쪽 단위).
+    scaleCheck = await withTimeout(target.webContents.executeJavaScript(`(async () => {
       const r = window.__roadmap;
-      const mod = await import('./src/core/order.js');
-      const rank = mod.computeOrder(r.store.items, r.store.relations);
-      let topoOk = true, edges = 0, maxRank = 0;
-      for (const rel of r.store.relations) {
-        if (rel.type !== 'dep') continue;
-        edges++;
-        if (!(rank.get(rel.from) < rank.get(rel.to))) topoOk = false;
+      const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+      const sel = document.getElementById('v-scale');
+      const pick = async (k) => { sel.value = k; sel.dispatchEvent(new Event('change')); await sleep(200); };
+      const dates = () => JSON.stringify(r.store.items.map((i) => [i.id, i.s, i.e]));
+      const gutLabels = () => [...document.querySelectorAll('.gut-m b u')].map((u) => u.firstChild?.textContent ?? '');
+      const d0 = dates();
+      const out = { options: sel.options.length, defaultMode: r.store.meta.display.scale };
+      const tl = () => r.board.timeline;
+      const span = (p) => tl().newEnd(p) - p + 1;
+      // 주-일: 왼쪽 칸 = 주, 한 행 = 하루(행 높이 그대로), 새 일정 1일, 드래그 1일
+      await pick('week-day');
+      out.weekDay = { outer: /월 \\d주/.test(gutLabels()[0] ?? ''), ppd: r.board.scale.ppd === r.view.weekHeight,
+        newLen: span(10), step: tl().step };
+      // 분기-월: 왼쪽 칸 = 분기, 새 일정 1개월, 드래그 1주
+      await pick('quarter-month');
+      const p0 = r.board.timeline.pos(r.store.items.find((i) => !i.parent)).s;
+      out.quarter = { outer: /분기/.test(gutLabels()[0] ?? ''), newLen: span(0), step: tl().step,
+        snapMonday: new Date(r.board.origin.getTime() + tl().snap(p0 + 3) * 86400000).getDay() === 1 };
+      // 구간은 모드마다 — 분기-월에서 묶은 것은 월-주에 안 보인다
+      r.store.commit('구간(분기)', (doc) => { doc.bands.push({ id: 'bq', mode: 'quarter-month', from: doc.meta.start, to: doc.meta.start, label: 'QTEST', scale: 1 }); });
+      r.board.rebuild(); await sleep(150);
+      out.bandHere = gutLabels().includes('QTEST');
+      await pick('month-week');
+      out.bandElsewhere = gutLabels().includes('QTEST');
+      out.monthOuter = /^\\d+월$/.test(gutLabels()[0] ?? '');
+      r.store.commit('구간(분기) 치우기', (doc) => { doc.bands = doc.bands.filter((b) => b.id !== 'bq'); });
+      // 눈금 없음: 한 칸 = 1주(월-주의 안쪽), 오늘선·바깥 칸 없음, 카드에 칸 번호
+      await pick('none');
+      const card = document.querySelector('.col > .ev:not(.ms) .dt');
+      out.none = { slotUnit: r.store.meta.display.slotUnit, gut: document.querySelectorAll('.gut-m b').length,
+        now: !!document.querySelector('.now'), label: card?.textContent ?? '', numbers: /^\\d+$/.test(document.querySelector('.gut-w s')?.textContent ?? '') };
+      await pick('month-week');
+      out.datesKept = dates() === d0;
+      out.back = r.store.meta.display.scale === 'month-week' && document.querySelectorAll('.gut-m b').length > 0;
+      return out;
+    })()`), 20000, 'scale');
+    console.log('[smoke] scale ' + JSON.stringify(scaleCheck));
+    // 눈금 모드마다 한 장씩 — 주-일 · 분기-월 · 눈금 없음 (월-주는 'board')
+    if (shotDir()) {
+      for (const k of ['week-day', 'quarter-month', 'none', 'month-week']) {
+        await target.webContents.executeJavaScript(`(async () => {
+          const sel = document.getElementById('v-scale');
+          sel.value = '${k}'; sel.dispatchEvent(new Event('change'));
+          await new Promise((res) => setTimeout(res, 250));
+          window.__roadmap.board.scrollToToday(document.getElementById('scroll'));
+          return true;
+        })()`);
+        if (k !== 'month-week') await capture(target, 'scale-' + k);
       }
-      for (const v of rank.values()) maxRank = Math.max(maxRank, v);
-      return { size: rank.size, edges, topoOk, maxRank };
-    })()`);
-    console.log('[smoke] order ' + JSON.stringify(orderCheck));
-
-    // 순서 렌더 모드(초안) — axis='order'면 rank로 세로 배치, 선행 from이 to보다 위
-    orderMode = await withTimeout(target.webContents.executeJavaScript(`(async () => {
-      const r = window.__roadmap;
-      r.store.commit('축 순서', (doc) => { doc.meta.display.axis = 'order'; });
-      r.board.render();
-      await new Promise((res) => setTimeout(res, 200));
-      const topOf = (id) => { const el = document.querySelector('[data-id="' + id + '"]'); return el ? Math.round(el.getBoundingClientRect().top) : null; };
-      const rel = r.store.relations.find((x) => x.type === 'dep' && document.querySelector('[data-id="' + x.from + '"]') && document.querySelector('[data-id="' + x.to + '"]'));
-      const ordered = rel ? topOf(rel.from) < topOf(rel.to) : false;
-      const em = document.querySelector('.gut-m b u em');
-      const hasOrderAxis = !!em && em.textContent === '순서';
-      const cards = document.querySelectorAll('.col > .ev').length;
-      return { cards, ordered, hasOrderAxis };
-    })()`), 20000, 'order-mode');
-    if (shotDir()) await capture(target, 'board-order');
-    // 되돌리기 — 이후 단계는 달력 모드를 전제로 한다
-    orderMode.back = await target.webContents.executeJavaScript(`(async () => {
-      const r = window.__roadmap;
-      r.store.commit('축 달력', (doc) => { doc.meta.display.axis = 'calendar'; });
-      r.board.render();
-      await new Promise((res) => setTimeout(res, 200));
-      return document.querySelector('.gut-m b u em')?.textContent !== '순서';
-    })()`);
-    console.log('[smoke] order-mode ' + JSON.stringify(orderMode));
+    }
 
     // 포함(contain)도 관계로 노출되는가 — 정규화 후 doc.relations에 contain이 생긴다
     containCheck = await target.webContents.executeJavaScript(`(async () => {
@@ -1636,6 +1650,69 @@ async function runSmoke(target) {
   }
 
   // 탭 캐시 — 다른 보드의 저장이 이 보드 화면을 바꾸면 그 탭은 '낡음'이 되어 돌아갈 때 다시 읽는다.
+  // 날짜 없는 보드 (docs/SCALE.md §2) — 처음부터 눈금 없이 만든다. 일정은 날짜 없이 칸만 갖고(DB NULL),
+  // 눈금 설정(일괄)으로 칸마다 날짜를 얻는다.
+  if (wrote) {
+    // 찍기: 렌더러가 멈춰 기다리는 동안 메인이 캡처한다(한 executeJavaScript 안에서 끊지 않고)
+    if (shotDir()) {
+      await target.webContents.executeJavaScript(`window.__datelessShot = () => new Promise((res) => { window.__datelessGo = res; }); true`);
+      const poll = setInterval(async () => {
+        const waiting = await target.webContents.executeJavaScript('typeof window.__datelessGo === "function"').catch(() => false);
+        if (!waiting) return;
+        clearInterval(poll);
+        await capture(target, 'dateless');
+        await target.webContents.executeJavaScript('window.__datelessGo(); window.__datelessGo = null; window.__datelessShot = null; true');
+      }, 200);
+    }
+    dateless = await target.webContents.executeJavaScript(`(async () => {
+      const run = (async () => {
+        const r = window.__roadmap;
+        const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+        const b1 = r.adapter.projectId;
+        const doc = { version: 18, meta: { start: '2026-10-01', end: '2027-03-31', name: '칸 보드',
+          display: { scale: 'none', dated: false, slotUnit: null } },
+          orgs: ['A'], tracks: [{ id: 't0', lab: '', name: '트랙 1' }], items: [] };
+        const b2 = await r.adapter.createProject(doc, '칸 보드');
+        await r.tabs.openBoard(b2); await sleep(300);
+        const out = { b2, dated: r.board.dated, gutNumbers: document.querySelector('.gut-w s')?.textContent === '1',
+          outer: document.querySelectorAll('.gut-m b').length, now: !!document.querySelector('.now') };
+        const t0 = r.store.tracks[0].id;
+        const a = r.board.createItem(t0, 2);              // 3번 칸에 한 칸
+        const b = r.board.createItem(t0, 4, 6);           // 5~7번 칸
+        await sleep(500);
+        out.aSlot = JSON.stringify(a.place.slot); out.aDate = a.s;
+        out.label = document.querySelector('.ev[data-id="' + b.id + '"] .dt')?.textContent ?? '';
+        out.slotsHidden = document.getElementById('i-dates').hidden && !document.getElementById('i-slots').hidden;
+        out.a = a.id; out.b = b.id;
+        window.__datelessShot = window.__datelessShot ?? null;
+        if (window.__datelessShot) await window.__datelessShot();
+        // 다시 읽어도 칸이 남는다
+        r.tabs.markAllStale(); await r.tabs.reloadActive(); await sleep(250);
+        out.reloaded = JSON.stringify(r.store.item(b.id)?.place?.slot);
+        // 눈금 설정 — 1칸 = 1주, 1번 칸 = 2026-10-05(월)
+        const { applyCalendar } = await import('./src/core/timeline.js');
+        r.store.commit('눈금 설정', (d) => { applyCalendar(d, 'week', '2026-10-05'); });
+        await sleep(400);
+        const ib = r.store.item(b.id);
+        out.cal = { dated: r.store.meta.display.dated, scale: r.store.meta.display.scale, s: ib.s, e: ib.e };
+        r.store.undo(); await sleep(400);
+        out.undone = r.store.meta.display.dated === false && r.store.item(b.id)?.s == null;
+        r.tabs.boardClosed(b2);
+        await r.tabs.openBoard(b1); await sleep(200);
+        return out;
+      })();
+      const guard = new Promise((res) => setTimeout(() => res({ error: 'timeout' }), 25000));
+      return Promise.race([run.catch((e) => ({ error: String(e) })), guard]);
+    })()`);
+    try {
+      const row = db.prepare('SELECT start_date, end_date FROM event WHERE id = ?').get(dateless?.a ?? '');
+      const disp = db.prepare('SELECT slot_start, slot_len FROM disp WHERE child_id = ?').get(dateless?.b ?? '');
+      dateless.db = { nullDates: !!row && row.start_date == null && row.end_date == null, slot: disp ? [disp.slot_start, disp.slot_len] : null };
+      await target.webContents.executeJavaScript(`window.__roadmap.adapter.deleteProject(${Number(dateless?.b2) || 0})`);
+    } catch (err) { dateless.db = { error: String(err) }; }
+    console.log('[smoke] dateless ' + JSON.stringify(dateless));
+  }
+
   let staleTab = null;
   if (wrote) {
     staleTab = await target.webContents.executeJavaScript(`(async () => {
@@ -2209,7 +2286,7 @@ async function runSmoke(target) {
     && shared === true && boardEvent === true && trackEvent === true && taskEvent === true
     && tabsCheck?.tabCount === 2 && tabsCheck?.hasAdd === true && tabsCheck?.name2 === '탭 테스트 보드'
     && tabsCheck?.nameBack === tabsCheck?.name1 && tabsCheck?.afterClose === 1
-    && saveModel?.seedCollision === true && saveModel?.schema === 20
+    && saveModel?.seedCollision === true && saveModel?.schema === 21
     && saveModel?.stale1?.merged === true && saveModel?.stale1?.kids === 2 && saveModel?.stale1?.zGone === true && saveModel?.stale1?.xOnB === true
     && saveModel?.stale2?.affectedB === true && saveModel?.stale2?.kept === true
     && saveModel?.compose?.stored === true && saveModel?.compose?.inDoc === true && saveModel?.compose?.notTasks === true
@@ -2251,8 +2328,20 @@ async function runSmoke(target) {
     && graphCheck?.ui?.c8unchanged === true
     && styleUi?.noCurrentInCombine === true && styleUi?.detailLabel === '세부내역' && styleUi?.sizeLabel === '사이즈 수동 설정' && styleUi?.descBlock === true
     && relCheck?.allDep === true && relCheck?.added === true && relCheck?.removed === true
-    && orderCheck?.topoOk === true && orderCheck?.edges > 0 && orderCheck?.maxRank > 0
-    && orderMode?.hasOrderAxis === true && orderMode?.ordered === true && orderMode?.cards > 0 && orderMode?.back === true
+    && scaleCheck?.options === 4 && scaleCheck?.defaultMode === 'month-week'
+    && scaleCheck?.weekDay?.outer === true && scaleCheck?.weekDay?.ppd === true && scaleCheck?.weekDay?.newLen === 1 && scaleCheck?.weekDay?.step === 'day'
+    && scaleCheck?.quarter?.outer === true && scaleCheck?.quarter?.newLen >= 28 && scaleCheck?.quarter?.newLen <= 31
+    && scaleCheck?.quarter?.step === 'week' && scaleCheck?.quarter?.snapMonday === true
+    && scaleCheck?.bandHere === true && scaleCheck?.bandElsewhere === false && scaleCheck?.monthOuter === true
+    && scaleCheck?.none?.slotUnit === 'week' && scaleCheck?.none?.gut === 0 && scaleCheck?.none?.now === false
+    && /^칸 \d/.test(scaleCheck?.none?.label ?? '') && scaleCheck?.none?.numbers === true
+    && scaleCheck?.datesKept === true && scaleCheck?.back === true
+    && (!wrote || (dateless?.dated === false && dateless?.gutNumbers === true && dateless?.outer === 0 && dateless?.now === false
+      && dateless?.aSlot === '{"s":2,"len":1}' && dateless?.aDate == null && dateless?.label === '칸 5–7'
+      && dateless?.slotsHidden === true && dateless?.reloaded === '{"s":4,"len":3}'
+      && dateless?.cal?.dated === true && dateless?.cal?.scale === 'month-week'
+      && dateless?.cal?.s === '2026-11-02' && dateless?.cal?.e === '2026-11-22' && dateless?.undone === true
+      && dateless?.db?.nullDates === true && dateless?.db?.slot?.[0] === 4 && dateless?.db?.slot?.[1] === 3))
     && containCheck?.count > 0 && containCheck?.hasE10 === true && containCheck?.allValid === true
     && taskCheck?.count === 2 && taskCheck?.doneKept === true && taskCheck?.uniqueIds === true && taskCheck?.chip === true
     && idCheck?.n > 0 && idCheck?.allNew === true && idCheck?.unique === true

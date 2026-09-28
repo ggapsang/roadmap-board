@@ -128,10 +128,17 @@ async function boot() {
         refresh();
       },
       addItem: () => {
+        // 날짜 없는 보드 — 마지막 일정 다음 칸에. 날짜 있는 보드 — 오늘에(정밀도 단위의 처음으로).
         // createItem은 board.origin 기준 일 인덱스를 받는다. 축이 meta 밖으로
         // 늘어났을 수 있으니 meta.start가 아니라 board.origin을 기준으로 잡는다.
+        const tl = board.timeline;
+        if (!tl.dated) {
+          const last = Math.max(-1, ...store.items.map((i) => tl.pos(i)?.e ?? -1));
+          board.createItem(store.tracks[0].id, last + 1);
+          return;
+        }
         const day = Math.round((new Date().setHours(0, 0, 0, 0) - board.origin) / 86400000);
-        board.createItem(store.tracks[0].id, Math.max(0, day));
+        board.createItem(store.tracks[0].id, tl.snap(Math.max(0, day)));
       },
     },
   });

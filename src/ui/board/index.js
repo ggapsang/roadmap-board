@@ -4,20 +4,20 @@
  * 렌더 단계
  *   1. layout   레인/컬럼 폭 계산 (순수 함수)
  *   2. head     트랙 헤더 + grid-template-columns
- *   3. axis     주 행선 · 월 밴드 · 오늘 기준선
+ *   3. axis     안쪽 칸 행선 · 바깥 칸(구간) · 오늘 기준선 — 눈금 모드마다 (docs/SCALE.md)
  *   4. cards    일정 카드
  *   5. arrows   실제 좌표를 읽어 선후행 경로를 그림  ← 반드시 1~4 뒤
  *
  * 화살표는 DOM 좌표를 읽으므로 컬럼 폭이 확정된 뒤에 그려야 한다.
  * (P0 시안은 buildHead()를 drawArrows() 뒤에 호출해 한 프레임 어긋났다.)
  */
-import { parseDate, dayIndex, dateAt } from '../../core/dates.js';
-import { TimeScale } from '../../core/timescale.js';
+import { parseDate, dayIndex } from '../../core/dates.js';
+import { TimeScale, SlotScale } from '../../core/timescale.js';
+import { DateTimeline, SlotTimeline } from '../../core/timeline.js';
 import { computeLayout, gridTemplate } from '../../core/layout.js';
-import { computeOrder, orderLayout, OrderScale } from '../../core/order.js';
 import { newId } from '../../core/schema.js';
-import { LAYOUT, DEFAULT_STATUS, DEFAULT_TYPE } from '../../config/index.js';
-import { el, clear } from '../dom.js';
+import { DEFAULT_STATUS, DEFAULT_TYPE, UNIT_DAYS } from '../../config/index.js';
+import { el } from '../dom.js';
 import { openCtxMenu } from '../ctxmenu.js';
 import { toast } from '../toast.js';
 import { renderHead } from './head.js';
@@ -48,15 +48,13 @@ export class Board {
       store,
       getOrigin: () => this.origin,
       getScale: () => this.scale,
-      getOrderMode: () => this.orderMode,
+      getTimeline: () => this.timeline,
       onChange: () => this.rebuild(),
     });
     attachDrag(grid, {
       store, view,
-      getOrigin: () => this.origin,
-      getTotalDays: () => this.totalDays,
       getScale: () => this.scale,
-      getOrderMode: () => this.orderMode,
+      getTimeline: () => this.timeline,
       onDragEnd: (id) => this.handlers.openItem(id),
     });
   }
@@ -203,13 +201,38 @@ export class Board {
     }
     return parseDate(max);
   }
-  get totalDays() { return dayIndex(this.endDate, this.origin); }
+  /**
+   * 축 길이 — 날짜 있는 보드는 일수, 날짜 없는 보드는 칸 수. 칸 수는 마지막 일정 뒤로 빈 칸을
+   * 몇 개 더 둔다 — 끌어 내리거나 새로 만들 자리. 옮기면 축이 따라 늘고 줄어든다(날짜 축과 같이).
+   */
+  get totalDays() {
+    if (!this.dated) {
+      let max = -1;
+      for (const it of this.store.items) { const p = this.timeline.pos(it); if (p && p.e > max) max = p.e; }
+      return Math.max(12, max + 1 + 4);
+    }
+    return dayIndex(this.endDate, this.origin);
+  }
 
-  /** 순서 모드 — 축이 달력이 아니라 rank(선행 순서). DIRECTION #4-c (초안). */
-  get orderMode() { return this.store.meta.display?.axis === 'order'; }
+  /** 날짜 있는 보드인가 (docs/SCALE.md §2) */
+  get dated() { return this.store.meta.display?.dated !== false; }
 
-  /** 펼쳐 들어간 이벤트 id (드릴다운). 순서 모드에선 쓰지 않는다. */
-  get focus() { return this.orderMode ? null : (this.view.focus ?? null); }
+  /**
+   * 위치 읽기 — 날짜냐 칸이냐를 이것만 안다. 보드·드래그·레인 배치는 위치 인덱스만 다룬다.
+   * 문서의 표시 설정·시작일이 바뀌지 않으면 같은 객체를 다시 쓴다.
+   */
+  get timeline() {
+    const d = this.store.meta.display ?? {};
+    const k = this.dated ? `d|${this.origin.getTime()}|${d.scale}|${d.slotUnit}` : 'slot';
+    if (this._tlKey !== k) {
+      this._tlKey = k;
+      this._tl = this.dated ? new DateTimeline(this.origin, d) : new SlotTimeline();
+    }
+    return this._tl;
+  }
+
+  /** 펼쳐 들어간 이벤트 id (드릴다운). */
+  get focus() { return this.view.focus ?? null; }
 
   /**
    * 펼침 범위 — focus의 자손 id 집합. focus가 없으면 null(전체). focus의 직속 자식이
@@ -229,23 +252,28 @@ export class Board {
     walk(f);
     return out;
   }
-  /** 순서 모드의 한 rank 행 높이(px). 확대 배율을 그대로 쓴다. */
-  get rowH() { return this.view.weekHeight; }
-
   /**
-   * 스케일 = 일 인덱스 ↔ 픽셀. 묶어서 접은 구간이 있으면 그만큼 눌린다.
-   * 지금은 '달력 스케일'(TimeScale)만 구현한다. meta.display.axis === 'order'가 되면
-   * 여기서 순서 스케일이 끼어든다 — 스케일은 yOf/span/dayAt/height 인터페이스만 맞추면 된다
-   * (docs/DIRECTION.md #4). 그래서 Board 나머지 코드는 '달력'을 몰라도 된다.
+   * 스케일 = 위치 ↔ 픽셀. 확대 배율은 '한 행 높이'이고, 한 행이 뜻하는 단위는 눈금 모드가 정한다
+   * (주-일 1일 · 월-주 1주 · 분기-월 1개월 · 눈금 없음 1칸). 구간(묶기·높이)은 이 모드의 것만 건다 —
+   * 모드마다 따로 기억한다. 눈금 없음에는 바깥 칸이 없어 구간도 없다.
    */
   #buildScale() {
-    if (this.orderMode) {
-      this._rank = computeOrder(this.store.items, this.store.relations);
-      this.scale = new OrderScale(this._rank, this.rowH);
-    } else {
-      this.scale = new TimeScale(this.origin, this.totalDays, this.view.ppd, this.store.doc.bands ?? []);
+    const tl = this.timeline;
+    if (!tl.dated) {
+      this.scale = new SlotScale(this.totalDays, this.view.rowH, tl);
+      return this.scale;
     }
+    const mode = tl.mode;
+    const rowDays = mode.key === 'none' ? UNIT_DAYS[tl.slotUnit] ?? 7 : mode.row;
+    this.scale = new TimeScale(this.origin, this.totalDays, this.view.ppdFor(rowDays), this.#modeBands(), tl);
     return this.scale;
+  }
+
+  /** 지금 눈금 모드의 구간만 — 구간은 모드마다 따로 기억한다. 눈금 없음엔 없다. */
+  #modeBands() {
+    const key = this.timeline.mode.key;
+    if (key === 'none') return [];
+    return (this.store.doc.bands ?? []).filter((b) => (b.mode ?? 'month-week') === key);
   }
 
   // ── 렌더 ────────────────────────────────────────────────
@@ -308,11 +336,12 @@ export class Board {
     bar.hidden = false;
   }
 
-  /** 마지막으로 축을 그린 범위와 지금 범위가 다른가 */
-  #rangeChanged() {
-    if (!this._axis || this._axis.order !== this.orderMode) return true;
-    if (this.orderMode) return this._axis.days !== (this._rank?.size ?? 0);
-    return this._axis.origin !== this.origin.getTime() || this._axis.days !== this.totalDays;
+  /** 마지막으로 축을 그린 범위·눈금과 지금이 다른가 */
+  #rangeChanged() { return this._axis !== this.#axisKey(); }
+
+  #axisKey() {
+    const d = this.store.meta.display ?? {};
+    return `${this.dated}|${d.scale}|${d.slotUnit}|${this.origin.getTime()}|${this.totalDays}|${this.scale?.ppd}`;
   }
 
   #columnsMatchTracks() {
@@ -323,19 +352,11 @@ export class Board {
   }
 
   #computeLayout() {
-    if (this.orderMode) {
-      // 순서 모드: 세로는 rank(스케일), 가로는 같은 트랙·같은 rank끼리만 레인 분할.
-      const placement = orderLayout(
-        this.store.tracks, this.store.items, this._rank ?? new Map(), (i) => this.view.isVisible(i),
-      );
-      this._layout = { placement, trackLanes: new Map(), childrenOf: new Map(), depthOf: new Map() };
-      return;
-    }
     // 펼침(드릴다운)이면 focus의 자식이 최상위가 되고 자손만 보인다.
     this._scope = this.#focusScope();
     const visible = (i) => this.view.isVisible(i) && (this._scope === null || this._scope.has(i.id));
     this._layout = computeLayout(
-      this.store.tracks, this.store.items, this.origin, visible, this.focus,
+      this.store.tracks, this.store.items, this.timeline, visible, this.focus,
     );
   }
 
@@ -356,17 +377,15 @@ export class Board {
 
   /** 시간축 + 트랙 컬럼 + 오늘선 + 화살표 레이어 */
   #renderSkeleton() {
-    if (this.orderMode) {
-      this.#renderOrderAxis();
-    } else {
-      renderAxis({
-        lines: this.lines, gutM: this.gutM, gutW: this.gutW, grid: this.grid,
-        origin: this.origin, endDate: this.endDate,
-        totalDays: this.totalDays, ppd: this.view.ppd,
-        bands: this.store.doc.bands ?? [],
-        scale: this.scale,
-      });
-    }
+    const tl = this.timeline;
+    renderAxis({
+      lines: this.lines, gutM: this.gutM, gutW: this.gutW, grid: this.grid,
+      origin: this.origin, endDate: this.endDate,
+      totalDays: this.totalDays,
+      bands: this.#modeBands(),
+      scale: this.scale,
+      timeline: tl,
+    });
 
     for (const node of this.grid.querySelectorAll('.col,.pad,.now,.arrows')) node.remove();
     this.columns.clear();
@@ -379,33 +398,14 @@ export class Board {
     this.grid.append(el('div.pad'));
     this.grid.append(this.arrowLayer);
 
-    if (!this.orderMode) {
+    // 오늘선 — 날짜를 보이는 눈금에서만. 눈금 없음은 날짜 표시를 걷어 낸 보기다.
+    if (tl.dated && tl.mode.key !== 'none') {
       const now = makeTodayLine(this.origin, this.totalDays, this.scale);
       if (now) this.grid.append(now);
     }
 
     // 다음 render()에서 범위/모드 변화를 감지하려고 방금 그린 축을 기록한다
-    this._axis = {
-      order: this.orderMode,
-      origin: this.orderMode ? 0 : this.origin.getTime(),
-      days: this.orderMode ? (this._rank?.size ?? 0) : this.totalDays,
-    };
-  }
-
-  /** 순서 모드 축 — 왼쪽 칸에 rank 순번을 표시한다 (달력·오늘선 없음). DIRECTION #4-c 초안. */
-  #renderOrderAxis() {
-    clear(this.lines); clear(this.gutM); clear(this.gutW);
-    this.grid.style.height = this.scale.height + 'px';
-    let max = 0;
-    for (const v of (this._rank ?? new Map()).values()) max = Math.max(max, v);
-    for (let r = 0; r <= max; r++) {
-      const y = r * this.rowH;
-      this.lines.append(el('i', { className: 'm', style: { top: `${y}px` } }));
-      this.gutM.append(el('b', {
-        style: { top: `${y}px`, height: `${this.rowH}px` },
-        dataset: { from: String(r), to: String(r + 1), band: '' },
-      }, [el('u', {}, [document.createTextNode(String(r + 1)), el('em', { text: '순서' })])]));
-    }
+    this._axis = this.#axisKey();
   }
 
   /**
@@ -419,8 +419,9 @@ export class Board {
     const { placement, childrenOf, depthOf } = this._layout;
     const ctx = {
       origin: this.origin,
-      ppd: this.view.ppd,
+      ppd: this.scale.ppd,
       scale: this.scale,
+      timeline: this.timeline,
       placement,
       selectedId: this.view.selectedItem,
     };
@@ -438,16 +439,15 @@ export class Board {
       if (!this.view.isVisible(item)) continue;
       if (this._scope && !this._scope.has(item.id)) continue;   // 펼침 범위 밖은 숨긴다
 
-      // 순서 모드(초안)는 중첩을 펼쳐(flatten) 모두 트랙의 한 카드로 다룬다.
       // 펼쳐 들어간 이벤트(focus)의 직속 자식은 최상위처럼 트랙 컬럼에 놓는다.
       const pid = (item.parent && item.parent !== focus) ? item.parent : null;
-      const parent = this.orderMode ? null : (pid ? byId.get(pid) : null);
+      const parent = pid ? byId.get(pid) : null;
 
       const common = {
         ...ctx,
         match: this.view.matches(item),
         parent,
-        hasChildren: !this.orderMode && (childrenOf.get(item.id) ?? []).length > 0,
+        hasChildren: (childrenOf.get(item.id) ?? []).length > 0,
       };
 
       // 자식 카드: 상위 카드 안에 한 장.
@@ -465,8 +465,8 @@ export class Board {
       // 최상위 카드: 소속 트랙을 연속 구간(run)으로 나눈다. 붙은 트랙은 걸쳐서 한 장,
       // 떨어진 구간엔 같은 카드의 사본(echo)을 그 트랙에 따로 놓는다.
       const forced = item.place?.hd != null;
-      const isMsPoint = item.ty === 'ms' && item.s === item.e;
-      const runs = (this.orderMode || forced) ? [[item.place.t]]
+      const isMsPoint = ctx.timeline.isPoint(item);
+      const runs = forced ? [[item.place.t]]
         : isMsPoint ? [this.#fillRange(item)] : this.#trackRuns(item);
 
       runs.forEach((run, r) => {
@@ -474,7 +474,7 @@ export class Board {
         const host = this.columns.get(homeTrackId);
         if (!host) return;
         const laneInfo = placement.get(`${item.id}@${homeTrackId}`) ?? placement.get(item.id);
-        const spanBox = this.orderMode ? null : this.#spanBox(run, laneInfo, colWidth);
+        const spanBox = this.#spanBox(run, laneInfo, colWidth);
         const node = renderCard(item, {
           ...common, laneInfo, laned: !!laneInfo, spanBox, echo: r > 0,
         });
@@ -574,7 +574,6 @@ export class Board {
         return;
       }
       // 자식을 품은 카드를 더블클릭하면 펼친다 — 그 자식들이 하나의 보드로 (PDF §8).
-      if (this.orderMode) return;
       const card = ev.target.closest('.ev');
       if (!card) return;
       const id = card.dataset.id;
@@ -597,8 +596,8 @@ export class Board {
         opts.push({ label: '이벤트 복사', action: () => this.#copyEvent(id) });
       }
       if (col) {
-        const day = Math.max(0, Math.round(this.scale.dayAt(ev.clientY - col.getBoundingClientRect().top)));
-        opts.push({ label: '여기에 붙여넣기', disabled: !this._clip, action: () => this.#pasteEvent(col.dataset.t, day) });
+        const at = this.timeline.snap(Math.max(0, Math.floor(this.scale.dayAt(ev.clientY - col.getBoundingClientRect().top))));
+        opts.push({ label: '여기에 붙여넣기', disabled: !this._clip, action: () => this.#pasteEvent(col.dataset.t, at) });
       }
       if (opts.length) openCtxMenu(ev.clientX, ev.clientY, opts);
     });
@@ -612,10 +611,15 @@ export class Board {
     });
   }
 
-  /** 우클릭 '이벤트 복사' — 이 카드의 하위 트리(본질+태스크+하위 카드)를 인스턴스 클립보드에. */
+  /**
+   * 우클릭 '이벤트 복사' — 이 카드의 하위 트리(본질+태스크+하위 카드)를 인스턴스 클립보드에.
+   * 위치는 이 보드 기준 위치(pos)로 담는다 — 날짜 없는 보드끼리·날짜 있는 보드끼리 상대 위치를 지킨다.
+   */
   #copyEvent(id) {
+    const tl = this.timeline;
     const serialize = (it) => ({
       ti: it.ti, s: it.s, e: it.e, ty: it.ty, st: it.st, og: it.og, pg: it.pg, note: it.note,
+      pos: tl.pos(it), dated: tl.dated,
       tasks: (Array.isArray(it.tasks) ? it.tasks : []).map((t) => ({ text: t.text, done: t.done })),
       children: this.store.items.filter((x) => x.parent === it.id).map(serialize),
     });
@@ -625,26 +629,32 @@ export class Board {
     toast('이벤트를 복사했습니다 — 빈 칸에서 우클릭 → 붙여넣기');
   }
 
-  /** 우클릭 '붙여넣기' — 복사한 트리를 새 id로 이 트랙·이 날짜에 만든다(보드 넘나듦 가능). */
-  #pasteEvent(trackId, day) {
+  /**
+   * 우클릭 '붙여넣기' — 복사한 트리를 새 id로 이 트랙·이 위치에 만든다(보드 넘나듦 가능).
+   * 같은 종류 보드(날짜↔날짜, 칸↔칸)면 상대 위치를 지켜 옮기고, 종류가 다르면 각 일정을 이 위치에
+   * 기본 길이로 놓는다(날짜와 칸은 서로 환산할 근거가 없다).
+   */
+  #pasteEvent(trackId, at) {
     const clip = this._clip;
     if (!clip || this.store.readonly) return;
-    const origin = this.origin;
-    const baseStart = dayIndex(clip.s, origin);   // 원본 시작 오프셋 — 붙여넣는 위치로 맞춰 이동
-    const shiftDays = day - baseStart;
-    const shift = (ds) => dateAt(origin, dayIndex(ds, origin) + shiftDays);
+    const tl = this.timeline;
+    const same = clip.dated === tl.dated && clip.pos;
+    const shift = same ? at - clip.pos.s : 0;
     let rootId = null;
     this.store.commit('붙여넣기', (doc) => {
       const build = (node, parent, home) => {
         const id = newId('e');
         if (!rootId) rootId = id;
-        doc.items.push({
-          id, ti: node.ti ?? '', s: shift(node.s), e: shift(node.e),
+        const item = {
+          id, ti: node.ti ?? '', s: null, e: null,
           ty: node.ty ?? 'bar', st: node.st ?? 'plan', og: node.og ?? '', pg: node.pg ?? 0, note: node.note ?? '',
           parent, alias: null,
           tasks: (node.tasks ?? []).map((t) => ({ id: newId('k'), text: t.text ?? '', done: !!t.done })),
-          place: { t: home, sp: 1, x: null, w: null, hd: null, align: 'middle', showNote: false },
-        });
+          place: { t: home, sp: 1, x: null, w: null, hd: null, align: 'middle', showNote: false, slot: null },
+        };
+        if (same && node.pos) tl.set(item, Math.max(0, node.pos.s + shift), Math.max(0, node.pos.e + shift));
+        else tl.set(item, at, tl.newEnd(at));
+        doc.items.push(item);
         for (const c of (node.children ?? [])) build(c, id, home);
       };
       build(clip, null, trackId);
@@ -655,21 +665,29 @@ export class Board {
 
   /**
    * 빈 곳을 클릭·드래그해 일정을 만든다 (구글 캘린더식).
-   *   클릭   기본 한 칸(1주) 카드
-   *   끌기   끈 길이만큼 카드
+   *   클릭   기본 길이 카드 — 눈금 모드가 정한다(주-일 1일 · 월-주 1주 · 분기-월 1개월 · 눈금 없음 1칸)
+   *   끌기   끈 길이만큼 카드 — 정밀도 단위(step)로 맞춘다
    * 끄는 동안 그 트랙에 미리보기 고스트를 띄운다. 카드 위 포인터다운은
    * 이동(drag.js)이 가져가므로 여기서는 무시한다.
    */
   #attachCreate() {
     let make = null;
 
+    // 포인터가 든 행 — 반올림하면 한 행이 하루인 주-일 보기에서 아래 절반이 다음 날이 된다
     const dayAt = (col, clientY) =>
-      Math.max(0, Math.round(this.scale.dayAt(clientY - col.getBoundingClientRect().top)));
+      Math.max(0, Math.floor(this.scale.dayAt(clientY - col.getBoundingClientRect().top)));
 
-    // 클릭(안 끈 상태)이면 기본 1주, 끌었으면 끈 범위를 미리보기로 보여 준다
+    /** 끈 범위 [a, b] — 시작은 정밀도 단위의 처음으로, 끝은 그 단위의 끝으로 */
+    const range = () => {
+      const tl = this.timeline;
+      const a = tl.snap(Math.min(make.startDay, make.curDay));
+      const b = make.moved ? tl.add(tl.snap(Math.max(make.startDay, make.curDay)), 1) - 1 : tl.newEnd(a);
+      return [a, Math.max(a, b)];
+    };
+
+    // 클릭(안 끈 상태)이면 기본 길이, 끌었으면 끈 범위를 미리보기로 보여 준다
     const layout = () => {
-      const a = Math.min(make.startDay, make.curDay);
-      const b = make.moved ? Math.max(make.startDay, make.curDay) : a + LAYOUT.newItemDays - 1;
+      const [a, b] = range();
       const top = this.scale.y(a);
       const height = this.scale.y(b) + this.scale.dayHeight(b) - top;
       make.preview.style.top = top + 'px';
@@ -678,7 +696,6 @@ export class Board {
 
     this.grid.addEventListener('pointerdown', (ev) => {
       if (this.store.readonly || ev.button !== 0) return;
-      if (this.orderMode) return;                // 순서 모드(초안)에선 날짜 생성 비활성
       if (this.view.textSelect) return;
       if (ev.target.closest('.ev')) return;      // 카드 이동은 drag.js 몫
       const col = ev.target.closest('.col');
@@ -710,36 +727,32 @@ export class Board {
 
     this.grid.addEventListener('pointerup', () => {
       if (!make) return;
+      const [a, b] = range();
       const m = close();
-      if (m.moved) {
-        this.createItem(m.trackId, Math.min(m.startDay, m.curDay), Math.max(m.startDay, m.curDay));
-      } else {
-        this.createItem(m.trackId, m.startDay);   // 클릭 → 기본 1주
-      }
+      this.createItem(m.trackId, a, m.moved ? b : null);   // 클릭 → 기본 길이
     });
     // 취소는 만들지 않고 정리만 한다 (제스처가 끊긴 것)
     this.grid.addEventListener('pointercancel', () => { if (make) close(); });
   }
 
   /**
-   * 지정 트랙/일자에 일정을 만들고 편집 패널을 연다.
-   * endDay를 주면 그 날까지(끌어서 만든 길이), 없으면 기본 한 칸(1주).
+   * 지정 트랙/위치에 일정을 만들고 편집 패널을 연다.
+   * endPos를 주면 거기까지(끌어서 만든 길이), 없으면 눈금 모드의 기본 길이.
+   * 위치는 날짜 있는 보드면 일 인덱스, 날짜 없는 보드면 칸 인덱스다.
    */
-  createItem(trackId, startDay, endDay = null) {
-    const origin = this.origin;
-    const total = this.totalDays;
-    const start = Math.max(0, Math.min(total - 1, startDay));
-    const end = endDay == null
-      ? Math.min(total - 1, start + LAYOUT.newItemDays - 1)
-      : Math.min(total - 1, Math.max(start, endDay));
+  createItem(trackId, startPos, endPos = null) {
+    const tl = this.timeline;
+    const start = Math.max(0, startPos);
+    const end = Math.max(start, endPos == null ? tl.newEnd(start) : endPos);
 
     const item = {
       id: newId('e'),
-      s: dateAt(origin, start), e: dateAt(origin, end),
+      s: null, e: null,
       ti: '새 일정', ty: DEFAULT_TYPE, st: DEFAULT_STATUS,
       og: this.store.orgs[0], pg: 0, dp: [], note: '',
-      place: { t: trackId, sp: 1, align: 'middle', showNote: false, hd: null, x: null, w: null },
+      place: { t: trackId, sp: 1, align: 'middle', showNote: false, hd: null, x: null, w: null, slot: null },
     };
+    tl.set(item, start, end);
     this.store.commit('일정 추가', (doc) => { doc.items.push(item); });
     this.handlers.openItem(item.id);
     return item;
@@ -747,6 +760,7 @@ export class Board {
 
   /** 오늘 위치로 스크롤 */
   scrollToToday(scroller) {
+    if (!this.dated) { scroller.scrollTop = 0; return; }
     const i = Math.round((new Date().setHours(0, 0, 0, 0) - this.origin) / 86400000);
     scroller.scrollTop = Math.max(0, (this.scale?.y(i) ?? 0) - 80);
   }

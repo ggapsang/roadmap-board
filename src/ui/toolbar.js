@@ -67,7 +67,8 @@ export function initToolbar({ store, view, actions }) {
       document.body.classList.toggle('select-text', view.textSelect);
       $('btnUndo').disabled = !store.canUndo;
       $('btnRedo').disabled = !store.canRedo;
-      const period = `${store.meta.start.replace(/-/g, '.')} — ${store.meta.end.replace(/-/g, '.')}`;
+      const period = store.meta.display?.dated === false ? '날짜 없는 보드'
+        : `${store.meta.start.replace(/-/g, '.')} — ${store.meta.end.replace(/-/g, '.')}`;
       $('rangeLabel').textContent = store.meta.name ? `${store.meta.name} · ${period}` : period;
     },
   };

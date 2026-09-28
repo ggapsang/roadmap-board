@@ -1,7 +1,9 @@
 /**
- * 달력 스케일 — 축에 '달력 눈금'을 얹었을 때의 일 인덱스 ↔ 세로 픽셀 (DIRECTION #4).
- * 축은 본래 순서지만, 지금 보드는 달력 눈금을 쓰는 설정값이다. 나중에 순서 스케일이
- * 생기면 이 클래스는 여러 스케일 중 '달력' 하나가 된다 (yOf/span/dayAt/height 인터페이스 공유).
+ * 세로 스케일 — 위치 인덱스 ↔ 세로 픽셀 (docs/SCALE.md §5).
+ *   TimeScale  날짜 있는 보드. 위치 = 일 인덱스. 일당 픽셀(ppd)은 눈금 모드가 정한다.
+ *   SlotScale  날짜 없는 보드. 위치 = 칸 인덱스. 한 칸 = 한 행.
+ * 둘은 y/dayHeight/dayAt/topOf/heightOf/height/ppd 인터페이스를 공유한다 — 카드·드래그는 이것만 쓴다.
+ * 위치를 어디서 읽는지(날짜냐 칸이냐)는 timeline(core/timeline.js)이 안다.
  *
  * 시간축 눈금 — 일 인덱스 ↔ 세로 픽셀.
  *
@@ -18,12 +20,14 @@ export class TimeScale {
    * @param {Date} origin 보드 시작일
    * @param {number} totalDays
    * @param {number} ppd 기본 일당 픽셀
-   * @param {{from:string,to:string,scale:number}[]} bands
+   * @param {{from:string,to:string,scale:number}[]} bands  이 모드의 구간만
+   * @param {object} [timeline] 위치 읽기(DateTimeline). 없으면 날짜로 읽는다.
    */
-  constructor(origin, totalDays, ppd, bands = []) {
+  constructor(origin, totalDays, ppd, bands = [], timeline = null) {
     this.origin = origin;
     this.totalDays = totalDays;
     this.ppd = ppd;
+    this.timeline = timeline;
 
     // 구간을 일 인덱스 범위로 바꾸고 겹치지 않게 정렬한다
     this.segments = [];
@@ -71,11 +75,18 @@ export class TimeScale {
   /** 'YYYY-MM-DD' → 픽셀 */
   yOf(iso) { return this.y(dayIndex(iso, this.origin)); }
 
-  // ── 스케일 인터페이스 (달력이든 순서든 카드는 이것만 쓴다, DIRECTION #4) ──
-  /** 이벤트의 top(px). 달력에선 시작일 위치. */
-  topOf(item) { return this.yOf(item.s); }
-  /** 이벤트의 높이(px). 달력에선 기간. */
-  heightOf(item) { return this.span(item.s, item.e); }
+  // ── 스케일 인터페이스 (달력이든 칸이든 카드는 이것만 쓴다) ──
+  #pos(item) {
+    return this.timeline?.pos(item)
+      ?? { s: dayIndex(item.s, this.origin), e: dayIndex(item.e || item.s, this.origin) };
+  }
+  /** 이벤트의 top(px) — 시작 위치 */
+  topOf(item) { return this.y(this.#pos(item).s); }
+  /** 이벤트의 높이(px) — 기간(끝 포함) */
+  heightOf(item) {
+    const p = this.#pos(item);
+    return Math.max(0, this.y(p.e) + this.dayHeight(p.e) - this.y(p.s));
+  }
 
   /** 두 날짜 사이의 픽셀 높이 (종료일 inclusive) */
   span(fromIso, toIso) {
@@ -103,4 +114,31 @@ export class TimeScale {
 
   /** 구간이 접혀 있는가 */
   get compressed() { return this.segments.some((s) => s.scale !== 1); }
+}
+
+/**
+ * 칸 스케일 — 날짜 없는 보드. 한 칸 = 한 행(rowH). 구간 묶기·접기는 없다(바깥 칸이 없다).
+ */
+export class SlotScale {
+  /**
+   * @param {number} total 칸 수
+   * @param {number} rowH 한 칸 픽셀(확대 배율의 한 행 높이)
+   * @param {object} timeline SlotTimeline
+   */
+  constructor(total, rowH, timeline) {
+    this.totalDays = total;       // 인터페이스 이름을 맞춘다 — 여기선 칸 수
+    this.ppd = rowH;              // 위치 하나(칸)당 픽셀
+    this.timeline = timeline;
+    this.height = total * rowH;
+    this.segments = [{ from: 0, to: total, scale: 1, y: 0 }];
+  }
+  y(p) { return Math.max(0, Math.min(this.totalDays, p)) * this.ppd; }
+  dayHeight() { return this.ppd; }
+  dayAt(py) { return Math.max(0, py / this.ppd); }
+  topOf(item) { return this.y(this.timeline.pos(item)?.s ?? 0); }
+  heightOf(item) {
+    const p = this.timeline.pos(item) ?? { s: 0, e: 0 };
+    return (p.e - p.s + 1) * this.ppd;
+  }
+  get compressed() { return false; }
 }

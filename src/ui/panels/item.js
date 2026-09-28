@@ -23,7 +23,7 @@ const TAB_ORDER_KEY = 'wolfpack:item-tab-order';
 /** 값이 바로 문서로 반영되는 단순 입력들 (트랙·관계·별칭·진척은 매핑 탭 UI가 맡는다) */
 const F = {
   title: 'i-title', type: 'i-type', start: 'i-start',
-  end: 'i-end', org: 'i-org', note: 'i-note',
+  end: 'i-end', org: 'i-org', note: 'i-note', slot: 'i-slot', slotLen: 'i-slotlen',
 };
 
 const ALIGN_ICON = { top: ICONS.alignTop, middle: ICONS.alignMiddle, bottom: ICONS.alignBottom };
@@ -178,7 +178,9 @@ export class ItemPanel {
       const next = $('i-fixedh').getAttribute('aria-pressed') !== 'true';
       this.store.commit('크기 강제', () => {
         if (next) {
-          item.place.hd = Math.max(1, inclusiveDays(item.s, item.e));
+          // 날짜 없는 보드는 칸 길이로(위치 단위가 칸이다)
+          item.place.hd = item.place.slot ? Math.max(1, item.place.slot.len)
+            : Math.max(1, inclusiveDays(item.s, item.e));
           // 걸치던 칸 수(sp)만큼 폭을 잡아 둔다 — 강제해도 한 칸으로 안 무너진다.
           // w는 컬럼 기준 비율이라 1보다 크면 옆 트랙까지 넘나든다.
           item.place.x = 0;
@@ -230,8 +232,14 @@ export class ItemPanel {
     $(F.title).value = item.ti;
     autogrow($(F.title));
     $(F.type).value = item.ty;
-    $(F.start).value = item.s;
-    $(F.end).value = item.e;
+    // 날짜 없는 보드는 날짜 대신 칸 위치·길이를 고친다 — 위치는 사람이 읽는 1부터
+    const dated = this.store.meta.display?.dated !== false;
+    $('i-dates').hidden = !dated;
+    $('i-slots').hidden = dated;
+    $(F.start).value = item.s ?? '';
+    $(F.end).value = item.e ?? '';
+    $(F.slot).value = item.place?.slot ? String(item.place.slot.s + 1) : '1';
+    $(F.slotLen).value = item.place?.slot ? String(item.place.slot.len) : '1';
     $(F.org).value = item.og;
     $(F.note).value = item.note ?? '';
     $('i-title-drop').hidden = true;
@@ -902,7 +910,10 @@ export class ItemPanel {
         ti: task.text || '새 카드', s: parent.s, e: parent.e,
         ty: 'bar', st: task.done ? 'done' : 'plan', og: parent.og, pg: 0, note: '',
         parent: parent.id, alias: null, tasks: [],
-        place: { t: parent.place.t, sp: 1, x: null, w: null, hd: null, align: 'middle', showNote: false },
+        place: {
+          t: parent.place.t, sp: 1, x: null, w: null, hd: null, align: 'middle', showNote: false,
+          slot: parent.place.slot ? { ...parent.place.slot } : null,     // 날짜 없는 보드 — 부모 칸 그대로
+        },
       });
       this.#syncProgress(parent);
     });
@@ -938,14 +949,24 @@ export class ItemPanel {
     this.store.commit('일정 편집', () => {
       item.ti = $(F.title).value;
       item.ty = $(F.type).value;
-      item.s = $(F.start).value || item.s;
-      item.e = $(F.end).value || item.s;
-      if (item.e < item.s) item.e = item.s;
+      if (this.store.meta.display?.dated !== false) {
+        item.s = $(F.start).value || item.s;
+        item.e = $(F.end).value || item.s;
+        if (item.e < item.s) item.e = item.s;
+      } else {
+        const s = Math.max(1, Math.round(Number($(F.slot).value) || 1)) - 1;
+        const len = Math.max(1, Math.round(Number($(F.slotLen).value) || 1));
+        item.place.slot = { s, len };
+      }
       item.og = $(F.org).value;
       item.note = $(F.note).value;
     });
 
-    $(F.end).value = item.e;
+    $(F.end).value = item.e ?? '';
+    if (item.place?.slot) {
+      $(F.slot).value = String(item.place.slot.s + 1);
+      $(F.slotLen).value = String(item.place.slot.len);
+    }
   }
 
   /**

@@ -32,7 +32,7 @@ export function renderStatusBar(bar, { store, view, onChange }) {
   const from = today();
   const to = new Date(from.getTime() + UPCOMING_DAYS * DAY);
   const upcoming = store.items.filter((i) => {
-    if (i.ty !== 'ms') return false;
+    if (i.ty !== 'ms' || !i.s) return false;       // 날짜 없는 일정은 셀 수 없다
     const d = parseDate(i.s);
     return d >= from && d <= to;
   }).length;

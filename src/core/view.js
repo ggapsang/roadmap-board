@@ -31,8 +31,15 @@ export class ViewState extends Emitter {
     this.emit('change', { reason: 'focus' });
   }
 
-  /** px per day */
-  get ppd() { return this.weekHeight / 7; }
+  /** 한 행 높이(px) — 확대 배율. 한 행이 뜻하는 단위(일·주·월·칸)는 보드의 눈금 모드가 정한다. */
+  get rowH() { return this.weekHeight; }
+
+  /**
+   * px per day — 눈금 모드의 한 행이 며칠인지(row)로 나눈다. 모드를 모르면 월-주(1행=1주).
+   * @param {number} [rowDays]
+   */
+  ppdFor(rowDays = 7) { return this.weekHeight / rowDays; }
+  get ppd() { return this.ppdFor(7); }
 
   set(patch, reason = 'view') {
     Object.assign(this, patch);

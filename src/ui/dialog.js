@@ -375,3 +375,47 @@ export function askChoice({ title, message = '', choices = [] }) {
     closeOnScrim(scrim, () => finish(null));
   });
 }
+
+/**
+ * 날짜 없는 보드에 눈금을 입힌다(일괄 설정, docs/SCALE.md §2) — 한 칸의 단위와 1번 칸의 날짜를 고른다.
+ * @param {{title, message?, units:{key,label}[], unit?, start?}} o
+ * @returns {Promise<{unit:string, start:string}|null>} 취소하면 null
+ */
+export function askCalendar({ title, message = '', units = [], unit = 'week', start = '' }) {
+  const scrim = ensureHost();
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (v) => {
+      if (settled) return;
+      settled = true;
+      scrim.hidden = true;
+      scrim.replaceChildren();
+      document.removeEventListener('keydown', onKey, true);
+      resolve(v);
+    };
+    const sel = el('select', { attrs: { 'aria-label': '한 칸의 단위' } },
+      units.map((u) => el('option', { value: u.key, text: u.label })));
+    sel.value = unit;
+    const date = el('input', { type: 'date', value: start, attrs: { 'aria-label': '1번 칸의 날짜' } });
+    const ok = () => { if (date.value) finish({ unit: sel.value, start: date.value }); else date.focus(); };
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(null); }
+      if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); ok(); }
+    };
+    document.addEventListener('keydown', onKey, true);
+    const box = el('div.dlg.dlg-calendar', { on: { click: (e) => e.stopPropagation() } }, [
+      el('h2', { text: title }),
+      message ? el('p.note', { text: message }) : null,
+      el('label', { text: '한 칸의 단위' }), sel,
+      el('label', { text: '1번 칸의 날짜' }), date,
+      el('div.dlg-actions', {}, [
+        el('button.btn.outline', { type: 'button', text: '취소', on: { click: () => finish(null) } }),
+        el('button.btn.cta', { type: 'button', text: '적용', on: { click: ok } }),
+      ]),
+    ]);
+    scrim.replaceChildren(makeMovable(box));
+    scrim.hidden = false;
+    closeOnScrim(scrim, () => finish(null));
+    sel.focus();
+  });
+}

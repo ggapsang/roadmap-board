@@ -26,7 +26,7 @@ const key = (parent, child) => parent + SEP + child;
 /** 이벤트 본질 컬럼 — 동적 UPDATE는 이 목록 안에서만 만든다 */
 const ESSENCE = ['title', 'start_date', 'end_date', 'type', 'status', 'org', 'progress', 'note'];
 const INSERT_DEFAULTS = { title: '', type: 'bar', status: 'plan', org: '', progress: 0, note: '' };
-const DISP_COLS = ['pos_x', 'pos_w', 'height_days', 'align', 'show_note', 'alias', 'lab', 'px_width', 'fill'];
+const DISP_COLS = ['pos_x', 'pos_w', 'height_days', 'align', 'show_note', 'alias', 'lab', 'px_width', 'fill', 'slot_start', 'slot_len'];
 
 /** 빈 투영 — 새 보드의 기준 */
 const emptyProjection = () => ({
@@ -38,6 +38,7 @@ const dispRow = (parent, child, v = {}) => ({
   pos_x: v.pos_x ?? null, pos_w: v.pos_w ?? null, height_days: v.height_days ?? null,
   align: v.align ?? 'middle', show_note: v.show_note ?? 0, alias: v.alias ?? null,
   lab: v.lab ?? null, px_width: v.px_width ?? null, fill: v.fill ?? null,
+  slot_start: v.slot_start ?? null, slot_len: v.slot_len ?? null,
 });
 
 export class BoardRepository {
@@ -175,15 +176,21 @@ export class BoardRepository {
     const boards = this.db.prepare(`
       SELECT b.id, b.name, b.start_date AS start, b.end_date AS end,
              b.updated_at AS updatedAt, b.opened_at AS openedAt, b.ord AS ord,
-             b.root_event_id AS root
+             b.root_event_id AS root, b.meta_json AS metaJson
       FROM board b
       ORDER BY COALESCE(b.opened_at, b.updated_at) DESC, b.id DESC
     `).all();
     const kids = this.#childMap();
     return boards.map((b) => {
       const v = b.root ? this.#view(b.root, kids) : null;
-      const { root, ...rest } = b;
-      return { ...rest, tracks: v ? v.tracks.length : 0, items: v ? v.cards.size : 0 };
+      const { root, metaJson, ...rest } = b;
+      // 눈금 모드 — 첫 화면이 날짜 없는 보드에 기간 대신 '눈금 없음'을 쓰도록
+      let display = null;
+      try { display = metaJson ? JSON.parse(metaJson).display : null; } catch { display = null; }
+      return {
+        ...rest, dated: display?.dated !== false, scale: display?.scale ?? 'month-week',
+        tracks: v ? v.tracks.length : 0, items: v ? v.cards.size : 0,
+      };
     });
   }
 
@@ -473,8 +480,8 @@ export class BoardRepository {
       board: this.db.prepare('SELECT id FROM board WHERE root_event_id = ?').all(dropId).map((b) => b.id),
     };
     const insCont = this.db.prepare('INSERT OR IGNORE INTO containment (parent_id,child_id,ordered,compose,ord) VALUES (?,?,?,?,?)');
-    const insDispRow = this.db.prepare('INSERT OR IGNORE INTO disp (parent_id,child_id,pos_x,pos_w,height_days,align,show_note,alias,lab,px_width,fill) VALUES (@parent_id,@child_id,@pos_x,@pos_w,@height_days,@align,@show_note,@alias,@lab,@px_width,@fill)');
-    const insDisp = { run: (d) => insDispRow.run({ fill: null, ...d }) };
+    const insDispRow = this.db.prepare('INSERT OR IGNORE INTO disp (parent_id,child_id,pos_x,pos_w,height_days,align,show_note,alias,lab,px_width,fill,slot_start,slot_len) VALUES (@parent_id,@child_id,@pos_x,@pos_w,@height_days,@align,@show_note,@alias,@lab,@px_width,@fill,@slot_start,@slot_len)');
+    const insDisp = { run: (d) => insDispRow.run({ fill: null, slot_start: null, slot_len: null, ...d }) };
     const run = this.db.transaction(() => {
       // 포함: dropId를 keepId로. 자기순환(부모=자식)은 버린다. 같은 쌍이 이미 있으면 IGNORE.
       for (const c of this.db.prepare('SELECT * FROM containment WHERE parent_id=?').all(dropId)) {
@@ -530,8 +537,8 @@ export class BoardRepository {
       if (s.keepEvent) upEv.run(s.keepEvent);
       const insCont = this.db.prepare('INSERT OR REPLACE INTO containment (parent_id,child_id,ordered,compose,ord) VALUES (?,?,?,?,?)');
       for (const c of s.containment) insCont.run(c.parent_id, c.child_id, c.ordered, c.compose ?? 0, c.ord);
-      const insDisp = this.db.prepare('INSERT OR REPLACE INTO disp (parent_id,child_id,pos_x,pos_w,height_days,align,show_note,alias,lab,px_width,fill) VALUES (@parent_id,@child_id,@pos_x,@pos_w,@height_days,@align,@show_note,@alias,@lab,@px_width,@fill)');
-      for (const d of s.disp) insDisp.run({ fill: null, ...d });   // 020 이전 스냅샷엔 fill이 없다
+      const insDisp = this.db.prepare('INSERT OR REPLACE INTO disp (parent_id,child_id,pos_x,pos_w,height_days,align,show_note,alias,lab,px_width,fill,slot_start,slot_len) VALUES (@parent_id,@child_id,@pos_x,@pos_w,@height_days,@align,@show_note,@alias,@lab,@px_width,@fill,@slot_start,@slot_len)');
+      for (const d of s.disp) insDisp.run({ fill: null, slot_start: null, slot_len: null, ...d });   // 020·021 이전 스냅샷엔 없는 칸
       const insRel = this.db.prepare('INSERT OR REPLACE INTO rel (id,type,from_id,to_id) VALUES (?,?,?,?)');
       for (const r of s.rel) insRel.run(r.id, r.type, r.from_id, r.to_id);
       for (const bid of (s.board ?? [])) this.db.prepare('UPDATE board SET root_event_id=? WHERE id=?').run(s.dropId, bid);
@@ -599,9 +606,9 @@ export class BoardRepository {
       'SELECT name FROM org WHERE board_id = ? ORDER BY ord',
     ).all(this.boardId).map((r) => r.name);
     const bands = this.db.prepare(
-      'SELECT id, from_date, to_date, label, scale FROM band WHERE board_id = ? ORDER BY ord',
+      'SELECT id, mode, from_date, to_date, label, scale FROM band WHERE board_id = ? ORDER BY ord',
     ).all(this.boardId)
-      .map((r) => ({ id: r.id, from: r.from_date, to: r.to_date, label: r.label, scale: r.scale }));
+      .map((r) => ({ id: r.id, mode: r.mode, from: r.from_date, to: r.to_date, label: r.label, scale: r.scale }));
 
     // 보드별 표현 설정(display)·상태 이름 재정의(statusLabels)를 meta_json에서 복원.
     let boardMeta = {};
@@ -716,6 +723,7 @@ export class BoardRepository {
           tracks: parentId ? undefined : (tracksOf.get(ev) ?? [homeTrack.get(ev)]),
           x: d.pos_x ?? null, w: d.pos_w ?? null, hd: d.height_days ?? null,
           align: d.align ?? 'middle', showNote: d.show_note === 1, fill: d.fill ?? null,
+          slot: d.slot_start == null ? null : { s: d.slot_start, len: d.slot_len ?? 1 },
         },
         _o: ordOf.get(ev) ?? 0,
       });
@@ -825,6 +833,7 @@ export class BoardRepository {
       disp.set(key(edgeParent, it.id), dispRow(edgeParent, it.id, {
         pos_x: p.x ?? null, pos_w: p.w ?? null, height_days: p.hd ?? null,
         align: p.align ?? 'middle', show_note: p.showNote ? 1 : 0, alias: it.alias ?? null, fill: p.fill ?? null,
+        slot_start: p.slot?.s ?? null, slot_len: p.slot ? (p.slot.len ?? 1) : null,
       }));
       // 소속 트랙: 홈 외의 소속 트랙에도 포함(다중 소속, 사이는 안 채움). 최상위 카드에만.
       if (!nested) {
@@ -908,11 +917,11 @@ export class BoardRepository {
       this.db.prepare('DELETE FROM org  WHERE board_id = ?').run(bid);
       this.db.prepare('DELETE FROM band WHERE board_id = ?').run(bid);
       const insBand = this.db.prepare(
-        'INSERT INTO band (board_id, id, ord, from_date, to_date, label, scale) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO band (board_id, id, ord, mode, from_date, to_date, label, scale) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       );
       const insOrg = this.db.prepare('INSERT INTO org (board_id, ord, name) VALUES (?, ?, ?)');
       (doc.bands ?? []).forEach((b, i) =>
-        insBand.run(bid, b.id, i, b.from, b.to, b.label ?? '', b.scale ?? 1));
+        insBand.run(bid, b.id, i, b.mode ?? 'month-week', b.from, b.to, b.label ?? '', b.scale ?? 1));
       (doc.orgs ?? []).forEach((o, i) => insOrg.run(bid, i, o));
 
       next = this.#project(doc, root);
@@ -1014,8 +1023,8 @@ export class BoardRepository {
 
     // 3) 배치(disp) — 간선을 따라간다
     const upDisp = this.db.prepare(`
-      INSERT OR REPLACE INTO disp (parent_id, child_id, pos_x, pos_w, height_days, align, show_note, alias, lab, px_width, fill)
-      VALUES (@parent_id, @child_id, @pos_x, @pos_w, @height_days, @align, @show_note, @alias, @lab, @px_width, @fill)
+      INSERT OR REPLACE INTO disp (parent_id, child_id, pos_x, pos_w, height_days, align, show_note, alias, lab, px_width, fill, slot_start, slot_len)
+      VALUES (@parent_id, @child_id, @pos_x, @pos_w, @height_days, @align, @show_note, @alias, @lab, @px_width, @fill, @slot_start, @slot_len)
     `);
     for (const [k, n] of next.disp) {
       if (rejectedKeys.has(k)) continue;

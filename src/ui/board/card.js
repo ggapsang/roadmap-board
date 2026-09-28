@@ -5,7 +5,6 @@
  * 카드는 다른 카드를 품을 수 있다. 자식은 상위 카드 엘리먼트 안에 들어가고,
  * 세로 위치는 상위 카드의 시작일을 기준으로 잡는다.
  */
-import { dayIndex, shortMD } from '../../core/dates.js';
 import { LAYOUT } from '../../config/index.js';
 import { el } from '../dom.js';
 
@@ -30,8 +29,8 @@ function addHorizontalGrips(node, { span = false } = {}) {
 /**
  * @param {object} item
  * @param {object} ctx
- *   origin      보드 시작일
- *   ppd         일당 픽셀
+ *   ppd         위치 하나(일 또는 칸)당 픽셀 — 크기 강제(hd) 높이용
+ *   timeline    위치 읽기·표시 (core/timeline.js)
  *   placement   레인 배치
  *   selectedId  선택된 일정
  *   match       true=검색 매칭 / false=비매칭 / null=검색 없음
@@ -39,10 +38,14 @@ function addHorizontalGrips(node, { span = false } = {}) {
  *   hasChildren 자식을 품는 카드인가
  */
 export function renderCard(item, ctx) {
-  const { origin, ppd, scale, placement, selectedId, match, parent, hasChildren, spanBox, echo } = ctx;
+  const { ppd, scale, timeline, placement, selectedId, match, parent, hasChildren, spanBox, echo } = ctx;
   const isMilestone = item.ty === 'ms';
-  // 점 마일스톤(s===e)만 얇은 표식으로 그린다. 기간 마일스톤은 막대로 떨어진다.
-  const msPoint = isMilestone && item.s === item.e;
+  // 점 마일스톤(시작=끝)만 얇은 표식으로 그린다. 기간 마일스톤은 막대로 떨어진다.
+  const msPoint = timeline.isPoint(item);
+  // 카드에 쓰는 위치 글자 — 날짜('10.05 – 10.20') 또는 칸('칸 3–5'). 툴팁엔 날짜를 온전히.
+  const where = timeline.label(item);
+  const showsDate = timeline.dated && timeline.mode.key !== 'none';
+  const whereFull = !showsDate ? where : item.s === item.e ? item.s : `${item.s} – ${item.e}`;
   // 크기 강제 모드 — 가로(x/w)·세로(hd)를 드래그로 자유 조절. hd가 그 표식이다.
   const forced = item.place?.hd != null;
 
@@ -126,15 +129,15 @@ export function renderCard(item, ctx) {
     node.append(
       el('span.dia'),
       el('span.t', { text: item.ti }),
-      el('span.meta', { text: shortMD(item.s) }),
+      el('span.meta', { text: where }),
     );
-    node.title = `${item.ti} · ${item.s} · ${item.og}`;
+    node.title = `${item.ti} · ${whereFull} · ${item.og}`;
     // 최상위 점 마일스톤만 트랙 걸침 손잡이. 상위에 든 것은 폭 손잡이. 사본(echo)은 손잡이 없음.
     if (!echo) addHorizontalGrips(node, { span: !parent });
     return node;
   }
 
-  // 세로 크기 강제(hd, 일)면 날짜와 무관하게 그 길이로. 아니면 기간대로.
+  // 세로 크기 강제(hd, 위치 단위 — 일 또는 칸)면 기간과 무관하게 그 길이로. 아니면 기간대로.
   const rawH = forced ? item.place.hd * ppd : scale.heightOf(item);
   const height = Math.max(LAYOUT.minCardHeight, rawH - LAYOUT.cardGap);
 
@@ -160,7 +163,7 @@ export function renderCard(item, ctx) {
   }
 
   const meta = el('div.meta', {}, [
-    el('span.dt', { text: `${shortMD(item.s)} – ${shortMD(item.e)}` }),
+    el('span.dt', { text: where }),
     el('span.tag', { text: item.og }),
   ]);
   // 태스크가 있으면 완료/전체를 작은 칩으로. 순서 없는 할 일이라 카드엔 개수만 보인다.
@@ -192,7 +195,7 @@ export function renderCard(item, ctx) {
     const widthGrips = forced || !!parent;
     addHorizontalGrips(node, { span: !widthGrips });
   }
-  node.title = `${label}\n${item.s} – ${item.e} · ${item.og}${item.pg ? ' · ' + item.pg + '%' : ''}`;
+  node.title = `${label}\n${whereFull} · ${item.og}${item.pg ? ' · ' + item.pg + '%' : ''}`;
   return node;
 }
 

@@ -54,6 +54,8 @@ src/               렌더러 (프레임워크 없음, ES 모듈)
   core/              DOM을 모르는 순수 로직
     arrow-geometry.js  직교 경로 -> 블록 화살표 다각형 (순수 계산)
     dates.js           날짜 (로컬 타임존 고정)
+    timeline.js        세로 위치 — 날짜(DateTimeline)냐 칸(SlotTimeline)이냐. 눈금 모드의 정밀도·새 일정 길이
+    timescale.js       위치 ↔ 픽셀 (TimeScale 날짜 / SlotScale 칸)
     schema.js          문서 버전 · 마이그레이션 · 정규화
     store.js           문서 상태 + 되돌리기 + 저장
     view.js            화면 상태 (필터/검색/배율/선택) — 저장도 undo도 안 됨
@@ -173,6 +175,11 @@ src/               렌더러 (프레임워크 없음, ES 모듈)
    계속 쓰면 안 된다. 다른 보드 화면을 바꾼 저장은 `affected`로 알리고, 그 탭은 돌아갈 때 다시 읽는다.
    **삭제**: 카드·트랙 Delete = 보드에서 빼기(부모를 모두 잃으면 휴지통, 방금 만든 것은 바로 삭제).
    영구 삭제·보드 삭제는 그 안에만 든 것을 지우고, 다른 곳에도 담긴 이벤트와 그 구조는 남긴다.
+22. **세로 위치는 `timeline`을 거친다 (docs/SCALE.md).** 보드·드래그·레인 배치·만들기·붙여넣기는
+   `item.s`·`dayIndex`를 직접 읽지 말고 `board.timeline`의 `pos/set/snap/add/newEnd/isPoint/label`을 쓴다 —
+   날짜 없는 보드(`display.dated=false`)는 날짜가 null이고 위치가 `place.slot`(배치)에 있다. 눈금 모드는
+   표시라 날짜를 바꾸지 않는다. 확대 배율은 '한 행 높이'이고 한 행의 뜻(일·주·월·칸)은 모드가 정한다.
+   구간(`band`)은 `mode`를 갖고 **모드마다 따로** 쓴다 — 묶기·높이를 고칠 때 다른 모드의 구간을 건드리지 말 것.
 
 ## 데이터
 

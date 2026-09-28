@@ -12,10 +12,10 @@
 import {
   STATUS_KEYS, DEFAULT_STATUS, TYPE_KEYS, DEFAULT_TYPE,
   DEFAULT_ORGS, DEFAULT_DISPLAY, DISPLAY_LIMITS,
-  RELATION_TYPES, RELATION_KEYS, AXIS_KINDS, AXIS_DIRS, FILL_KEYS,
+  RELATION_TYPES, RELATION_KEYS, FILL_KEYS, SCALE_KEYS, SLOT_UNIT_OF,
 } from '../config/index.js';
 
-export const SCHEMA_VERSION = 17;
+export const SCHEMA_VERSION = 18;
 
 /**
  * v0 = P0 시안 문서(version 필드 없음).
@@ -208,6 +208,21 @@ function v16_to_v17(doc) {
   return doc;
 }
 
+function v17_to_v18(doc) {
+  // 세로축 눈금 모드(docs/SCALE.md) — 옛 axis(calendar|order)·axisDir를 scale·dated로. 순서 축(초안)은 없앴다.
+  // 구간은 그 구간이 어느 모드의 바깥 칸 묶음인지(mode)를 갖는다 — 옛 것은 모두 월-주.
+  const d = doc.meta?.display;
+  if (d && typeof d === 'object') {
+    d.scale = d.scale ?? 'month-week';
+    d.dated = d.dated ?? true;
+    delete d.axis; delete d.axisDir;
+  }
+  for (const b of doc.bands ?? []) if (b && typeof b === 'object') b.mode = b.mode ?? 'month-week';
+  for (const it of doc.items ?? []) if (it?.place && typeof it.place === 'object') it.place.slot = it.place.slot ?? null;
+  doc.version = 18;
+  return doc;
+}
+
 const MIGRATIONS = {
   0: v0_to_v1,
   1: v1_to_v2,
@@ -226,6 +241,7 @@ const MIGRATIONS = {
   14: v14_to_v15,
   15: v15_to_v16,
   16: v16_to_v17,
+  17: v17_to_v18,
 };
 
 export const ALIGNS = ['top', 'middle', 'bottom'];
@@ -254,38 +270,46 @@ export function normalize(doc) {
     warnings.push('표시 기간의 시작/종료가 뒤집혀 있어 교환했습니다.');
   }
 
-  // ── 시간축 구간 (사용자가 묶은 월 칸)
-  // 겹치는 구간은 뒤엣것을 버린다. 겹치면 어느 쪽을 그릴지 모호해진다.
-  doc.bands = (Array.isArray(doc.bands) ? doc.bands : [])
-    .filter((b) => isObj(b) && ISO.test(b.from) && ISO.test(b.to))
-    .map((b, i) => ({
-      id: typeof b.id === 'string' && b.id ? b.id : `b${i}`,
-      from: b.from <= b.to ? b.from : b.to,
-      to: b.from <= b.to ? b.to : b.from,
-      label: typeof b.label === 'string' ? b.label : '',
-      // 세로 압축 배율 — 1이면 실제 기간대로, 작을수록 접힌다
-      scale: Number.isFinite(Number(b.scale)) ? Math.min(1, Math.max(0.15, Number(b.scale))) : 1,
-    }))
-    .sort((a, b) => a.from.localeCompare(b.from))
-    .filter((b, i, arr) => {
-      const prev = arr[i - 1];
-      if (prev && b.from <= prev.to) {
-        warnings.push(`구간 '${b.label || b.from}'이 앞 구간과 겹쳐 제외했습니다.`);
-        return false;
-      }
-      return true;
-    });
-
   // ── 표시 설정
   const display = { ...DEFAULT_DISPLAY, ...(doc.meta.display ?? {}) };
   for (const [key, lim] of Object.entries(DISPLAY_LIMITS)) {
     const n = Number(display[key]);
     display[key] = Number.isFinite(n) ? Math.min(lim.max, Math.max(lim.min, n)) : DEFAULT_DISPLAY[key];
   }
-  // 축 눈금 종류·방향 (표시 선택 — DIRECTION #4)
-  display.axis = AXIS_KINDS.includes(display.axis) ? display.axis : 'calendar';
-  display.axisDir = AXIS_DIRS.includes(display.axisDir) ? display.axisDir : 'vertical';
+  // 세로축 눈금 (docs/SCALE.md) — 날짜 없는 보드는 '눈금 없음' 고정. 날짜 있는 보드의 '눈금 없음'은
+  // 한 칸 단위(slotUnit)를 가진다(없으면 월-주의 안쪽 단위 = 주).
+  display.dated = display.dated !== false;
+  display.scale = SCALE_KEYS.includes(display.scale) ? display.scale : 'month-week';
+  if (!display.dated) display.scale = 'none';
+  display.slotUnit = display.dated && display.scale === 'none'
+    ? (['day', 'week', 'month'].includes(display.slotUnit) ? display.slotUnit : 'week')
+    : null;
+  delete display.axis; delete display.axisDir;
   doc.meta.display = display;
+  const dated = display.dated;
+
+  // ── 시간축 구간 (사용자가 묶은 바깥 칸) — 모드마다 따로(mode). 같은 모드 안에서 겹치면 뒤엣것을 버린다.
+  const bandModes = SCALE_KEYS.filter((k) => SLOT_UNIT_OF[k]);
+  doc.bands = (Array.isArray(doc.bands) ? doc.bands : [])
+    .filter((b) => isObj(b) && ISO.test(b.from) && ISO.test(b.to))
+    .map((b, i) => ({
+      id: typeof b.id === 'string' && b.id ? b.id : `b${i}`,
+      mode: bandModes.includes(b.mode) ? b.mode : 'month-week',
+      from: b.from <= b.to ? b.from : b.to,
+      to: b.from <= b.to ? b.to : b.from,
+      label: typeof b.label === 'string' ? b.label : '',
+      // 세로 배율 — 1이면 실제 기간대로. 늘리기(최대 3배)·접기(0.02)를 다 담는다
+      scale: Number.isFinite(Number(b.scale)) ? Math.min(3, Math.max(0.02, Number(b.scale))) : 1,
+    }))
+    .sort((a, b) => a.mode.localeCompare(b.mode) || a.from.localeCompare(b.from))
+    .filter((b, i, arr) => {
+      const prev = arr[i - 1];
+      if (prev && prev.mode === b.mode && b.from <= prev.to) {
+        warnings.push(`구간 '${b.label || b.from}'이 앞 구간과 겹쳐 제외했습니다.`);
+        return false;
+      }
+      return true;
+    });
 
   // ── 담당 조직
   // 일정의 og가 문자열 값이라, 목록에 없는 값이 나오면 버리지 말고 목록에 넣는다.
@@ -333,9 +357,15 @@ export function normalize(doc) {
     n.og = typeof n.og === 'string' && n.og.trim() ? n.og.trim() : doc.orgs[0];
     n.note = typeof n.note === 'string' ? n.note : '';
 
-    if (!ISO.test(n.s)) n.s = doc.meta.start;
-    if (!ISO.test(n.e)) n.e = n.s;
-    if (n.e < n.s) n.e = n.s;                 // 종료는 시작 이상 (D-3, inclusive)
+    if (dated) {
+      if (!ISO.test(n.s)) n.s = doc.meta.start;
+      if (!ISO.test(n.e)) n.e = n.s;
+      if (n.e < n.s) n.e = n.s;               // 종료는 시작 이상 (D-3, inclusive)
+    } else {
+      // 날짜 없는 보드 — 날짜를 채우지 않는다(SYSTEM.md: 날짜는 선택). 있으면 그대로 둔다(다른 보드와 공유).
+      n.s = ISO.test(n.s) ? n.s : null;
+      n.e = n.s && ISO.test(n.e) && n.e >= n.s ? n.e : n.s;
+    }
     // 마일스톤도 기간(전시회 등)을 가질 수 있다. e===s면 점, e>s면 기간 마일스톤.
 
     n.pg = clampInt(n.pg, 0, 100, 0);
@@ -386,6 +416,7 @@ export function normalize(doc) {
     const fill = pl.fill ?? it.fill;
     const hd = pl.hd ?? it.hd;
     const w = pl.w ?? it.w;
+    const sl = isObj(pl.slot) ? pl.slot : null;
     n.place = {
       t: homeId,
       sp: run,
@@ -394,6 +425,11 @@ export function normalize(doc) {
       showNote: (pl.showNote ?? it.showNote) === true,   // 비고를 카드에 보일지 — 기본은 숨김
       // 색 채우기 — 팔레트 key만(모르는 값·HEX는 버린다). null = 채우지 않음.
       fill: FILL_KEYS.includes(fill) ? fill : null,
+      // 칸 — 날짜 없는 보드에서의 세로 위치(순서 위치, 배치). 날짜 있는 보드는 null.
+      slot: dated ? null : {
+        s: Math.max(0, Math.round(Number(sl?.s) || 0)),
+        len: Math.max(1, Math.round(Number(sl?.len) || 1)),
+      },
       // 세로 크기 강제(일 단위). 없거나 잘못됐으면 null = 기간대로 자동.
       hd: (typeof hd === 'number' && hd >= 1) ? Math.round(hd) : null,
       x: ratio(pl.x ?? it.x),

@@ -12,12 +12,15 @@ import { SCHEMA_VERSION } from '../core/schema.js';
 import { $, el, clear, button, icon, ICONS } from './dom.js';
 import { toast } from './toast.js';
 import { toggleTheme } from './theme.js';
-import { askText, askConfirm } from './dialog.js';
+import { askText, askConfirm, askChoice } from './dialog.js';
 import { openTrash } from './trash.js';
 import { openHelp } from './help.js';
 
-/** 빈 보드 — 오늘이 속한 달부터 6개월, 트랙 3개 */
-function blankDoc(name) {
+/**
+ * 빈 보드 — 오늘이 속한 달부터 6개월, 트랙 3개.
+ * scale이 'none'이면 날짜 없는 보드(일정은 칸만 가진다, docs/SCALE.md). 기간(meta)은 형식상 둔다.
+ */
+function blankDoc(name, scale = 'month-week') {
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth(), 1);
   const end = new Date(now.getFullYear(), now.getMonth() + 6, 0);
@@ -25,7 +28,10 @@ function blankDoc(name) {
 
   return {
     version: SCHEMA_VERSION,
-    meta: { start: iso(start), end: iso(end), name },
+    meta: {
+      start: iso(start), end: iso(end), name,
+      display: { scale, dated: scale !== 'none', slotUnit: null },
+    },
     orgs: [...DEFAULT_ORGS],
     tracks: [
       { id: 't0', lab: '', name: '트랙 1' },
@@ -112,9 +118,10 @@ export class Launcher {
   }
 
   #card(p) {
-    const period = p.start && p.end
-      ? `${String(p.start).replace(/-/g, '.')} — ${String(p.end).replace(/-/g, '.')}`
-      : '기간 미설정';
+    const period = p.dated === false ? '날짜 없는 보드'
+      : p.start && p.end
+        ? `${String(p.start).replace(/-/g, '.')} — ${String(p.end).replace(/-/g, '.')}`
+        : '기간 미설정';
 
     const open = () => this.#open(p.id);
 
@@ -185,9 +192,21 @@ export class Launcher {
       confirmLabel: '만들기',
     });
     if (!name) return;
+    // 눈금 — 표시 방식이라 나중에 설정에서 바꿀 수 있다. 단 '눈금 없음'은 날짜 없는 보드가 된다.
+    const scale = await askChoice({
+      title: '세로축 눈금',
+      message: '나중에 설정 › 표시에서 바꿀 수 있습니다.',
+      choices: [
+        { key: 'month-week', label: '월-주 (기본)', sub: '한 줄 = 1주 · 왼쪽 칸 = 월' },
+        { key: 'week-day', label: '주-일', sub: '한 줄 = 1일 · 왼쪽 칸 = 주' },
+        { key: 'quarter-month', label: '분기-월', sub: '한 줄 = 1개월 · 왼쪽 칸 = 분기' },
+        { key: 'none', label: '눈금 없음', sub: '날짜 없이 순서(칸)만 — 나중에 눈금 설정으로 날짜를 매길 수 있습니다' },
+      ],
+    });
+    if (!scale) return;
 
     try {
-      const id = await this.adapter.createProject(blankDoc(name), name);
+      const id = await this.adapter.createProject(blankDoc(name, scale), name);
       await this.#open(id);
     } catch (err) {
       toast('만들지 못했습니다: ' + err.message, 'warn');

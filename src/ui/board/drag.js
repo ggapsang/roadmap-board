@@ -1,19 +1,23 @@
 /**
  * 카드 드래그.
  *
- *   카드 본체     상하 = 일 단위 스냅 이동, 좌우 = 트랙 이동
- *   위 손잡이     시작일 조절
- *   아래 손잡이   종료일 조절
+ *   카드 본체     상하 = 정밀도 단위로 스냅 이동, 좌우 = 트랙 이동
+ *   위 손잡이     시작 조절
+ *   아래 손잡이   끝 조절
  *   오른쪽 손잡이 트랙 걸침 (칸 단위로 붙는다)
+ *
+ * 세로 위치는 timeline(core/timeline.js)을 거친다 — 날짜 있는 보드는 일 인덱스, 날짜 없는 보드는
+ * 칸 인덱스. 정밀도 단위(step)는 눈금 모드가 정한다: 주-일·월-주 1일 · 분기-월 1주 · 눈금 없음 1칸.
+ * 월 단위(눈금 없음의 한 칸이 월)는 달력 산술이라, 끝은 '다음 칸의 시작 − 1'로 옮긴다(말일 보정).
  *
  * 트랙 이동은 포인터가 실제로 올라가 있는 컬럼을 찾아 판정한다.
  * 레인 확장 때문에 컬럼 폭이 트랙마다 다르므로, 고정 폭으로 나눠 델타를 구하면
  * 폭이 넓은 트랙 위에서 커서와 카드가 어긋난다.
  */
-import { dayIndex, dateAt } from '../../core/dates.js';
+import { UNIT_DAYS } from '../../config/index.js';
 
 export function attachDrag(grid, {
-  store, view, getOrigin, getTotalDays, getScale, getOrderMode, onDragEnd,
+  store, view, getScale, getTimeline, onDragEnd,
 }) {
   let drag = null;
 
@@ -30,14 +34,16 @@ export function attachDrag(grid, {
 
   grid.addEventListener('pointerdown', (ev) => {
     if (store.readonly || ev.button !== 0) return;
-    if (getOrderMode?.()) return;     // 순서 모드(초안)에선 날짜 드래그 비활성
     if (view.textSelect) return;      // 텍스트 선택 모드에서는 이동하지 않는다
     const card = ev.target.closest('.ev');
     if (!card) return;
     const item = store.item(card.dataset.id);
     if (!item) return;
 
-    const origin = getOrigin();
+    // 드래그 동안은 누른 순간의 timeline을 쓴다 — 끄는 사이 축 시작이 바뀌어도 위치 기준이 흔들리지 않게
+    const tl = getTimeline();
+    const pos = tl.pos(item);
+    if (!pos) return;
     const cls = ev.target.classList;
     const mode = cls.contains('grip') ? 'size'
       : cls.contains('grip-top') ? 'size-top'
@@ -57,8 +63,9 @@ export function attachDrag(grid, {
       mode,
       x: ev.clientX,
       y: ev.clientY,
-      startDay: dayIndex(item.s, origin),
-      endDay: dayIndex(item.e, origin),
+      tl,
+      startDay: pos.s,
+      endDay: pos.e,
       startTrack: trackIndexAt(ev.clientX),
       homeTrack: store.trackIndex(item.place.t),
       hd0: item.place?.hd ?? null,
@@ -73,9 +80,12 @@ export function attachDrag(grid, {
 
   grid.addEventListener('pointermove', (ev) => {
     if (!drag) return;
-    // 접힌 구간에서는 1px이 하루보다 길다. 눈금을 거쳐 일수로 환산한다.
+    // 접힌 구간에서는 1px이 하루보다 길다. 눈금을 거쳐 위치로 환산한 뒤 정밀도 단위 개수(n)로.
     const scale = getScale();
-    const dDays = Math.round(scale.dayAt(scale.y(drag.startDay) + (ev.clientY - drag.y)) - drag.startDay);
+    const tl = drag.tl;
+    const raw = scale.dayAt(scale.y(drag.startDay) + (ev.clientY - drag.y)) - drag.startDay;
+    const n = Math.round(raw / (UNIT_DAYS[tl.step] ?? 1));
+    const dDays = n;                  // 0이 아니면 움직였다
     const pointerTrack = trackIndexAt(ev.clientX);
     const dTrack = pointerTrack - drag.startTrack;
 
@@ -138,17 +148,18 @@ export function attachDrag(grid, {
       drag.moved = true;
     }
 
-    const origin = getOrigin();
+    // 끝(포함) 옮기기 — 다음 칸의 시작을 n단위 옮기고 하루(한 칸) 뺀다. 월 단위도 말일이 맞다.
+    const endAdd = (e, k) => tl.add(e + 1, k) - 1;
 
     store.commit('드래그', () => {
       const item = store.item(drag.id);
       if (!item) return;
       if (drag.mode === 'move') {
-        const length = drag.endDay - drag.startDay;
         // 아래로는 막지 않는다 — 끌어 내리면 축이 그만큼 늘어난다(잘라낸 빈 구간 복구).
-        const s = Math.max(0, drag.startDay + dDays);
-        item.s = dateAt(origin, s);
-        item.e = dateAt(origin, s + length);
+        // 위로는 0에서 멈춘다 — 길이를 지키며 멈추도록 n을 줄인다.
+        let dn = n;
+        while (dn < 0 && tl.add(drag.startDay, dn) < 0) dn += 1;
+        tl.set(item, tl.add(drag.startDay, dn), endAdd(drag.endDay, dn));
         const sp = item.place.sp ?? 1;
         const maxTrack = store.tracks.length - sp;
         const k = Math.max(0, Math.min(maxTrack, drag.startTrack + dTrack));
@@ -161,20 +172,21 @@ export function attachDrag(grid, {
         if (drag.hd0 != null) {
           // 크기 강제: 위 가장자리를 끌면 바닥(아래)은 고정하고 위로/아래로 늘고 줄인다.
           const bottom = drag.startDay + drag.hd0;
-          const newS = Math.max(0, Math.min(bottom - 1, drag.startDay + dDays));
-          item.s = dateAt(origin, newS);
+          const newS = Math.max(0, Math.min(bottom - 1, tl.add(drag.startDay, n)));
+          tl.set(item, newS, Math.max(newS, drag.endDay));
           item.place.hd = Math.max(1, bottom - newS);
         } else {
-          // 보통 카드: 위쪽을 끌면 시작일이 움직인다. 종료일은 그대로.
-          const s = Math.max(0, Math.min(drag.endDay, drag.startDay + dDays));
-          item.s = dateAt(origin, s);
+          // 보통 카드: 위쪽을 끌면 시작이 움직인다. 끝은 그대로.
+          const s = Math.max(0, Math.min(drag.endDay, tl.add(drag.startDay, n)));
+          tl.set(item, s, drag.endDay);
         }
       } else if (drag.hd0 != null) {
-        // 세로 크기 강제 — 날짜는 그대로, 세로 길이(일)만 늘리고 줄인다
-        item.place.hd = Math.max(1, Math.round(drag.hd0 + dDays));
+        // 세로 크기 강제 — 날짜(칸)는 그대로, 세로 길이(위치 단위)만 늘리고 줄인다
+        const bottom = endAdd(drag.startDay + drag.hd0 - 1, n) + 1;
+        item.place.hd = Math.max(1, Math.round(bottom - drag.startDay));
       } else {
-        // 종료일도 아래로는 막지 않는다 — 끌어 내리면 축이 늘어난다.
-        item.e = dateAt(origin, Math.max(drag.startDay, drag.endDay + dDays));
+        // 끝도 아래로는 막지 않는다 — 끌어 내리면 축이 늘어난다.
+        tl.set(item, drag.startDay, Math.max(drag.startDay, endAdd(drag.endDay, n)));
       }
     });
   });

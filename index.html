@@ -125,9 +125,14 @@
         <div class="fld"><label for="i-type">유형</label><select id="i-type"></select></div>
         <div class="fld"><label for="i-org">담당</label><select id="i-org"></select></div>
       </div>
-      <div class="two">
+      <div class="two" id="i-dates">
         <div class="fld"><label for="i-start">시작</label><input id="i-start" type="date"></div>
         <div class="fld"><label for="i-end">종료</label><input id="i-end" type="date"></div>
+      </div>
+      <!-- 날짜 없는 보드 — 날짜 대신 칸 위치·길이 (docs/SCALE.md §6) -->
+      <div class="two" id="i-slots" hidden>
+        <div class="fld"><label for="i-slot">칸 위치</label><input id="i-slot" type="number" min="1" step="1"></div>
+        <div class="fld"><label for="i-slotlen">길이 (칸)</label><input id="i-slotlen" type="number" min="1" step="1"></div>
       </div>
       <div class="fld">
         <label>소속 트랙 <span class="muted desc">고른 트랙에 놓입니다 · 이웃한 트랙은 한 장으로 걸칩니다</span></label>
@@ -233,6 +238,12 @@
 
     <div class="sect">표시</div>
     <div class="fld">
+      <label for="v-scale">세로축 눈금 <span class="muted desc">바깥 칸 – 안쪽 칸. 표시만 바뀌고 일정은 그대로입니다</span></label>
+      <select id="v-scale"></select>
+      <p class="note" id="v-scale-note" hidden></p>
+      <button type="button" class="btn outline" id="v-calendar" hidden>눈금 설정…</button>
+    </div>
+    <div class="fld">
       <label for="v-arrow">선후행 화살표 굵기 <output id="v-arrow-out"></output></label>
       <input id="v-arrow" type="range">
     </div>
@@ -247,9 +258,6 @@
     <div class="fld">
       <label for="v-font">카드 글자 크기 <output id="v-font-out"></output></label>
       <input id="v-font" type="range">
-    </div>
-    <div class="fld">
-      <label class="chk"><input id="v-order" type="checkbox"> 순서 축 (날짜 대신 선행 순서로 배치 · 초안)</label>
     </div>
     <p class="note">이 설정은 프로젝트에 함께 저장됩니다.
       글자 크기는 <b>Ctrl + =</b> / <b>Ctrl + -</b> 로도 조절합니다.</p>
