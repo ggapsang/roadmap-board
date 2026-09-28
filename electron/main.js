@@ -43,6 +43,7 @@ function resolveDbPath() {
  */
 function adoptLegacyDatabase(target) {
   if (fs.existsSync(target)) return;
+  if (process.argv.includes('--db')) return;   // 옛 DB는 기본 위치의 것 — --db로 따로 고른 파일에 끼워 넣지 않는다
   const legacy = path.join(path.dirname(app.getPath('userData')), 'roadmap-board', 'roadmap.db');
   if (!fs.existsSync(legacy)) return;
   try {
@@ -53,6 +54,24 @@ function adoptLegacyDatabase(target) {
     console.log('[db] 이전 버전(Roadmap Board)의 데이터를 이어받았습니다:', legacy);
   } catch (err) {
     console.error('[db] 이전 데이터를 옮기지 못했습니다:', err);
+  }
+}
+
+/**
+ * 설치판 첫 실행 — DB가 아직 없으면 설치 파일에 든 예시 DB(resources/example.db)로 시작한다.
+ * 만드는 법은 scripts/make-example-db.mjs. 이미 DB가 있으면(쓰던 사람·재설치) 절대 덮지 않는다.
+ * 개발 실행(npm start)에서는 쓰지 않는다 — 예시가 필요하면 런처의 '예시 로드맵'이 있다.
+ */
+function seedExampleDatabase(target) {
+  if (!app.isPackaged || fs.existsSync(target)) return;
+  const example = path.join(process.resourcesPath, 'example.db');
+  if (!fs.existsSync(example)) return;
+  try {
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.copyFileSync(example, target);
+    console.log('[db] 첫 실행 — 예시 DB로 시작합니다:', example);
+  } catch (err) {
+    console.error('[db] 예시 DB를 복사하지 못했습니다:', err);
   }
 }
 
@@ -2378,7 +2397,7 @@ function registerIpc() {
 
 app.whenReady().then(() => {
   const file = resolveDbPath();
-  if (!SMOKE && !REPRO) adoptLegacyDatabase(file);
+  if (!SMOKE && !REPRO) { adoptLegacyDatabase(file); seedExampleDatabase(file); }
   console.log('[db] 파일:', file);
   db = openDatabase(file);
   repo = new BoardRepository(db);   // 프로젝트는 런처에서 연다

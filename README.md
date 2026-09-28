@@ -43,18 +43,23 @@ DB 기본 위치는 `%APPDATA%/wolfpack/wolfpack.db` — 메뉴의 **파일 › 
 다른 사람에게 줄 때는 설치 파일을 만든다 (Windows 64비트).
 
 ```bash
+npm run example-db   # (선택) 지금 쓰는 DB를 예시로 떠 둔다 → build/example.db
 npm run dist
 ```
+
+`build/example.db`가 있으면 설치 파일에 함께 들어가, 받는 사람이 **처음 실행할 때 그 예시 보드들로 시작**한다
+(이미 DB가 있는 PC에서는 덮어쓰지 않는다). 예시에는 변경 이력·휴지통을 빼고 담는다. 원본 DB는 건드리지 않고,
+`build/example.db`는 저장소에 올라가지 않는다(`.gitignore`의 `*.db`). 예시를 새로 하려면 `npm run example-db`를 다시 실행한다.
 
 `dist/`에 두 가지가 생긴다.
 
 | 파일 | 설명 |
 |---|---|
 | `WOLFPACK Setup {버전}.exe` | 설치 파일. 관리자 권한 없이 사용자 계정에 설치되고, 설치 경로를 바꿀 수 있다. 시작 메뉴·바탕화면 바로가기와 제거 프로그램이 함께 생긴다 |
-| `WOLFPACK {버전}.exe` | 포터블. 설치 없이 바로 실행 |
+| `WOLFPACK {버전}.exe` | 포터블. 설치 없이 exe 하나로 실행(USB·아무 폴더). 실행할 때마다 임시 폴더에 풀어서 켜므로 조금 느리고, 바로가기·제거 항목이 없다 |
 
 - **처음 실행할 때 "Windows의 PC 보호" 경고가 뜬다** — 코드 서명 인증서가 없어서다. **추가 정보 › 실행**을 누르면 된다.
-- 데이터는 각자 PC의 `%APPDATA%\wolfpack\wolfpack.db`에 저장된다. `npm start`로 쓰는 것과 **같은 폴더**라,
+- 데이터는 설치판·포터블 모두 각자 PC의 `%APPDATA%\wolfpack\wolfpack.db`에 저장된다(포터블도 exe 옆이 아니다). `npm start`로 쓰는 것과 **같은 폴더**라,
   한 PC에서 설치판과 `npm start`를 함께 쓰면 같은 보드가 보인다(둘을 동시에 켜 두지는 말 것).
 - 새 버전을 낼 때는 `package.json`의 `version`을 올린 뒤 다시 만든다. 설치 파일을 다시 실행하면 덮어 설치되고 데이터는 그대로 남는다.
 - 다른 사람과 보드를 나눌 때는 **데이터 › 반출**(JSON)로 파일을 주고받는다 — DB는 PC마다 따로다.
