@@ -75,6 +75,14 @@ function seedExampleDatabase(target) {
   }
 }
 
+// 스모크·재현은 창이 다른 창에 가려져도 끝까지 돌아야 한다. Chromium은 가려진 창의 그리기·타이머를 늦추거나
+// 멈추는데(requestAnimationFrame이 안 옴), 그러면 캡처·렌더 대기 단계가 제멋대로 시간 초과가 난다.
+if (SMOKE || REPRO) {
+  app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+  app.commandLine.appendSwitch('disable-renderer-backgrounding');
+  app.commandLine.appendSwitch('disable-background-timer-throttling');
+}
+
 protocol.registerSchemesAsPrivileged([{
   scheme: 'app',
   privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
@@ -116,6 +124,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      backgroundThrottling: !(SMOKE || REPRO),   // 위와 같은 이유 — 검사 중엔 가려져도 늦추지 않는다
     },
   });
 
@@ -1713,6 +1722,59 @@ async function runSmoke(target) {
     console.log('[smoke] trash-ui ' + JSON.stringify(trashUi));
   }
 
+  // 첫 화면 오른쪽 위 — 그래프 · 테마 · 휴지통 순, 그래프는 첫 화면 위로 열린다
+  let launcherGraph = null;
+  if (wrote) {
+    launcherGraph = await target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+      await r.launcher.show({ closable: true });
+      await sleep(150);
+      const order = [...document.querySelectorAll('#launcher .lhead .btn.icon')].filter((b) => !b.hidden).map((b) => b.id);
+      // 도움말 — 팝업, 절마다 목차, 표, 시스템 개념 이야기는 없다, Esc로 닫고 F1로 연다
+      document.getElementById('l-help').click();
+      for (let i = 0; i < 30 && !document.querySelector('.help-sec h3'); i += 1) await sleep(100);
+      const hb = document.querySelector('.help-body');
+      const help = {
+        sections: document.querySelectorAll('.help-sec').length,
+        toc: document.querySelectorAll('.help-toc-item').length,
+        tables: document.querySelectorAll('.help-body table').length,
+        noSystemTalk: !/순서 기반 이벤트|전개 시스템/.test(hb?.textContent ?? ''),
+      };
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await sleep(80);
+      help.escClosed = !document.querySelector('.help-scrim');
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'F1', bubbles: true }));
+      for (let i = 0; i < 20 && !document.querySelector('.help-sec'); i += 1) await sleep(50);
+      help.f1 = !!document.querySelector('.help-scrim');
+      document.querySelector('.help-scrim')?.remove();
+      const boardBefore = r.adapter.projectId;
+      const tabsBefore = r.tabs.tabs.length;
+      document.getElementById('l-graph').click();
+      await sleep(700);
+      const gv = document.getElementById('graphView');
+      const gTab = r.tabs.tabs.findIndex((t) => t.kind === 'graph');
+      const ownTab = gTab >= 0 && r.tabs.active === gTab && r.tabs.tabs[gTab].boardId == null
+        && document.querySelectorAll('#tabbar .tab.tab-graph').length === 1 && r.tabs.tabs.length === tabsBefore + 1;
+      const shown = !gv.hidden && document.getElementById('launcher').hidden;
+      const nodes = document.querySelectorAll('#graphView .gv-node').length;
+      // 툴바에서 다시 눌러도 그래프 탭은 하나
+      document.getElementById('btnGraph').click();
+      await sleep(200);
+      const single = r.tabs.tabs.filter((t) => t.kind === 'graph').length === 1;
+      // 그래프 탭에선 보드 단축키가 뒤의 보드에 가지 않는다
+      const undoBefore = r.store.canUndo;
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
+      const noBoardKeys = r.store.canUndo === undoBefore;
+      // 탭 ×로 닫으면 보던 보드 탭으로
+      document.querySelector('#tabbar .tab.tab-graph .tab-x').click();
+      await sleep(300);
+      const closed = gv.hidden && !r.tabs.tabs.some((t) => t.kind === 'graph') && r.adapter.projectId === boardBefore;
+      return { order, help, ownTab, shown, nodes, single, noBoardKeys, closed };
+    })()`);
+    console.log('[smoke] launcher-graph ' + JSON.stringify(launcherGraph));
+  }
+
   // 스타일 탭(채우기·비고 표시) · 매핑 탭(제목·'편집') · 팝업 끌어 옮기기
   let styleUi = null;
   if (wrote) {
@@ -2009,8 +2071,9 @@ async function runSmoke(target) {
         const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
         const savedPref = localStorage.getItem('wolfpack:graph-view');   // 사용자 설정 — 끝나고 되돌린다
         document.getElementById('btnGraph').click();
-        await sleep(600);
         const gv = r.graphView;
+        for (let i = 0; i < 40 && !gv.graph; i += 1) await sleep(100);
+        if (!gv.graph) return { error: 'graph not ready', tabs: JSON.stringify(r.tabs.tabs), active: r.tabs.active, hidden: gv.root.hidden, launcher: r.launcher.visible, count: gv.count.textContent };
         const circles = document.querySelectorAll('#graphView .gv-node').length;
         const ids = [...document.querySelectorAll('#graphView .gv-node')].map((c) => c.dataset.id);
         const uniq = new Set(ids).size === ids.length;
@@ -2041,15 +2104,16 @@ async function runSmoke(target) {
         slider.value = '0.5'; slider.dispatchEvent(new Event('input', { bubbles: true }));
         await sleep(200);
         // 다시 열면 같은 배치(결정적)
-        gv.close(); await sleep(50);
+        r.tabs.closeTab(r.tabs.tabs.findIndex((t) => t.kind === 'graph')); await sleep(150);
         document.getElementById('btnGraph').click();
-        await sleep(600);
+        for (let i = 0; i < 40 && !gv.graph; i += 1) await sleep(100);
         const posB = gv.graph.nodes.map((n) => n.x.toFixed(3) + ',' + n.y.toFixed(3)).join(';');
         const hasStorage = !!localStorage.getItem('wolfpack:graph-view');
         if (savedPref == null) localStorage.removeItem('wolfpack:graph-view'); else localStorage.setItem('wolfpack:graph-view', savedPref);
-        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-        await sleep(80);
-        return { nodes: gv.graph.nodes.length, circles, uniq, edgeLabelsIdle, arrows, hoverLabels, hoverKeptLayout, pinned, released, sameReopen: posA === posB, closed: document.getElementById('graphView').hidden, hasStorage };
+        const nodeCount = gv.graph.nodes.length;             // 탭을 닫으면 그래프가 비워진다(다음엔 처음부터)
+        r.tabs.closeTab(r.tabs.tabs.findIndex((t) => t.kind === 'graph'));
+        await sleep(150);
+        return { nodes: nodeCount, circles, uniq, edgeLabelsIdle, arrows, hoverLabels, hoverKeptLayout, pinned, released, sameReopen: posA === posB, closed: document.getElementById('graphView').hidden, hasStorage };
       })();
       const guard = new Promise((res) => setTimeout(() => res({ error: 'timeout' }), 15000));
       return Promise.race([run.catch((e) => ({ error: String(e) })), guard]);
@@ -2083,12 +2147,15 @@ async function runSmoke(target) {
     await show('rel', 'light');
     await target.webContents.executeJavaScript(`(async () => { document.querySelector('#i-parent > button.btn').click(); await new Promise((r) => setTimeout(r, 300)); return true; })()`);
     await capture(target, 'parent-child-popup');
+    await target.webContents.executeJavaScript(`(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'F1', bubbles: true })); await new Promise((r) => setTimeout(r, 600)); return true; })()`);
+    await capture(target, 'help-popup');
+    await target.webContents.executeJavaScript(`(() => { document.querySelector('.help-scrim')?.remove(); return true; })()`);
     for (const theme of ['light', 'dark']) {
-      await target.webContents.executeJavaScript(`(async () => { document.documentElement.dataset.theme = ${JSON.stringify(theme)}; document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); document.getElementById('btnGraph').click(); await new Promise((r) => setTimeout(r, 700)); return true; })()`);
+      await target.webContents.executeJavaScript(`(async () => { document.documentElement.dataset.theme = ${JSON.stringify(theme)}; document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await new Promise((r) => setTimeout(r, 100)); document.getElementById('btnGraph').click(); await new Promise((r) => setTimeout(r, 700)); return true; })()`);
       await capture(target, `graph-${theme}`);
       await target.webContents.executeJavaScript(`(async () => { const gv = window.__roadmap.graphView; const big = [...gv.graph.nodes].sort((a, b) => b.degree - a.degree)[0]; document.querySelector('#graphView .gv-node[data-id="' + big.id + '"]').dispatchEvent(new PointerEvent('pointerover', { bubbles: true })); await new Promise((r) => setTimeout(r, 120)); return true; })()`);
       await capture(target, `graph-hover-${theme}`);
-      await target.webContents.executeJavaScript(`(() => { window.__roadmap.graphView.close(); return true; })()`);
+      await target.webContents.executeJavaScript(`(() => { const t = window.__roadmap.tabs; t.closeTab(t.tabs.findIndex((x) => x.kind === 'graph')); return true; })()`);
     }
     await target.webContents.executeJavaScript(`(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return true; })()`);
     await target.webContents.executeJavaScript(`(() => {
@@ -2114,6 +2181,12 @@ async function runSmoke(target) {
     && saveModel?.tr?.purged === true && saveModel?.tr?.emptied === true
     && staleTab?.merged === true && staleTab?.marked === true && staleTab?.fresh === true && staleTab?.cleared === true
     && trashUi?.leftBoard === true && trashUi?.btnShown === true && trashUi?.listed === true
+    && JSON.stringify(launcherGraph?.order) === JSON.stringify(['l-help', 'l-graph', 'l-theme', 'l-trash', 'l-close'])
+    && launcherGraph?.help?.sections >= 8 && launcherGraph?.help?.toc === launcherGraph?.help?.sections - 1
+    && launcherGraph?.help?.tables >= 3 && launcherGraph?.help?.noSystemTalk === true && launcherGraph?.help?.escClosed === true
+    && launcherGraph?.help?.f1 === true
+    && launcherGraph?.ownTab === true && launcherGraph?.shown === true && launcherGraph?.nodes > 0
+    && launcherGraph?.single === true && launcherGraph?.noBoardKeys === true && launcherGraph?.closed === true
     && trashUi?.asked === true && trashUi?.gone === true && trashUi?.purged === true && trashUi?.closed === true
     && styleUi?.tabName === '스타일' && styleUi?.filled === true && styleUi?.painted === true && styleUi?.msFilled === true && styleUi?.childFilled === true && styleUi?.dbFill === 'blue'
     && styleUi?.hiddenByDefault === true && styleUi?.noteShown === true && styleUi?.noteHidden === true

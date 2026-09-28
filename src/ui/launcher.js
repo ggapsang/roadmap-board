@@ -14,6 +14,7 @@ import { toast } from './toast.js';
 import { toggleTheme } from './theme.js';
 import { askText, askConfirm } from './dialog.js';
 import { openTrash } from './trash.js';
+import { openHelp } from './help.js';
 
 /** 빈 보드 — 오늘이 속한 달부터 6개월, 트랙 3개 */
 function blankDoc(name) {
@@ -41,7 +42,7 @@ export class Launcher {
    * @param {import('../core/storage.js').StorageAdapter} opts.adapter
    * @param {(id:number) => Promise<void>} opts.onOpen
    */
-  constructor({ adapter, onOpen, onRenamed, onDeleted }) {
+  constructor({ adapter, onOpen, onRenamed, onDeleted, onGraph }) {
     this.adapter = adapter;
     this.onOpen = onOpen;
     this.onRenamed = onRenamed;
@@ -58,6 +59,11 @@ export class Launcher {
     // 휴지통 — 목록을 바로 펼치지 않고 팝업으로만 (docs/SAVE.md §7)
     $('l-trash').hidden = !adapter.hasTrash;
     $('l-trash').addEventListener('click', () => openTrash(this.adapter));
+    // 도움말 — 프로그램 사용법(docs/HELP.md)을 팝업으로
+    $('l-help').addEventListener('click', () => openHelp());
+    // 그래프 — 보드를 열지 않아도 모든 이벤트를 본다(그래프는 보드가 아니라 저장소 전체를 그린다)
+    $('l-graph').hidden = !onGraph;
+    $('l-graph').addEventListener('click', () => onGraph?.());
 
     $('l-search').addEventListener('input', (e) => { this._query = e.target.value; this.#paint(); });
     $('l-sort').addEventListener('change', (e) => { this._sort = e.target.value; this.#paint(); });

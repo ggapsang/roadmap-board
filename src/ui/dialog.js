@@ -23,7 +23,7 @@ export function dialogOpen() {
 }
 
 /** 끌어도 드래그가 시작되지 않는 곳 — 입력·버튼·목록은 원래 동작(클릭·선택·스크롤)을 지킨다 */
-const NO_DRAG = 'input,textarea,select,button,a,label,[contenteditable],.dlg-tree,.trash-list,.dlg-choices,.dlg-tabs';
+const NO_DRAG = 'input,textarea,select,button,a,label,[contenteditable],.dlg-tree,.trash-list,.dlg-choices,.dlg-tabs,.help-body,.help-toc';
 /** 이만큼 움직여야 드래그로 본다(px) — 그 전에는 클릭 */
 const DRAG_SLOP = 3;
 

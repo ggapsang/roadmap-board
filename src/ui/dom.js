@@ -66,6 +66,7 @@ export const ICONS = {
   back:   '<path d="M19 12H5"/><path d="m11 18-6-6 6-6"/>',
   folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
   check:  '<path d="m5 12 5 5 9-11"/>',
+  graph:  '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="9" cy="18" r="2.5"/><path d="M8.2 7.2 15.7 8M7 8.3l1.3 7.4M16.6 10.1l-5.9 6.2"/>',
   // 글자 세로 정렬 — 기준선 + 블록 위치로 위/가운데/아래를 나타낸다
   alignTop:    '<path d="M5 4h14"/><rect x="8" y="8" width="8" height="5" rx="1"/>',
   alignMiddle: '<path d="M4 12h3M17 12h3"/><rect x="8" y="9" width="8" height="6" rx="1"/>',

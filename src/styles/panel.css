@@ -294,3 +294,31 @@ body.panel-open{--panel-w:var(--panel-size)}
 .fill-sw[data-fill="blue"]{--sw:var(--fill-blue)}
 .fill-sw[data-fill="purple"]{--sw:var(--fill-purple)}
 .fill-sw[data-fill="pink"]{--sw:var(--fill-pink)}
+
+/* ── 도움말 팝업 (src/ui/help.js, docs/HELP.md) ─────────── */
+.help-dlg{max-width:920px;width:94vw;height:min(82vh,860px);display:flex;flex-direction:column;padding:var(--u4) var(--u5)}
+.help-head{display:flex;align-items:center;gap:var(--u3);padding-bottom:var(--u3);border-bottom:1px solid var(--border-subtle)}
+.help-head h2{margin:0}
+.help-head .btn.sm{margin-top:0}
+.help-main{flex:1;min-height:0;display:flex;gap:var(--u4);margin-top:var(--u3)}
+.help-toc{flex:0 0 180px;overflow:auto;display:flex;flex-direction:column;gap:2px;cursor:auto}
+.help-toc-item{appearance:none;border:0;background:none;text-align:left;padding:var(--u1-5) var(--u2);
+  border-radius:var(--r-control);font-size:13px;color:var(--text-secondary);cursor:pointer}
+.help-toc-item:hover{background:var(--bg-hover);color:var(--text-primary)}
+.help-body{flex:1;min-width:0;overflow:auto;padding-right:var(--u2);cursor:auto;user-select:text;
+  font-size:13px;line-height:21px;color:var(--text-primary)}
+.help-body:focus{outline:none}
+.help-sec{padding-bottom:var(--u4)}
+.help-body h3{margin:var(--u2) 0 var(--u2);font-size:16px;line-height:24px;font-weight:600}
+.help-body h4{margin:var(--u3) 0 var(--u1);font-size:14px;line-height:20px;font-weight:600}
+.help-body p{margin:0 0 var(--u2)}
+.help-body ul{margin:0 0 var(--u2);padding-left:var(--u5)}
+.help-body li{margin:2px 0}
+.help-body code{font-family:ui-monospace,Consolas,monospace;font-size:12px;padding:1px var(--u1);
+  border-radius:var(--u1);background:var(--bg-hover)}
+.help-body strong{font-weight:600}
+.help-body table{width:100%;border-collapse:collapse;margin:0 0 var(--u3);font-size:12.5px}
+.help-body th,.help-body td{border-bottom:1px solid var(--border-subtle);padding:var(--u1-5) var(--u2);text-align:left;vertical-align:top}
+.help-body th{font-weight:600;color:var(--text-secondary);background:var(--bg-hover)}
+.help-body td:first-child{white-space:nowrap;font-weight:500}
+.help-body blockquote{margin:0 0 var(--u2);padding:var(--u2) var(--u3);border-left:3px solid var(--border-default);color:var(--text-secondary)}

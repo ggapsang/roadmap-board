@@ -305,10 +305,15 @@
         <h1>WOLFPACK</h1>
         <p>보드를 고르거나 새로 만듭니다.</p>
       </div>
-      <button class="btn icon" id="l-trash" type="button" title="휴지통 — 보드에서 빠진 이벤트" aria-label="휴지통" hidden>
-        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13"/></svg></button>
+      <!-- 오른쪽 위 — 도움말 · 그래프 · 테마 · 휴지통 순 (닫기 X는 닫을 수 있을 때만 맨 끝에) -->
+      <button class="btn icon" id="l-help" type="button" title="도움말 (F1)" aria-label="도움말">
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.2-2.5 3.9"/><path d="M12 17.2h.01"/></svg></button>
+      <button class="btn icon" id="l-graph" type="button" title="그래프 — 모든 보드의 이벤트와 포함·관계를 한눈에 (읽기 전용)" aria-label="그래프" hidden>
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="9" cy="18" r="2.5"/><path d="M8.2 7.2 15.7 8M7 8.3l1.3 7.4M16.6 10.1l-5.9 6.2"/></svg></button>
       <button class="btn icon" id="l-theme" type="button" title="테마 전환" aria-label="테마 전환">
         <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9Z"/></svg></button>
+      <button class="btn icon" id="l-trash" type="button" title="휴지통 — 보드에서 빠진 이벤트" aria-label="휴지통" hidden>
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13"/></svg></button>
       <button class="btn icon" id="l-close" type="button" title="닫기" aria-label="닫기" hidden>
         <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
     </div>

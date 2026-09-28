@@ -1,7 +1,8 @@
 /* ── 그래프 뷰 (src/ui/graph.js) — 표현 층 · 읽기 전용 ─────────────
    모든 이벤트가 같은 원(크기만 다름, G-07·G-08). 엣지는 굵기 같고 색 계열 넷(G-14), 화살촉(G-15).
    호버·선택은 색·불투명도만(G-28). 떠 있는 층이 아니라 보드 자리를 덮는 작업 화면이라 그림자 없음. */
-.graphview{position:fixed;top:var(--tab-h);left:0;right:0;bottom:0;z-index:89;
+/* 보드와 무관한 독립 탭 — 보드 화면 위를 덮는다(첫 화면 z:90보다 위, 팝업 z:120보다 아래) */
+.graphview{position:fixed;top:var(--tab-h);left:0;right:0;bottom:0;z-index:95;
   background:var(--bg-canvas);display:flex;flex-direction:column}
 .graphview[hidden]{display:none}
 .gv-bar{display:flex;align-items:center;gap:var(--u3);padding:var(--u2) var(--u4);

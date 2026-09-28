@@ -11,8 +11,7 @@
  */
 import { GRAPH } from '../config/index.js';
 import { buildGraph, initialLayout, createSimulation, settle } from '../core/graph.js';
-import { $, el, clear, icon, ICONS } from './dom.js';
-import { dialogOpen } from './dialog.js';
+import { $, el, clear } from './dom.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const svg = (tag, attrs = {}) => {
@@ -102,31 +101,31 @@ export class GraphView {
         el('label.gv-check', {}, [hide, document.createTextNode('관계 없는 이벤트 숨기기')]),
         el('button.btn.outline.sm', { type: 'button', text: '맞춤', title: '전체가 보이게', on: { click: () => this.fit() } }),
       ]),
-      el('div.grow'),
-      el('button.btn.icon', { type: 'button', title: '닫기 (Esc)', attrs: { 'aria-label': '그래프 닫기' }, on: { click: () => this.close() } }, [icon(ICONS.close)]),
     ]);
     const note = el('p.gv-note', { text: '읽기 전용 — 끌기·확대는 보기만 바꿉니다. 세로는 소속의 깊이, 가로는 순서입니다. 두 중력을 0으로 두면 방향 없는 배치가 됩니다.' });
     this.stage = el('div.gv-stage', {}, [this.svg, this.info]);
     this.root.replaceChildren(bar, el('div.gv-sub', {}, [this.legend, note]), this.stage);
     this.#bindView();
-
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && this.visible && !dialogOpen()) { e.stopPropagation(); this.close(); }
-    }, true);
   }
 
   // ── 열기·닫기·데이터 ─────────────────────────────────────
 
-  async open() {
+  /**
+   * 그래프 탭을 보인다 — 보드와 무관한 독립 탭(BoardTabs가 부른다). 처음이면 결정적 배치로 새로 그리고,
+   * 탭을 오가다 돌아오면 보던 배치·확대는 그대로 두고 데이터만 새로 받는다(4.6).
+   */
+  async show() {
     this.root.hidden = false;
-    this.selected = null;
     this.hover = null;                                     // 지난번 호버가 남아 처음부터 흐려지지 않게
-    await this.load({ keepPositions: false, fit: true });
+    if (!this.graph) { this.selected = null; await this.load({ keepPositions: false, fit: true }); }
+    else await this.load({ keepPositions: true });
   }
 
-  close() {
+  /** 가린다. reset이면(탭을 닫음) 다음에 열 때 처음부터 — 같은 데이터면 같은 배치(G-22) */
+  hide({ reset = false } = {}) {
     this.root.hidden = true;
     this.sim?.stop();
+    if (reset) { this.graph = null; this.selected = null; this.view = { k: 1, x: 0, y: 0 }; }
   }
 
   /**

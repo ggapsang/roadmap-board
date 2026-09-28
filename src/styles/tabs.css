@@ -20,6 +20,8 @@
   background:var(--accent);pointer-events:none;z-index:2}
 body.reordering-tabs{user-select:none;cursor:grabbing}
 .tab-name{overflow:hidden;text-overflow:ellipsis}
+.tab-graph>.ic{width:14px;height:14px;flex:none;color:var(--text-tertiary)}
+.tab-graph.active>.ic{color:var(--text-secondary)}
 
 .tab-x{display:inline-flex;align-items:center;justify-content:center;flex:none;
   width:var(--u5);height:var(--u5);border:0;border-radius:var(--r-control);

@@ -26,7 +26,8 @@
       "src/**/*",
       "electron/**/*",
       "package.json",
-      "assets/**/*"
+      "assets/**/*",
+      "docs/HELP.md"
     ],
     "asarUnpack": [
       "**/*.node"

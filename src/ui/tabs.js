@@ -13,6 +13,9 @@
  *   탭 클릭    그 보드로 전환 (캐시가 있으면 즉시)
  *   탭 끌기    순서 바꾸기 (브라우저처럼)
  *   탭 ×       탭 닫기 (마지막 하나면 선택 화면으로)
+ *
+ * 탭은 세 종류다 — 보드 선택(boardId null), 보드(boardId), 그래프(kind 'graph'). 그래프는 어느 보드에도
+ * 속하지 않는다(모든 보드의 이벤트를 그린다) — 보드와 무관한 독립 탭이고, 하나만 연다.
  */
 import { $, el, clear, icon, ICONS } from './dom.js';
 import { attachTabReorder } from './reorder.js';
@@ -27,14 +30,15 @@ export class BoardTabs {
    * @param {()=>object} o.getDoc         현재 활성 문서
    * @param {()=>string} o.boardName      현재 열린 보드 이름
    */
-  constructor({ mount, launcher, openProject, adoptCached, getDoc, boardName }) {
+  constructor({ mount, launcher, graph, openProject, adoptCached, getDoc, boardName }) {
     this.mount = mount;
     this.launcher = launcher;
+    this.graph = graph;    // 그래프 뷰 — show()/hide({reset}) (보드와 무관)
     this.openProject = openProject;
     this.adoptCached = adoptCached;
     this.getDoc = getDoc;
     this.boardName = boardName;
-    this.tabs = [];        // [{ key, boardId:number|null, name }]
+    this.tabs = [];        // [{ key, boardId:number|null, name, kind?:'graph' }]
     this.active = -1;
     this.seq = 0;
     this.docs = new Map();  // boardId -> 메모리 문서(살아 있는 참조)
@@ -62,6 +66,12 @@ export class BoardTabs {
 
   #cur() { return this.tabs[this.active]; }
 
+  /** 보드 선택 탭인가 (그래프 탭은 아니다) */
+  #isPicker(t) { return !!t && t.boardId == null && t.kind !== 'graph'; }
+
+  /** 그래프 탭이 지금 보이는가 — 그 동안 보드 단축키(되돌리기 등)는 먹지 않는다 */
+  get graphActive() { return this.#cur()?.kind === 'graph'; }
+
   /** 활성 탭을 떠나기 전, 그 보드의 현재 문서를 캐시에 붙들어 둔다. */
   #stash() {
     const t = this.#cur();
@@ -71,6 +81,13 @@ export class BoardTabs {
   /** 활성 탭 상태에 맞춰 런처를 띄우거나 보드를 보인다. */
   async #apply() {
     const t = this.#cur();
+    if (t?.kind === 'graph') {                 // 보드와 무관 — 보드 문서는 그대로 두고 그래프만 보인다
+      this.launcher.hide();
+      this.render();
+      await this.graph?.show();
+      return;
+    }
+    this.graph?.hide();
     if (!t || t.boardId == null) {
       this.launcher.show({ closable: false });
       this.render();
@@ -106,6 +123,20 @@ export class BoardTabs {
     this.#apply();
   }
 
+  /** 그래프 탭 — 이미 있으면 그 탭으로, 활성 탭이 보드 선택 화면이면 그 자리에서, 아니면 새 탭으로. */
+  async openGraph() {
+    const found = this.tabs.findIndex((t) => t.kind === 'graph');
+    if (found >= 0) { await this.activate(found); return; }
+    this.#stash();
+    const cur = this.#cur();
+    if (this.#isPicker(cur)) { cur.kind = 'graph'; cur.name = '그래프'; }
+    else {
+      this.tabs.push({ key: (this.seq += 1), boardId: null, kind: 'graph', name: '그래프' });
+      this.active = this.tabs.length - 1;
+    }
+    await this.#apply();
+  }
+
   /**
    * 보드를 연다. 이미 열려 있으면 그 탭으로, 활성 탭이 선택 화면이면 그 자리에서,
    * 아니면 새 탭으로. (런처에서 고르거나, 카드에서 링크된 보드로 드릴인할 때.)
@@ -115,7 +146,7 @@ export class BoardTabs {
     if (found >= 0) { await this.activate(found); return; }
     this.#stash();
     const cur = this.#cur();
-    if (cur && cur.boardId == null) {
+    if (this.#isPicker(cur)) {
       cur.boardId = id;
     } else {
       this.tabs.push({ key: (this.seq += 1), boardId: id, name: '보드' });
@@ -128,6 +159,7 @@ export class BoardTabs {
     if (i < 0 || i >= this.tabs.length) return;
     const [gone] = this.tabs.splice(i, 1);
     if (gone && gone.boardId != null) { this.docs.delete(gone.boardId); this.stale.delete(gone.boardId); }
+    if (gone?.kind === 'graph') this.graph?.hide({ reset: true });   // 닫으면 다음엔 처음부터(결정적 배치)
     if (!this.tabs.length) {
       this.tabs.push({ key: (this.seq += 1), boardId: null, name: '보드 선택' });
       this.active = 0;
@@ -183,13 +215,14 @@ export class BoardTabs {
     clear(this.mount);
     this.tabs.forEach((t, i) => {
       const tab = el('div', {
-        className: 'tab' + (i === this.active ? ' active' : ''),
+        className: 'tab' + (i === this.active ? ' active' : '') + (t.kind === 'graph' ? ' tab-graph' : ''),
         attrs: { role: 'tab', 'aria-selected': String(i === this.active) },
         dataset: { boardId: t.boardId == null ? '' : String(t.boardId) },
         // 인덱스가 아니라 탭 자체로 찾는다 — 끌어 순서를 바꾼 뒤 옛 요소에 늦게 온 click이 엉뚱한 탭을 열지 않게
         on: { click: (e) => { if (e.currentTarget.isConnected) this.activate(this.tabs.indexOf(t)); } },
       }, [
-        el('span.tab-name', { text: t.boardId == null ? '보드 선택' : (t.name || '보드') }),
+        t.kind === 'graph' ? icon(ICONS.graph) : null,
+        el('span.tab-name', { text: t.kind === 'graph' ? '그래프' : t.boardId == null ? '보드 선택' : (t.name || '보드') }),
         el('button.tab-x', {
           type: 'button', title: '탭 닫기', attrs: { 'aria-label': '탭 닫기' },
           on: { click: (e) => { e.stopPropagation(); if (e.currentTarget.isConnected) this.closeTab(this.tabs.indexOf(t)); } },

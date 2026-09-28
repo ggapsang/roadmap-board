@@ -30,6 +30,7 @@ import { ItemPanel } from './ui/panels/item.js';
 import { ConfigPanel } from './ui/panels/config.js';
 import { DataPanel } from './ui/panels/data.js';
 import { GraphView } from './ui/graph.js';
+import { openHelp } from './ui/help.js';
 
 async function boot() {
   initTheme();
@@ -81,9 +82,9 @@ async function boot() {
     onReplaced: () => { rebuild(); configPanel.render(); },
   });
 
-  // 그래프 뷰 — 모든 이벤트·포함·관계(읽기 전용). 열 때마다 저장소에서 받는다.
+  // 그래프 뷰 — 모든 보드의 이벤트·포함·관계(읽기 전용). 보드와 무관한 독립 탭으로 연다.
   const graphView = new GraphView({ adapter, store });
-  $('btnGraph').addEventListener('click', () => { panels.close(); graphView.open(); });
+  $('btnGraph').addEventListener('click', () => { panels.close(); tabs.openGraph(); });
 
   const launcher = new Launcher({
     adapter,
@@ -95,10 +96,11 @@ async function boot() {
       tabs.renameBoard(id, name);
     },
     onDeleted: (id) => tabs.boardClosed(id),
+    onGraph: () => tabs.openGraph(),
   });
 
   tabs = new BoardTabs({
-    mount: $('tabbar'), launcher, openProject, adoptCached,
+    mount: $('tabbar'), launcher, graph: graphView, openProject, adoptCached,
     getDoc: () => store.doc,
     boardName: () => store.meta.name,
   });
@@ -206,6 +208,7 @@ async function boot() {
   // ── 전역 키 ─────────────────────────────────────────────
 
   document.addEventListener('keydown', (e) => {
+    if (e.key === 'F1') { e.preventDefault(); openHelp(); return; }   // 도움말 — 어느 화면에서든
     // 브라우저처럼 탭 조작 — 런처가 떠 있어도, 입력 중이어도 먼저 받는다.
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 't') {
       e.preventDefault(); tabs.newLauncherTab(); return;
@@ -220,6 +223,7 @@ async function boot() {
       if (e.key === 'Escape' && !$('l-close').hidden) launcher.hide();
       return;
     }
+    if (tabs.graphActive) return;        // 그래프 탭 — 보드 단축키(되돌리기·삭제 등)는 뒤의 보드에 가지 않게
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName ?? '');
 
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
