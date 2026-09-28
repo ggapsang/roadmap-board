@@ -9,6 +9,7 @@
 import { dateAt, parseDate, formatDate, dayIndex } from '../../core/dates.js';
 import { unitStart, addUnits } from '../../core/timeline.js';
 import { newId } from '../../core/schema.js';
+import { BAND_SCALE } from '../../config/index.js';
 import { el } from '../dom.js';
 import { askText } from '../dialog.js';
 import { openCtxMenu } from '../ctxmenu.js';
@@ -87,8 +88,8 @@ export function attachBandEditing(gutM, { store, getOrigin, getScale, getTimelin
           resizing.id = id;
         }
       }
-      // 아래로 끌면 늘리고(최대 3배) 위로 끌면 줄인다(최소 0.15배)
-      const next = Math.min(3, Math.max(0.15, (resizing.full * resizing.scale0 + delta) / resizing.full));
+      // 아래로 끌면 늘리고(끄는 만큼, 안전 한도 BAND_SCALE.max) 위로 끌면 줄인다(최소 BAND_SCALE.min)
+      const next = Math.min(BAND_SCALE.max, Math.max(BAND_SCALE.min, (resizing.full * resizing.scale0 + delta) / resizing.full));
       store.commit('구간 높이', (doc) => {
         const band = doc.bands.find((b) => b.id === resizing.id);
         if (band) band.scale = Math.round(next * 100) / 100;
@@ -224,7 +225,7 @@ export function attachBandEditing(gutM, { store, getOrigin, getScale, getTimelin
   function collapseMonth(from, to, id) {
     const origin = getOrigin();
     if (id) {
-      store.commit('칸 접기', (doc) => { const b = doc.bands.find((x) => x.id === id); if (b) b.scale = 0.02; });
+      store.commit('칸 접기', (doc) => { const b = doc.bands.find((x) => x.id === id); if (b) b.scale = BAND_SCALE.fold; });
     } else {
       const key = modeKey();
       const fromISO = dateAt(origin, from);
@@ -232,7 +233,7 @@ export function attachBandEditing(gutM, { store, getOrigin, getScale, getTimelin
       const cell = [...gutM.querySelectorAll('b')].find((c) => Number(c.dataset.from) === from);
       store.commit('칸 접기', (doc) => {
         clearRange(doc, key, fromISO, toISO);
-        doc.bands.push({ id: newId('b'), mode: key, from: fromISO, to: toISO, label: cell?.dataset.label ?? '', scale: 0.02 });
+        doc.bands.push({ id: newId('b'), mode: key, from: fromISO, to: toISO, label: cell?.dataset.label ?? '', scale: BAND_SCALE.fold });
         sortBands(doc);
       });
     }

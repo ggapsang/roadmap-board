@@ -12,7 +12,7 @@
 import {
   STATUS_KEYS, DEFAULT_STATUS, TYPE_KEYS, DEFAULT_TYPE,
   DEFAULT_ORGS, DEFAULT_DISPLAY, DISPLAY_LIMITS,
-  RELATION_TYPES, RELATION_KEYS, FILL_KEYS, SCALE_KEYS, SLOT_UNIT_OF,
+  RELATION_TYPES, RELATION_KEYS, FILL_KEYS, SCALE_KEYS, SLOT_UNIT_OF, BAND_SCALE,
 } from '../config/index.js';
 
 export const SCHEMA_VERSION = 18;
@@ -298,8 +298,8 @@ export function normalize(doc) {
       from: b.from <= b.to ? b.from : b.to,
       to: b.from <= b.to ? b.to : b.from,
       label: typeof b.label === 'string' ? b.label : '',
-      // 세로 배율 — 1이면 실제 기간대로. 늘리기(최대 3배)·접기(0.02)를 다 담는다
-      scale: Number.isFinite(Number(b.scale)) ? Math.min(3, Math.max(0.02, Number(b.scale))) : 1,
+      // 세로 배율 — 1이면 실제 기간대로. 늘리기(BAND_SCALE.max)·접기(fold)를 다 담는다
+      scale: Number.isFinite(Number(b.scale)) ? Math.min(BAND_SCALE.max, Math.max(BAND_SCALE.fold, Number(b.scale))) : 1,
     }))
     .sort((a, b) => a.mode.localeCompare(b.mode) || a.from.localeCompare(b.from))
     .filter((b, i, arr) => {

@@ -215,9 +215,10 @@ body.panel-open{--panel-w:var(--panel-size)}
 .dlg-actions .btn{min-width:72px;justify-content:center}
 /* 선택 다이얼로그 — 동일 매핑에서 남길 본질 고르기 */
 .dlg-choices{display:flex;flex-direction:column;gap:var(--u2);margin-top:var(--u3)}
-.dlg-choice{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:var(--u2) var(--u3);height:auto}
+.dlg-choice{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:var(--u2) var(--u3);height:auto;
+  white-space:normal;min-width:0;max-width:100%}   /* .btn의 nowrap을 풀어 긴 설명이 상자 안에서 줄바꿈되게 */
 .dlg-choice-label{font-weight:600}
-.dlg-choice-sub{font-size:12px;color:var(--text-secondary)}
+.dlg-choice-sub{font-size:12px;color:var(--text-secondary);overflow-wrap:anywhere}
 /* 조합·동일 트리 팝업 */
 .dlg-wide{max-width:560px;width:92vw}
 /* 팝업 안 탭 (모자관계: 부모 설정 / 자식 설정) — 편집 패널 탭과 같은 모양 */

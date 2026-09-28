@@ -200,7 +200,7 @@ export class Launcher {
         { key: 'month-week', label: '월-주 (기본)', sub: '한 줄 = 1주 · 왼쪽 칸 = 월' },
         { key: 'week-day', label: '주-일', sub: '한 줄 = 1일 · 왼쪽 칸 = 주' },
         { key: 'quarter-month', label: '분기-월', sub: '한 줄 = 1개월 · 왼쪽 칸 = 분기' },
-        { key: 'none', label: '눈금 없음', sub: '날짜 없이 순서(칸)만 — 나중에 눈금 설정으로 날짜를 매길 수 있습니다' },
+        { key: 'none', label: '눈금 없음', sub: '날짜 없이 순서(칸)만. 나중에 눈금 설정으로 날짜를 매길 수 있습니다' },
       ],
     });
     if (!scale) return;

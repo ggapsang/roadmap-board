@@ -1222,6 +1222,38 @@ async function runSmoke(target) {
     })()`), 20000, 'month-resize');
     console.log('[smoke] month-resize ' + JSON.stringify(monthResize));
 
+    // 분기-월에서 칸 높이 — 한 분기는 기본 3행뿐이라 3배 한도면 좁다. 끄는 만큼 늘어나야 한다.
+    monthResize.quarter = await withTimeout(target.webContents.executeJavaScript(`(async () => {
+      const r = window.__roadmap;
+      const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+      const sel = document.getElementById('v-scale');
+      sel.value = 'quarter-month'; sel.dispatchEvent(new Event('change')); await sleep(200);
+      const gutM = document.getElementById('gutM');
+      const cells = [...gutM.querySelectorAll('b:not(.merged)')];
+      const cell = cells.sort((a, b) => (Number(b.dataset.to) - Number(b.dataset.from)) - (Number(a.dataset.to) - Number(a.dataset.from)))[0];
+      const handle = cell?.querySelector('.band-resize');
+      if (!handle) { sel.value = 'month-week'; sel.dispatchEvent(new Event('change')); return { error: '분기 손잡이 없음' }; }
+      const h0 = cell.getBoundingClientRect().height;
+      const box = handle.getBoundingClientRect();
+      const at = (y) => ({ bubbles: true, clientX: box.left + box.width / 2, clientY: y, button: 0, pointerId: 1 });
+      const before = new Set((r.store.doc.bands ?? []).map((b) => b.id));
+      handle.dispatchEvent(new PointerEvent('pointerdown', at(box.top + 1)));
+      gutM.dispatchEvent(new PointerEvent('pointermove', at(box.top + 1 + 20)));
+      await sleep(80);
+      gutM.dispatchEvent(new PointerEvent('pointermove', at(box.top + 1 + h0 * 7)));   // 8배 높이로
+      await sleep(120);
+      gutM.dispatchEvent(new PointerEvent('pointerup', at(box.top + 1 + h0 * 7)));
+      await sleep(150);
+      const made = (r.store.doc.bands ?? []).find((b) => !before.has(b.id));
+      const h1 = [...gutM.querySelectorAll('b')].find((c) => c.dataset.band === made?.id)?.getBoundingClientRect().height ?? 0;
+      const { prepare } = await import('./src/core/schema.js');
+      const kept = prepare(structuredClone(r.store.doc)).doc.bands.find((b) => b.id === made?.id)?.scale ?? null;
+      if (made) r.store.commit('정리', (doc) => { doc.bands = doc.bands.filter((b) => b.id !== made.id); });
+      sel.value = 'month-week'; sel.dispatchEvent(new Event('change')); await sleep(150);
+      return { mode: made?.mode ?? null, scale: made?.scale ?? null, kept, h0: Math.round(h0), h1: Math.round(h1) };
+    })()`), 20000, 'quarter-resize');
+    console.log('[smoke] quarter-resize ' + JSON.stringify(monthResize.quarter));
+
     // 빈 세로축 날짜 칸 우클릭 → '이 아래 빈 구간 삭제'로 뒤쪽 빈 행을 지운다
     ctxDelete = await withTimeout(target.webContents.executeJavaScript(`(async () => {
       const r = window.__roadmap;
@@ -1808,6 +1840,20 @@ async function runSmoke(target) {
       await r.launcher.show({ closable: true });
       await sleep(150);
       const order = [...document.querySelectorAll('#launcher .lhead .btn.icon')].filter((b) => !b.hidden).map((b) => b.id);
+      // 새 보드 — 이름 다음 눈금 고르기. 보기 설명 글자가 상자 밖으로 튀어나오지 않는다(줄바꿈)
+      document.getElementById('l-new-blank').click(); await sleep(120);
+      document.querySelector('.dlg .btn.cta')?.click(); await sleep(150);          // 이름 '새 보드' 그대로 만들기
+      const choices = [...document.querySelectorAll('.dlg-choice')];
+      const newBoard = {
+        n: choices.length,
+        fits: choices.length > 0 && choices.every((c) => {
+          const box = c.getBoundingClientRect();
+          return c.scrollWidth <= c.clientWidth + 1
+            && [...c.children].every((k) => k.getBoundingClientRect().right <= box.right + 0.5);
+        }),
+      };
+      [...document.querySelectorAll('.dlg .btn.outline')].find((x) => x.textContent === '취소')?.click(); await sleep(120);
+      newBoard.cancelled = !document.querySelector('.dlg-choice');
       // 도움말 — 팝업, 절마다 목차, 표, 시스템 개념 이야기는 없다, Esc로 닫고 F1로 연다
       document.getElementById('l-help').click();
       for (let i = 0; i < 30 && !document.querySelector('.help-sec h3'); i += 1) await sleep(100);
@@ -1884,7 +1930,7 @@ async function runSmoke(target) {
       document.querySelector('#tabbar .tab.tab-graph .tab-x').click();
       await sleep(300);
       const closed = gv.hidden && !r.tabs.tabs.some((t) => t.kind === 'graph') && r.adapter.projectId === boardBefore;
-      return { order, help, ownTab, shown, nodes, single, noBoardKeys, closed };
+      return { newBoard,  order, help, ownTab, shown, nodes, single, noBoardKeys, closed };
     })()`);
     console.log('[smoke] launcher-graph ' + JSON.stringify(launcherGraph));
   }
@@ -2300,6 +2346,7 @@ async function runSmoke(target) {
     && launcherGraph?.help?.sections >= 8 && launcherGraph?.help?.toc === launcherGraph?.help?.sections - 1
     && launcherGraph?.help?.tables >= 3 && launcherGraph?.help?.noSystemTalk === true && launcherGraph?.help?.escClosed === true
     && launcherGraph?.help?.f1 === true
+    && launcherGraph?.newBoard?.n === 4 && launcherGraph?.newBoard?.fits === true && launcherGraph?.newBoard?.cancelled === true
     && launcherGraph?.help?.fontLabel === '110%' && launcherGraph?.help?.fontGrew === true && launcherGraph?.help?.boardFontKept === true
     && launcherGraph?.help?.resized === true && launcherGraph?.help?.cornerKept === true && launcherGraph?.help?.moveAfterResize === true
     && launcherGraph?.help?.remembered === true
@@ -2379,6 +2426,8 @@ async function runSmoke(target) {
     && spanForce?.spanUnderForce === true && spanForce?.hasWidthGrip === true
     && trim?.trimmed === true && trim?.shrank === true
     && monthResize?.made === true && monthResize?.scale < 1 && monthResize?.shrank === true
+    && monthResize?.quarter?.mode === 'quarter-month' && monthResize?.quarter?.scale > 3
+    && monthResize?.quarter?.kept === monthResize?.quarter?.scale && monthResize?.quarter?.h1 > monthResize?.quarter?.h0 * 3
     && ctxDelete?.hadMenu === true && ctxDelete?.hadBtn === true && ctxDelete?.trimmed === true && ctxDelete?.menuClosed === true
     && dragExtend?.extended === true && dragExtend?.grewAxis === true
     && childWidth?.grew === true && childWidth?.reset === null

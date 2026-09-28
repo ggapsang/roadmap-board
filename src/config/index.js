@@ -216,6 +216,13 @@ export const SLOT_UNIT_OF = { 'week-day': 'day', 'month-week': 'week', 'quarter-
 /** 눈금 없음에서 한 칸이 뜻하는 날 수(일당 픽셀 계산용) */
 export const UNIT_DAYS = { day: 1, week: 7, month: 30.44, quarter: 91.3 };
 
+/**
+ * 구간(왼쪽 칸) 세로 배율 — 1이면 실제 기간대로. 끌어서 늘리기는 사실상 제한 없이(분기-월에서 한 분기는
+ * 기본 3행뿐이라 3배로 막으면 너무 좁다), 줄이기는 min까지, '이 칸 접기'는 fold까지.
+ * max는 실수로 끝없이 끌어 축이 수십만 px이 되는 것만 막는 안전 한도다.
+ */
+export const BAND_SCALE = { min: 0.15, fold: 0.02, max: 100 };
+
 export const DISPLAY_LIMITS = {
   arrowWidth: { min: 1, max: 24, step: 1 },
   arrowHead: { min: 1.2, max: 4, step: 0.1 },
