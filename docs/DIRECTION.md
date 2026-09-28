@@ -2,7 +2,8 @@
 
 > **먼저 읽을 것:** 시스템 개념의 최종 기준은 [docs/SYSTEM.md](./SYSTEM.md)다(코드보다 우선).
 > 이 문서는 그 관점에서 코드를 점검한 **방향 메모**로, SYSTEM.md와 어긋나면 SYSTEM.md가 이긴다.
-> 실제로 크게 틀렸던 지점과 반성은 [docs/LESSONS.md](./LESSONS.md)에 있다.
+> 실제로 크게 틀렸던 지점과 반성은 [docs/LESSONS.md](./LESSONS.md)에, 저장 설계(보드가 본 것만 고친다·
+> 포함의 세 종류·휴지통)는 [docs/SAVE.md](./SAVE.md)에 있다.
 
 WOLFPACK은 **순서 기반 이벤트 전개 시스템**의 첫 활용 예다.
 (근거 문서: `refs/TTB-만들어진 배경-*.pdf`, `refs/TTB-순서 기반 이벤트 전개 시스템 - 개발자를 위한 설명-*.pdf`)
@@ -25,7 +26,7 @@ WOLFPACK은 **순서 기반 이벤트 전개 시스템**의 첫 활용 예다.
 |---|---|---|
 | **이벤트** — 앞뒤 관계를 가진 단위. 접으면 카드, 펼치면 보드 | `item`(본질) + `place`(배치) | `src/core/schema.js`, DB `event` · `disp` |
 | **트랙** — 이벤트가 흐르는 갈래 | `tracks[]` (본질은 이벤트, 축 위 순서=포함) | `schema.js`, `ui/board/head.js`, DB `containment` |
-| **관계** — 선행·합류·원인·참조. 보드를 넘나드는 독립 대상 | `doc.relations[]`(선행 dep, 일급) · 포함=`item.parent`/`doc.refs`(조합) | `schema.js`, DB `rel` · `containment` |
+| **관계** — 선행·합류·원인·참조. 보드를 넘나드는 독립 대상 | `doc.relations[]`(선행 dep, 일급) · 포함=`item.parent` · 조합(구성)=`doc.compose` | `schema.js`, DB `rel` · `containment`(ordered·compose) |
 | **순서/시간** — 앞뒤 관계. 달력은 선택적 눈금 | 항상 달력축, 일 단위 정수로 위치 계산 | `core/dates.js`, `core/layout.js` |
 | **태스크** — 순서 없이 카드에 담기는 할 일 | `item.tasks[]` | `schema.js`, DB `containment`(ordered=0), `ui/panels/item.js` |
 
@@ -60,7 +61,7 @@ WOLFPACK은 **순서 기반 이벤트 전개 시스템**의 첫 활용 예다.
 ### 3. 이벤트에 보드-독립 식별자 ✅ (기반 완료)
 - **근거**: §6.2.
 - **한 일**: 관계·배치는 이미 `item.id`(정렬 순번 `ord`가 아니라)를 키로 참조한다 — 보드-의존 식별을 관계 키로 쓰지 않는다. 남은 위험은 **복제·반입으로 같은 id가 여러 보드에 흩어지는 것**(서로 다른 이벤트가 같은 키). 이를 원천에서 막게 `schema.reidentify(doc)`를 두고 `repository.duplicateProject`가 복제본에 새 이벤트 id를 부여한다(상위 일정·관계·태스크 참조 함께 이동). 스모크 `id` 단계(전부 새 id·유일·참조 정합·관계 보존).
-- **남은 방향**: "같은 이벤트가 **여러 보드에 동시에**"는 아직 없다(다중 보드 자체가 미구현, §8). 그 기능이 오면 이벤트 본질을 보드-독립 테이블로 빼고 배치는 `placements[boardId]`(#1)로 — 지금 식별이 보드-독립적이라 그때 데이터를 쪼갤 일은 없다.
+- **이후**: 이벤트 본질을 보드-독립 테이블로 뺐고(017 4대상 모델), 보드 탭·합치기로 "같은 이벤트가 **여러 보드에 동시에**"가 생겼다. 그 상태에서 저장이 서로의 편집을 지우지 않게 하는 규칙은 [SAVE.md](./SAVE.md).
 
 ### 4. 순서를 1차로, 달력을 선택적 눈금으로 — (a)(b)(c) 초안 완료 ✅
 - **근거**: §3.1·§6.4·§8.

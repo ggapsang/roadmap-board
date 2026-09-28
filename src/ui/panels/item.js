@@ -1,18 +1,19 @@
 /**
  * 일정 편집 패널 — PPT 서식창처럼 탭으로 나눈다.
  *   속성   제목·상태·소속 트랙·유형·기간·담당·비고
- *   매핑   선행·상위·동일·조합 — 같은 "검색 리스트" UI (엑셀 필터식). 단 화면 말 ≠ 시스템 말:
- *          동일 = 두 이벤트를 하나로 '합치는 작업'(관계 아님, §7.2). 조합 = 포함(§7.1) — 이 이벤트가
- *          다른 보드 이벤트를 하위로 품음. 관계 타입은 선행·포함뿐. (docs/SYSTEM.md)
+ *   매핑   선행·상위·동일·조합 — 모두 팝업 트리 버튼. 단 화면 말 ≠ 시스템 말:
+ *          동일 = 두 이벤트를 하나로 '합치는 작업'(관계 아님, §7.2). 조합 = 구성(§7.1) — 여러 이벤트로
+ *          이 이벤트가 이루어진 것(순서 없는 포함, 태스크와 다름). 관계 타입은 선행·포함뿐.
+ *          (docs/SYSTEM.md, docs/SAVE.md §5)
  *   표시   글자 정렬·비고 표시·크기 강제 — 아이콘 토글
- *   상세   이 이벤트를 이루는 것 — 하위(포함=조합) 카드 트리 + 그 안쪽 카드(eventCards)
+ *   상세   이 이벤트를 이루는 것 — 하위 카드 트리 + 조합 대상과 그 안쪽 카드(eventCards)
  */
 import { shortMD, dayIndex, parseDate, inclusiveDays } from '../../core/dates.js';
 import { newId, ALIGNS } from '../../core/schema.js';
 import { STATUSES, ITEM_TYPES, statusList } from '../../config/index.js';
 import { $, el, clear, icon, ICONS } from '../dom.js';
 import { askConfirm, askChoice, askTree } from '../dialog.js';
-import { openCombinePicker, pickEventForMerge, containedChildren } from '../combine.js';
+import { openCombinePicker, pickEventForMerge, composedOf } from '../combine.js';
 import { toast } from '../toast.js';
 
 /** 값이 바로 문서로 반영되는 단순 입력들 (트랙·관계·별칭·진척은 매핑 탭 UI가 맡는다) */
@@ -31,9 +32,10 @@ function autogrow(node) {
 }
 
 export class ItemPanel {
-  constructor({ store, view, panels, adapter, openProject, onChange }) {
-    Object.assign(this, { store, view, panels, adapter, openProject, onChange });
+  constructor({ store, view, panels, adapter, openProject, reloadBoard, onChange }) {
+    Object.assign(this, { store, view, panels, adapter, openProject, reloadBoard, onChange });
     this._allEvents = [];          // 모든 보드의 이벤트 캐시 — 카드를 열 때마다 갱신하되 비우진 않는다
+    this._extraEvents = new Map(); // 어느 보드 화면에도 없는 조합 대상의 본질(이름 표시용)
     this.#buildStatic();
     this.#buildLists();
     this.#bind();
@@ -341,11 +343,16 @@ export class ItemPanel {
     this.#renderDeps(item);
   }
 
-  // ── 동일(합치기 작업) · 조합(포함) — docs/SYSTEM.md §7.1·§7.2 ──
+  // ── 동일(합치기 작업) · 조합(구성) — docs/SYSTEM.md §7.1·§7.2 ──
 
-  /** 이 이벤트가 조합(포함)한 다른 보드 이벤트 id들 (doc.refs). 공용 모듈에 위임. */
-  #containedChildren() {
-    return containedChildren(this.store, this.item?.id);
+  /** 이 이벤트를 이루는 조합 대상 id들 (doc.compose). 공용 모듈에 위임. */
+  #composedOf() {
+    return composedOf(this.store, this.item?.id);
+  }
+
+  /** 조합 대상의 본질 — 모든 보드 이벤트 목록에 없으면(어느 보드 화면에도 없음) 따로 받아 둔 것 */
+  #eventInfo(id) {
+    return (this._allEvents ?? []).find((e) => e.id === id) ?? this._extraEvents.get(id) ?? null;
   }
 
   /**
@@ -372,23 +379,21 @@ export class ItemPanel {
   }
 
   /**
-   * 조합(포함) UI — 팝업 버튼 + 현재 담긴 것 요약(읽기 전용). 해제는 요약이 아니라 팝업에서
+   * 조합(구성) UI — 팝업 버튼 + 이 이벤트를 이루는 것 요약(읽기 전용). 해제는 요약이 아니라 팝업에서
    * 체크를 풀어서 한다(조합은 둘 이상의 묶음이라 요약에서 하나씩 빼면 규칙이 깨진다).
    */
   #renderCombine(item) {
     const box = $('i-combine');
     clear(box);
-    const events = this._allEvents ?? [];
-    const byId = new Map(events.map((e) => [e.id, e]));
     box.append(el('button.btn.outline.sm', {
       type: 'button', text: '고르기…',
       on: { click: () => this.#openCombinePicker() },
     }));
-    const children = [...this.#containedChildren()];
+    const children = [...this.#composedOf()];
     const list = el('div.combine-summary');
     if (!children.length) list.append(el('div.empty', { text: '조합한 이벤트가 없습니다.' }));
     for (const cid of children) {
-      const ev = byId.get(cid);
+      const ev = this.#eventInfo(cid);
       const kindLabel = ev?.kind === 'track' ? '트랙' : ev?.kind === 'board' ? '프로젝트' : '카드';
       list.append(el('div.combine-chip', {}, [
         el('span.combine-chip-name', { text: (ev?.title || '(다른 보드 이벤트)') }),
@@ -398,7 +403,7 @@ export class ItemPanel {
     box.append(list);
   }
 
-  /** 조합 트리 팝업 — 체크한 다른 프로젝트 이벤트를 이 이벤트의 조합(포함)으로 담는다(둘 이상). */
+  /** 조합 트리 팝업 — 체크한 이벤트들로 이 이벤트를 이룬다(구성, 둘 이상). */
   async #openCombinePicker() {
     const item = this.item;
     if (!item) return;
@@ -433,11 +438,9 @@ export class ItemPanel {
     catch (e) { toast('합치기 실패: ' + String(e.message || e), 'warn'); return; }
     if (!res || res.ok !== true) { toast(res?.rejected ? '합칠 수 없음: ' + res.rejected : '합치기 실패', 'warn'); return; }
     this._lastMergeUndo = res.undo;
-    // 합치기는 DB 전역 변경 — 현재 보드를 다시 읽어 반영한다.
-    const cur = this.adapter.projectId;
-    const doc = cur != null ? await this.adapter.openProject(cur) : null;
-    if (doc) this.store.adopt(doc);
+    // 합치기는 DB 전역 변경 — 현재 보드를 다시 읽고(정규화 포함), 다른 탭은 돌아갈 때 다시 읽는다.
     this.panels.close();
+    await this.reloadBoard?.();
     toast('같은 이벤트로 합쳤습니다', '', { label: '되돌리기', on: () => this.#undoMerge() });
   }
 
@@ -450,9 +453,7 @@ export class ItemPanel {
     try { res = await this.adapter?.unmergeEvents?.(snap); }
     catch (e) { toast('되돌리기 실패: ' + String(e.message || e), 'warn'); return; }
     if (!res || res.ok !== true) { toast('되돌리기 실패', 'warn'); return; }
-    const cur = this.adapter.projectId;
-    const doc = cur != null ? await this.adapter.openProject(cur) : null;
-    if (doc) this.store.adopt(doc);
+    await this.reloadBoard?.();
     toast('합치기를 되돌렸습니다');
   }
 
@@ -679,11 +680,11 @@ export class ItemPanel {
     const own = this.store.items.filter((x) => x.parent === item.id);
     for (const c of own) renderKid(c, box);
 
-    // (2) 조합(포함)한 다른 보드 이벤트 — doc.refs(메모리)에서 바로 읽는다(해제하면 즉시 사라짐).
-    //     각 부품은 접기 그룹으로, 그 안쪽 카드는 eventCards(그 보드 소유라 최신)로 채운다.
-    const refs = (this.store.doc.refs ?? []).filter((r) => r.parent === item.id);
+    // (2) 조합 대상 — doc.compose(메모리)에서 바로 읽는다(해제하면 즉시 사라짐).
+    //     각 대상은 접기 그룹으로, 그 안쪽 카드는 eventCards(DB, 최신)로 채운다.
+    const refs = (this.store.doc.compose ?? []).filter((r) => r.parent === item.id);
     for (const ref of refs) {
-      const pev = (this._allEvents ?? []).find((e) => e.id === ref.child);
+      const pev = this.#eventInfo(ref.child);
       const partBoard = pev ? (pev.boardId ?? (Number(String(pev.boardIds ?? '').split(',')[0]) || null)) : null;
       const { row, kids } = node({
         title: pev?.title || '(다른 보드 이벤트)', status: pev?.st ?? 'plan', tag: '조합', hasKids: true,
@@ -715,6 +716,13 @@ export class ItemPanel {
     // 않는다 — 한 번 삐끗해도 동일·조합의 다른 보드 트랙들이 사라지지 않게.
     if (Array.isArray(events)) this._allEvents = events;
     else if (!Array.isArray(this._allEvents)) this._allEvents = [];
+    // 어느 보드 화면에도 없는 조합 대상은 목록에 없다 — 이름만 따로 받아 둔다.
+    const known = new Set(this._allEvents.map((e) => e.id));
+    const unknown = [...this.#composedOf()].filter((id) => !known.has(id) && !this._extraEvents.has(id));
+    if (unknown.length) {
+      try { for (const e of (await this.adapter?.eventsById?.(unknown)) ?? []) this._extraEvents.set(e.id, e); } catch { /* 이름 없이 둔다 */ }
+      if (this.item?.id !== item.id) return;
+    }
     this.#renderSame(item);
     this.#renderCombine(item);
     this.#renderChildren(item);
@@ -781,16 +789,24 @@ export class ItemPanel {
     $(F.end).value = item.e;
   }
 
+  /**
+   * 보드에서 빼기 (Delete) — 이 카드와 그 안에 든 하위 카드를 이 보드에서 뺀다. 이벤트는 지우지 않는다:
+   * 부모를 모두 잃으면 휴지통(첫 화면)에 구조째 가고, 방금 만든 것이면 바로 없어진다(docs/SAVE.md §7).
+   * 관계는 보드 밖 대상이라 저장이 지우지 않는다 — 화면에서만 걷어 낸다.
+   */
   remove() {
     const item = this.item;
     if (!item || this.store.readonly) return;
     const title = item.ti || '이름 없는 일정';
-    this.store.commit('일정 삭제', (doc) => {
-      doc.items = doc.items.filter((x) => x.id !== item.id);
-      doc.relations = (doc.relations ?? []).filter((r) => r.from !== item.id && r.to !== item.id);
+    const gone = new Set([item.id, ...this.#descendantsOf(item.id)]);
+    this.store.commit('보드에서 빼기', (doc) => {
+      doc.items = doc.items.filter((x) => !gone.has(x.id));
+      doc.relations = (doc.relations ?? []).filter((r) => !gone.has(r.from) && !gone.has(r.to));
+      doc.compose = (doc.compose ?? []).filter((c) => !gone.has(c.parent));
     });
     this.panels.close();
-    toast(`'${title}'을(를) 삭제했습니다`);
+    const inner = gone.size - 1;
+    toast(`'${title}'${inner ? ` 외 ${inner}건` : ''}을(를) 보드에서 뺐습니다 — Ctrl+Z로 되돌립니다`);
   }
 
   duplicate() {

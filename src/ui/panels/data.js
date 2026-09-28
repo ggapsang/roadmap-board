@@ -3,6 +3,7 @@
  * 변경 이력 섹션은 SQLite(Electron)에서만 나타난다.
  */
 import { SEED } from '../../config/seed.js';
+import { prepare, reidentify } from '../../core/schema.js';
 import { $, el, clear, button } from '../dom.js';
 import { toast } from '../toast.js';
 
@@ -88,7 +89,23 @@ export class DataPanel {
       toast('JSON 형식을 확인해 주세요', 'warn');
       return;
     }
-    this.#replace(parsed, 'JSON 적용');
+    this.#replace(this.#adoptIds(parsed), 'JSON 적용');
+  }
+
+  /**
+   * 밖에서 온 문서 — 지금 보드에 없던 카드·태스크·트랙 id에 새 id를 준다(docs/SAVE.md §8). 다른 보드에서
+   * 반출한 JSON이나 예시 로드맵(e1…)의 id가 다른 보드 이벤트를 덮어쓰거나 몰래 공유하지 않게.
+   * 지금 보드에 있던 id는 그대로 — JSON을 고쳐 적용하면 같은 이벤트를 고친 것이다.
+   */
+  #adoptIds(raw) {
+    const { doc, error } = prepare(raw);
+    if (error || !doc) return raw;                 // 형식 오류는 store.replace가 알린다
+    const have = new Set(this.store.tracks.map((t) => t.id));
+    for (const it of this.store.items) {
+      have.add(it.id);
+      for (const t of (it.tasks ?? [])) have.add(t.id);
+    }
+    return reidentify(doc, { only: (id) => !have.has(id) });
   }
 
   #replace(raw, label) {
@@ -103,7 +120,7 @@ export class DataPanel {
 
   #reset() {
     if (!confirm('기본 로드맵으로 되돌립니다. 현재 편집 내용은 사라집니다.')) return;
-    if (this.#replace(structuredClone(SEED), '기본 로드맵 복원')) {
+    if (this.#replace(this.#adoptIds(structuredClone(SEED)), '기본 로드맵 복원')) {
       toast('기본 로드맵으로 복원했습니다');
     }
   }
@@ -131,7 +148,7 @@ export class DataPanel {
     if (this.adapter.importJson) {
       const text = await this.adapter.importJson();
       if (!text) return;
-      try { this.#replace(JSON.parse(text), '파일 반입'); }
+      try { this.#replace(this.#adoptIds(JSON.parse(text)), '파일 반입'); }
       catch { toast('JSON 형식을 확인해 주세요', 'warn'); }
       return;
     }
@@ -139,7 +156,7 @@ export class DataPanel {
     input.addEventListener('change', async () => {
       const file = input.files?.[0];
       if (!file) return;
-      try { this.#replace(JSON.parse(await file.text()), '파일 반입'); }
+      try { this.#replace(this.#adoptIds(JSON.parse(await file.text())), '파일 반입'); }
       catch { toast('JSON 형식을 확인해 주세요', 'warn'); }
     });
     input.click();
@@ -177,6 +194,7 @@ export class DataPanel {
     if (!confirm('이 시점으로 되돌립니다. 현재 내용은 되돌리기(Ctrl+Z)로 복구할 수 있습니다.')) return;
     const doc = await this.adapter.getRevision(id);
     if (!doc) { toast('이력을 찾을 수 없습니다', 'warn'); return; }
+    // 같은 보드의 역사라 id를 그대로 쓴다 — 휴지통에 간 것이 제자리로 돌아온다.
     this.#replace(doc, '이력 복원');
   }
 }

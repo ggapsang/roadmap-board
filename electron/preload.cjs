@@ -23,6 +23,12 @@ contextBridge.exposeInMainWorld('roadmapDB', {
   listEvents: () => call('event:list'),
   // 한 이벤트가 품은 카드들 — 상세 탭에서 조합한 이벤트의 안쪽 일정
   eventCards: (id) => call('event:cards', id),
+  eventsById: (ids) => call('event:get', ids),
+  eventAncestors: (id) => call('event:ancestors', id),
+  // 휴지통 — 부모를 모두 잃은 이벤트. 영구 삭제·비우기
+  listTrash: () => call('trash:list'),
+  purgeTrash: (ids) => call('trash:purge', ids),
+  emptyTrash: () => call('trash:empty'),
   // 동일 매핑 = 두 이벤트를 하나로 합치기(§7.2). {ok, rejected?, undo?} 반환.
   mergeEvents: (keepId, dropId) => call('event:merge', keepId, dropId),
   unmergeEvents: (snapshot) => call('event:unmerge', snapshot),
@@ -33,6 +39,7 @@ contextBridge.exposeInMainWorld('roadmapDB', {
   renameProject: (id, name) => call('project:rename', id, name),
   duplicateProject: (id, name) => call('project:duplicate', id, name),
   deleteProject: (id) => call('project:delete', id),
+  deletePreview: (id) => call('project:deletePreview', id),
   reorderProjects: (ids) => call('project:reorder', ids),
 
   // 변경 이력 (기획안 P2)

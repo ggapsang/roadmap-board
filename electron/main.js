@@ -19,7 +19,7 @@ const ROOT = path.join(HERE, '..');
 const DEV = process.argv.includes('--dev');
 /** --smoke : 창을 띄워 렌더 결과를 점검하고 바로 종료한다 (npm test) */
 const SMOKE = process.argv.includes('--smoke');
-/** --repro : --db(복사본)로 조합=포함 왕복을 점검한다. DB 삭제 안 함(디버그). */
+/** --repro : --db(복사본)로 조합(구성)·합치기 왕복을 점검한다. DB를 고쳐 쓰므로 복사본만. */
 const REPRO = process.argv.includes('--repro');
 /** --shot <디렉터리> : 스모크 중 화면을 캡처한다 */
 function shotDir() {
@@ -1391,7 +1391,7 @@ async function runSmoke(target) {
       // 그 본질이 바뀌었는지 본다.
       const row = db.prepare(
         `SELECT e.title FROM board b
-         JOIN containment tc ON tc.parent_id = b.root_event_id AND tc.ordered = 1
+         JOIN containment tc ON tc.parent_id = b.root_event_id AND tc.compose = 1
          JOIN containment cc ON cc.parent_id = tc.child_id AND cc.ordered = 1
          JOIN event e ON e.id = cc.child_id
          WHERE b.id = ? ORDER BY tc.ord, cc.ord LIMIT 1`,
@@ -1412,7 +1412,7 @@ async function runSmoke(target) {
       const bid = opened.opened;
       const first = db.prepare(
         `SELECT cc.child_id AS id FROM board b
-         JOIN containment tc ON tc.parent_id = b.root_event_id AND tc.ordered = 1
+         JOIN containment tc ON tc.parent_id = b.root_event_id AND tc.compose = 1
          JOIN containment cc ON cc.parent_id = tc.child_id AND cc.ordered = 1
          WHERE b.id = ? ORDER BY tc.ord, cc.ord LIMIT 1`,
       ).get(bid);
@@ -1457,7 +1457,7 @@ async function runSmoke(target) {
     try {
       const tr = db.prepare(
         `SELECT tc.child_id AS id, e.title FROM board b
-         JOIN containment tc ON tc.parent_id = b.root_event_id AND tc.ordered = 1
+         JOIN containment tc ON tc.parent_id = b.root_event_id AND tc.compose = 1
          JOIN event e ON e.id = tc.child_id
          WHERE b.id = ? ORDER BY tc.ord LIMIT 1`,
       ).get(opened.opened);
@@ -1466,11 +1466,11 @@ async function runSmoke(target) {
     } catch (err) { console.log('[smoke] track-is-event FAIL ' + err); trackEvent = false; }
   }
 
-  // 태스크도 이벤트다 — 순서 없는 포함(ordered=0)의 자식은 type='task' 이벤트다 (§3.2·§3.3)
+  // 태스크도 이벤트다 — 순서 없는 포함(ordered=0, 구성 아님)의 자식은 type='task' 이벤트다 (§3.2·§3.3)
   let taskEvent = null;
   if (wrote) {
     try {
-      const et = db.prepare('SELECT child_id AS id FROM containment WHERE ordered = 0 LIMIT 1').get();
+      const et = db.prepare('SELECT child_id AS id FROM containment WHERE ordered = 0 AND compose = 0 LIMIT 1').get();
       const ev = et ? db.prepare('SELECT type, title FROM event WHERE id = ?').get(et.id) : null;
       taskEvent = !!ev && ev.type === 'task';
       console.log('[smoke] task-is-event ' + JSON.stringify({ taskEvent, id: et?.id, type: ev?.type }));
@@ -1505,39 +1505,197 @@ async function runSmoke(target) {
     console.log('[smoke] tabs ' + JSON.stringify(tabsCheck));
   }
 
-  // 매핑은 관계만 만들고 본질을 복사하지 않는다 — 트랙 이름을 바꿔도 남의 이벤트 제목을
-  // 덮지 않는지 확인한다(데이터 보존). same로 묶은 뒤 한쪽 제목을 바꿔도 반대쪽은 그대로여야.
-  let nondestr = null;
+  // 저장 = 보드가 본 것만 고친다 (docs/SAVE.md). 메인에서 저장소를 따로 하나 열어 확인한다 —
+  // 탭 캐시 재현 2건, 조합(구성)이 태스크와 따로 저장되는지, 순환 거부, 공유 이벤트를 지키는 보드 삭제,
+  // 휴지통(옛 것은 휴지통, 방금 만든 것은 바로 삭제, 구조째, 영구 삭제·비우기), 예시 로드맵 id 충돌.
+  let saveModel = null;
   if (wrote) {
-    nondestr = await target.webContents.executeJavaScript(`(async () => {
+    try {
+      const { prepare } = await import('../src/core/schema.js');
+      const t = new BoardRepository(db);
+      const openV = (id) => prepare(t.openView(id)).doc;              // 렌더러가 여는 것과 같게(기준 설정)
+      const peek = (id) => { t.open(id); return prepare(t.load()).doc; };  // 기준을 안 건드리는 확인
+      const save = (id, doc) => { t.open(id); return t.save(doc, 'smoke'); };
+      const has = (id) => !!db.prepare('SELECT 1 FROM event WHERE id = ?').get(id);
+      const A = t.createProject(prepare(structuredClone(SMOKE_SEED)).doc, 'S-A');
+      const B = t.duplicateProject(A, 'S-B');
+      let a = openV(A);
+      const seedCollision = !a.items.some((i) => i.id === 'e10');   // 스모크 보드가 이미 e10을 쓴다
+      const X = a.items.find((i) => i.ti === '1년차 과제 제출용 화면 구성');
+      for (const it of a.items) if (['DT 개발', '3D 모델링'].includes(it.ti)) it.parent = X.id;
+      save(A, a);
+      const kidsOf = (d) => d.items.filter((i) => i.parent === X.id).length;
+
+      // 재현 1 — 합치기 전의 B 캐시로 저장해도 A의 X 구조가 남고 없앤 Z가 되살아나지 않는다
+      const bStale = openV(B);
+      const Z = bStale.items.find((i) => !i.parent && i.ty !== 'ms');
+      const bOnly = bStale.items.find((i) => i.id !== Z.id && !i.parent && i.ty !== 'ms').id;
+      const merged = t.mergeEvents(X.id, Z.id).ok;
+      bStale.items.find((i) => i.id === bOnly).note = 'stale';
+      save(B, bStale);
+      const stale1 = { merged, kids: kidsOf(peek(A)), zGone: !has(Z.id), xOnB: peek(B).items.some((i) => i.id === X.id) };
+
+      // 재현 2 — 공유 X 안에 A에서 하위 추가 → B가 영향받음 표시, 낡은 B 저장이 그 하위를 안 지운다
+      a = openV(A);
+      const b = openV(B);
+      a.items.push({ ...structuredClone(a.items.find((i) => i.id === X.id)), id: 'eSMOKEKID', ti: '공유 하위', parent: X.id, tasks: [] });
+      const rA = save(A, a);
+      b.items.find((i) => i.id === bOnly).note = 'stale2';
+      save(B, b);
+      const stale2 = { affectedB: rA.affected.includes(B), kept: db.prepare("SELECT count(*) n FROM containment WHERE child_id = 'eSMOKEKID'").get().n === 1 };
+
+      // 조합(구성) — 같은 보드 이벤트 둘로 X를 이룬다. 구성으로 저장(태스크 아님), 다시 읽어도 doc.compose.
+      a = openV(A);
+      const parts = a.items.filter((i) => !i.parent && i.id !== X.id && i.ty !== 'ms').slice(0, 2).map((i) => i.id);
+      a.compose = [...(a.compose ?? []), ...parts.map((c) => ({ parent: X.id, child: c }))];
+      save(A, a);
+      const edgesC = db.prepare('SELECT ordered, compose FROM containment WHERE parent_id = ? AND child_id IN (?, ?)').all(X.id, ...parts);
+      const back = peek(A);
+      const compose = {
+        stored: edgesC.length === 2 && edgesC.every((e) => e.compose === 1 && e.ordered === 0),
+        inDoc: parts.every((c) => back.compose.some((x) => x.parent === X.id && x.child === c)),
+        notTasks: !back.items.find((i) => i.id === X.id).tasks.some((k) => parts.includes(k.id)),
+        stillCards: parts.every((c) => back.items.some((i) => i.id === c)),
+      };
+      a = openV(A);
+      a.compose.push({ parent: X.id, child: a.items.find((i) => i.id === X.id).place.t });   // 자기 트랙 = 조상
+      compose.cycleRejected = save(A, a).rejected.length === 1;
+
+      // 보드 삭제 — B에만 있던 것은 지우고, A와 공유한 X와 그 안쪽 구조는 그대로
+      const pre = t.deletePreview(B);
+      t.deleteProject(B);
+      a = peek(A);
+      const del = { preShared: pre.shared >= 1, xKept: a.items.some((i) => i.id === X.id), kids: kidsOf(a), bOnlyGone: !has(bOnly) };
+
+      // 휴지통 — 옛 카드를 빼면 휴지통, 방금 만든 카드를 빼면 바로 삭제, 카드를 빼면 구조째
+      a = openV(A);
+      const old = a.items.find((i) => !i.parent && i.ty !== 'ms' && i.id !== X.id && !parts.includes(i.id) && !a.items.some((k) => k.parent === i.id));
+      a.items.push({ ...structuredClone(old), id: 'eSMOKEFRESH', ti: '실수로 만든 것', tasks: [], alias: null });
+      save(A, a);
+      a.items = a.items.filter((i) => i.id !== old.id && i.id !== 'eSMOKEFRESH');
+      save(A, a);
+      let trash = t.listTrash();
+      const tr = { oldInTrash: trash.some((r) => r.id === old.id), freshGone: !has('eSMOKEFRESH') };
+      a = openV(A);
+      const inner = a.items.filter((i) => i.parent === X.id).map((i) => i.id);
+      a.items = a.items.filter((i) => i.id !== X.id && !inner.includes(i.id));
+      save(A, a);
+      trash = t.listTrash();
+      const xEntry = trash.find((r) => r.id === X.id);
+      tr.structure = !!xEntry && xEntry.inside >= inner.length && !trash.some((r) => inner.includes(r.id));
+      t.purgeTrash([old.id]);
+      tr.purged = !has(old.id);
+      t.emptyTrash();
+      tr.emptied = t.listTrash().length === 0 && !has(X.id) && inner.every((id) => !has(id));
+      t.deleteProject(A);
+      const schema = db.pragma('user_version', { simple: true });
+      saveModel = { seedCollision, stale1, stale2, compose, del, tr, schema };
+      console.log('[smoke] save-model ' + JSON.stringify(saveModel));
+    } catch (err) { console.log('[smoke] save-model FAIL ' + (err?.stack ?? err)); saveModel = { error: String(err) }; }
+  }
+
+  // 탭 캐시 — 다른 보드의 저장이 이 보드 화면을 바꾸면 그 탭은 '낡음'이 되어 돌아갈 때 다시 읽는다.
+  let staleTab = null;
+  if (wrote) {
+    staleTab = await target.webContents.executeJavaScript(`(async () => {
       const run = (async () => {
         const r = window.__roadmap;
         const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
-        const a = r.store.items[0].id;
-        const b = r.store.items[1].id;
-        const snapRel = JSON.parse(JSON.stringify(r.store.relations));
-        const aTi0 = r.store.item(a).ti; const bTi0 = r.store.item(b).ti;
-        r.store.commit('smoke same', (doc) => { doc.relations.push({ id: 'r_nd', type: 'same', from: a, to: b }); });
-        await sleep(40);
-        // same로 이어도 a·b 제목은 그대로여야(덮어쓰기 없음)
-        const keptOnLink = r.store.item(a).ti === aTi0 && r.store.item(b).ti === bTi0;
-        r.store.commit('smoke rename', (doc) => { doc.items.find((x) => x.id === a).ti = 'ND-CHANGED'; });
-        await sleep(40);
-        const bUntouched = r.store.item(b).ti === bTi0;   // a를 바꿔도 b는 그대로
-        r.store.commit('원복', (doc) => { doc.relations = snapRel; doc.items.find((x) => x.id === a).ti = aTi0; });
-        return { keptOnLink, bUntouched };
+        const b1 = r.adapter.projectId;
+        const b2 = await r.adapter.duplicateProject(b1, '낡음 테스트');
+        await r.tabs.openBoard(b2); await sleep(250);
+        const keep = r.store.items.find((x) => !x.parent && x.ty !== 'ms').id;
+        await r.tabs.openBoard(b1); await sleep(250);
+        const drop = r.store.items.find((x) => !x.parent && x.ty !== 'ms').id;
+        const res = await r.adapter.mergeEvents(keep, drop);       // b1 카드를 b2 카드로 합쳐 공유
+        r.tabs.markAllStale();
+        await r.tabs.reloadActive(); await sleep(150);             // 합치기 뒤 활성 보드를 다시 읽는다(패널과 같은 길)
+        await r.tabs.openBoard(b2); await sleep(250);              // b2도 한 번 새로 읽어 둔다
+        await r.tabs.openBoard(b1); await sleep(250);
+        r.store.commit('공유 편집', (doc) => { const it = doc.items.find((x) => x.id === keep); if (it) it.ti = it.ti + ' ·'; });
+        await sleep(250);
+        const marked = r.tabs.stale.has(b2);                        // b2가 같은 이벤트를 보고 있다 → 낡음
+        await r.tabs.openBoard(b2); await sleep(300);
+        const fresh = r.store.items.find((x) => x.id === keep)?.ti.endsWith(' ·') === true;
+        const cleared = !r.tabs.stale.has(b2);
+        await r.tabs.openBoard(b1); await sleep(200);
+        r.store.commit('원복', (doc) => { const it = doc.items.find((x) => x.id === keep); if (it) it.ti = it.ti.replace(/ ·$/, ''); });
+        r.tabs.boardClosed(b2);
+        await r.adapter.deleteProject(b2);
+        return { merged: res?.ok === true, marked, fresh, cleared };
       })();
-      const guard = new Promise((res) => setTimeout(() => res({ error: 'timeout' }), 8000));
+      const guard = new Promise((res) => setTimeout(() => res({ error: 'timeout' }), 15000));
       return Promise.race([run.catch((e) => ({ error: String(e) })), guard]);
     })()`);
-    console.log('[smoke] non-destructive ' + JSON.stringify(nondestr));
+    console.log('[smoke] stale-tab ' + JSON.stringify(staleTab));
+  }
+
+  // 휴지통 UI — 카드를 보드에서 빼면(Delete) 첫 화면 버튼 → 팝업에 뜨고, 영구 삭제가 확인 뒤 지운다.
+  let trashUi = null;
+  if (wrote) {
+    trashUi = await target.webContents.executeJavaScript(`(async () => {
+      const run = (async () => {
+        const r = window.__roadmap;
+        const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+        const card = r.store.items.find((x) => !x.parent && x.ty !== 'ms' && !r.store.items.some((k) => k.parent === x.id));
+        document.querySelector('[data-id="' + card.id + '"]').click();
+        await sleep(250);
+        document.getElementById('i-del').click();                   // 보드에서 빼기
+        await sleep(300);
+        const leftBoard = !r.store.items.some((x) => x.id === card.id);
+        await r.launcher.show({ closable: true });
+        await sleep(200);
+        const btn = document.getElementById('l-trash');
+        const btnShown = !!btn && !btn.hidden;
+        btn.click();
+        await sleep(500);
+        const rows = () => [...document.querySelectorAll('.trash-row')];
+        const listed = rows().some((x) => x.dataset.id === card.id);
+        return { card: card.id, leftBoard, btnShown, listed, n: rows().length };
+      })();
+      const guard = new Promise((res) => setTimeout(() => res({ error: 'timeout' }), 10000));
+      return Promise.race([run.catch((e) => ({ error: String(e) })), guard]);
+    })()`);
+    await capture(target, 'trash');
+    const purge = await target.webContents.executeJavaScript(`(async () => {
+      const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+      const id = ${JSON.stringify(trashUi?.card ?? '')};
+      const row = document.querySelector('.trash-row[data-id="' + id + '"]');
+      if (!row) return { error: 'no row' };
+      row.querySelector('.trash-del').click();
+      await sleep(200);
+      const confirmBtn = [...document.querySelectorAll('.dlg-scrim:not([hidden])')].pop()?.querySelector('.dlg .btn.danger');   // 맨 위 = 확인 창
+      const asked = !!confirmBtn;
+      confirmBtn?.click();
+      await sleep(500);
+      const gone = !document.querySelector('.trash-row[data-id="' + id + '"]');
+      const trash = await window.__roadmap.adapter.listTrash();
+      const purged = !trash.some((x) => x.id === id);
+      [...document.querySelectorAll('.trash-dlg .btn.outline')].pop()?.click();   // 닫기
+      await sleep(150);
+      const closed = !document.querySelector('.trash-dlg');
+      window.__roadmap.launcher.hide();
+      return { asked, gone, purged, closed };
+    })()`);
+    trashUi = { ...trashUi, ...purge };
+    console.log('[smoke] trash-ui ' + JSON.stringify(trashUi));
   }
 
   const ok = !result.error && !opened?.error && !renamed?.error
     && shared === true && boardEvent === true && trackEvent === true && taskEvent === true
     && tabsCheck?.tabCount === 2 && tabsCheck?.hasAdd === true && tabsCheck?.name2 === '탭 테스트 보드'
     && tabsCheck?.nameBack === tabsCheck?.name1 && tabsCheck?.afterClose === 1
-    && nondestr?.keptOnLink === true && nondestr?.bUntouched === true
+    && saveModel?.seedCollision === true && saveModel?.schema === 19
+    && saveModel?.stale1?.merged === true && saveModel?.stale1?.kids === 2 && saveModel?.stale1?.zGone === true && saveModel?.stale1?.xOnB === true
+    && saveModel?.stale2?.affectedB === true && saveModel?.stale2?.kept === true
+    && saveModel?.compose?.stored === true && saveModel?.compose?.inDoc === true && saveModel?.compose?.notTasks === true
+    && saveModel?.compose?.stillCards === true && saveModel?.compose?.cycleRejected === true
+    && saveModel?.del?.preShared === true && saveModel?.del?.xKept === true && saveModel?.del?.kids >= 2 && saveModel?.del?.bOnlyGone === true
+    && saveModel?.tr?.oldInTrash === true && saveModel?.tr?.freshGone === true && saveModel?.tr?.structure === true
+    && saveModel?.tr?.purged === true && saveModel?.tr?.emptied === true
+    && staleTab?.merged === true && staleTab?.marked === true && staleTab?.fresh === true && staleTab?.cleared === true
+    && trashUi?.leftBoard === true && trashUi?.btnShown === true && trashUi?.listed === true
+    && trashUi?.asked === true && trashUi?.gone === true && trashUi?.purged === true && trashUi?.closed === true
     && relCheck?.allDep === true && relCheck?.added === true && relCheck?.removed === true
     && orderCheck?.topoOk === true && orderCheck?.edges > 0 && orderCheck?.maxRank > 0
     && orderMode?.hasOrderAxis === true && orderMode?.ordered === true && orderMode?.cards > 0 && orderMode?.back === true
@@ -1597,7 +1755,7 @@ async function runSmoke(target) {
   app.exit(ok ? 0 : 1);
 }
 
-/** --repro : 실제 데이터에서 '조합=포함' 왕복 점검(다른 보드 이벤트를 하위로 품고 저장/재로드). */
+/** --repro : 실제 데이터에서 조합(구성)·합치기·복사붙여넣기 왕복 점검. 반드시 DB 복사본으로. */
 async function runRepro(target) {
   const boardId = (() => { const i = process.argv.indexOf('--board'); return i >= 0 ? Number(process.argv[i + 1]) : 1; })();
   try {
@@ -1644,9 +1802,9 @@ async function runRepro(target) {
       const enabledAt2 = applyBtn() ? !applyBtn().disabled : false;
       if (applyBtn() && !applyBtn().disabled) applyBtn().click();
       await sleep(300);
-      const refs = (r.store.doc.refs || []).filter((x) => x.parent === cid).map((x) => x.child);
+      const refs = (r.store.doc.compose || []).filter((x) => x.parent === cid).map((x) => x.child);
       const twoRefs = chosen.length === 2 && chosen.every((id) => refs.includes(id));
-      const notRenderedCard = chosen.every((id) => !r.store.items.some((x) => x.id === id));
+      // 조합은 카드를 새로 그리지 않는다 — 같은 보드 대상이면 원래 자리의 카드 그대로, 다른 보드면 없음.
       const itemsUnchanged = r.store.items.length === itemsBefore;
       // 상세 탭에 나오나(조합 그룹)
       document.querySelector('#pItem .ptab[data-tab="task"]').click();
@@ -1656,8 +1814,8 @@ async function runRepro(target) {
       await sleep(400);
       await r.openProject(${boardId});
       await sleep(500);
-      const persisted = (r.store.doc.refs || []).filter((x) => x.parent === cid).length >= 2;
-      const persistedNoCard = chosen.every((id) => !r.store.items.some((x) => x.id === id));
+      const persisted = (r.store.doc.compose || []).filter((x) => x.parent === cid).length >= 2;
+      const persistedNoCard = r.store.items.length === itemsBefore;
 
       // ── 동일 = 합치기(merge) — 팝업 버튼 → 트리에서 하나 고름 → 본질 선택 → 합침 ──
       const evs2 = await r.adapter.listEvents();
@@ -1711,7 +1869,7 @@ async function runRepro(target) {
         const applyBtn2 = [...document.querySelectorAll('.dlg-actions .btn.cta')].pop();
         if (applyBtn2 && !applyBtn2.disabled) applyBtn2.click();
         await sleep(300);
-        const trackRef = (r.store.doc.refs || []).filter((x) => x.parent === trackId).length >= 2;
+        const trackRef = (r.store.doc.compose || []).filter((x) => x.parent === trackId).length >= 2;
         trackCombine = { opened: rows2.length > 0, checkedN, trackRef };
       }
       // 구성 패널 닫기
@@ -1778,7 +1936,7 @@ async function runRepro(target) {
       const ctrlTabSwitches = r.tabs.active !== activeBefore;
       const keyboardTabs = { tAddsTab, ctrlTabSwitches };
 
-      return { treeShown, hasSearch, chev, disabledAt1, enabledAt2, twoRefs, notRenderedCard, itemsUnchanged, inDetail, persisted, persistedNoCard, merge, trackCombine, copyPaste, keyboardTabs, relBtns };
+      return { treeShown, hasSearch, chev, disabledAt1, enabledAt2, twoRefs, itemsUnchanged, inDetail, persisted, persistedNoCard, merge, trackCombine, copyPaste, keyboardTabs, relBtns };
     })()`);
     console.log('[repro] ' + JSON.stringify(out));
   } catch (err) {
@@ -1870,21 +2028,26 @@ function registerIpc() {
   };
 
   ipcMain.handle('db:load', guard(() => repo.load()));
-  ipcMain.handle('db:save', guard((_e, doc, label) => { repo.save(doc, label ?? ''); return true; }));
+  // 저장은 바뀐 것만 적용한다(docs/SAVE.md). 영향받은 다른 보드·순환이라 넣지 않은 간선을 돌려준다.
+  ipcMain.handle('db:save', guard((_e, doc, label) => repo.save(doc, label ?? '')));
 
   // 프로젝트
   ipcMain.handle('project:list', guard(() => repo.listProjects()));
   ipcMain.handle('event:list', guard(() => repo.listEvents()));
   ipcMain.handle('project:reorder', guard((_e, ids) => { repo.reorderProjects(ids ?? []); return true; }));
-  ipcMain.handle('project:open', guard((_e, id) => {
-    repo.open(id);
-    repo.touchOpened(id);
-    return repo.load();
-  }));
+  // 렌더러가 보드를 연다 — 받은 문서가 그 보드의 저장 기준이 된다(docs/SAVE.md §3).
+  ipcMain.handle('project:open', guard((_e, id) => repo.openView(id)));
   // 활성 보드만 바꾼다(문서는 안 읽음). 탭 캐시에서 즉시 전환할 때 저장 대상을 맞춘다.
   ipcMain.handle('project:select', guard((_e, id) => { repo.open(id); repo.touchOpened(id); return true; }));
   // 한 이벤트가 품은 카드들 — '상세' 탭에서 조합한 이벤트의 안쪽 일정을 펼칠 때.
   ipcMain.handle('event:cards', guard((_e, id) => repo.eventCards(id)));
+  // 이벤트 몇 개의 본질 · 조상(조합 대상에서 빼야 순환이 안 생긴다)
+  ipcMain.handle('event:get', guard((_e, ids) => repo.eventsById(ids)));
+  ipcMain.handle('event:ancestors', guard((_e, id) => repo.ancestorsOf(id)));
+  // 휴지통 — 부모를 모두 잃은 이벤트 (docs/SAVE.md §7)
+  ipcMain.handle('trash:list', guard(() => repo.listTrash()));
+  ipcMain.handle('trash:purge', guard((_e, ids) => repo.purgeTrash(ids ?? [])));
+  ipcMain.handle('trash:empty', guard(() => repo.emptyTrash()));
   // 동일 매핑 = 두 이벤트를 하나로 합치기(§7.2). 되돌리기 스냅샷을 돌려준다.
   ipcMain.handle('event:merge', guard((_e, keepId, dropId) => repo.mergeEvents(keepId, dropId)));
   ipcMain.handle('event:unmerge', guard((_e, snapshot) => repo.unmergeEvents(snapshot)));
@@ -1892,6 +2055,7 @@ function registerIpc() {
   ipcMain.handle('project:rename', guard((_e, id, name) => { repo.renameProject(id, name); return true; }));
   ipcMain.handle('project:duplicate', guard((_e, id, name) => repo.duplicateProject(id, name)));
   ipcMain.handle('project:delete', guard((_e, id) => { repo.deleteProject(id); return true; }));
+  ipcMain.handle('project:deletePreview', guard((_e, id) => repo.deletePreview(id)));
   ipcMain.handle('db:revisions', guard((_e, limit) => repo.listRevisions(limit ?? 50)));
   ipcMain.handle('db:revision', guard((_e, id) => repo.getRevision(id)));
   ipcMain.handle('db:info', guard(() => ({

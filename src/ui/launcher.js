@@ -13,6 +13,7 @@ import { $, el, clear, button, icon, ICONS } from './dom.js';
 import { toast } from './toast.js';
 import { toggleTheme } from './theme.js';
 import { askText, askConfirm } from './dialog.js';
+import { openTrash } from './trash.js';
 
 /** 빈 보드 — 오늘이 속한 달부터 6개월, 트랙 3개 */
 function blankDoc(name) {
@@ -54,6 +55,9 @@ export class Launcher {
     $('l-close').addEventListener('click', () => this.hide());
     // 보드에 들어가지 않아도 테마를 바꿀 수 있어야 한다
     $('l-theme').addEventListener('click', () => toggleTheme());
+    // 휴지통 — 목록을 바로 펼치지 않고 팝업으로만 (docs/SAVE.md §7)
+    $('l-trash').hidden = !adapter.hasTrash;
+    $('l-trash').addEventListener('click', () => openTrash(this.adapter));
 
     $('l-search').addEventListener('input', (e) => { this._query = e.target.value; this.#paint(); });
     $('l-sort').addEventListener('change', (e) => { this._sort = e.target.value; this.#paint(); });
@@ -216,7 +220,12 @@ export class Launcher {
   }
 
   async #delete(p) {
-    const detail = p.items ? `일정 ${p.items}건이 함께 사라집니다. ` : '';
+    // 이 보드에만 담긴 일정은 함께 지우고, 다른 보드에도 놓인 일정은 남긴다(docs/SAVE.md §7).
+    let pre = null;
+    try { pre = await this.adapter.deletePreview?.(p.id); } catch { pre = null; }
+    const items = pre ? pre.items : p.items;
+    const kept = pre?.shared ? `다른 보드에도 있는 ${pre.shared}건은 남습니다. ` : '';
+    const detail = (items ? `일정 ${items}건이 함께 사라집니다. ` : '') + kept;
     const ok = await askConfirm({
       title: '보드 삭제', confirmLabel: '삭제', danger: true,
       message: `'${p.name}'을(를) 삭제합니다. ${detail}되돌릴 수 없습니다.`,

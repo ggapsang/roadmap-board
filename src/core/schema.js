@@ -15,7 +15,7 @@ import {
   RELATION_TYPES, RELATION_KEYS, AXIS_KINDS, AXIS_DIRS,
 } from '../config/index.js';
 
-export const SCHEMA_VERSION = 15;
+export const SCHEMA_VERSION = 16;
 
 /**
  * v0 = P0 시안 문서(version 필드 없음).
@@ -189,6 +189,16 @@ function v14_to_v15(doc) {
   return doc;
 }
 
+function v15_to_v16(doc) {
+  // 조합(구성)을 doc.compose로. 옛 이름 doc.refs는 관계 5종의 '참조'와 헷갈려 바꾼다 (docs/SAVE.md §5).
+  // 조합은 순서 없는 구성 — 태스크(순서 없는 포함)와 본질이 달라 따로 든다.
+  const old = Array.isArray(doc.compose) ? doc.compose : (Array.isArray(doc.refs) ? doc.refs : []);
+  doc.compose = old;
+  delete doc.refs;
+  doc.version = 16;
+  return doc;
+}
+
 const MIGRATIONS = {
   0: v0_to_v1,
   1: v1_to_v2,
@@ -205,6 +215,7 @@ const MIGRATIONS = {
   12: v12_to_v13,
   13: v13_to_v14,
   14: v14_to_v15,
+  15: v15_to_v16,
 };
 
 export const ALIGNS = ['top', 'middle', 'bottom'];
@@ -298,7 +309,6 @@ export function normalize(doc) {
 
   // ── 일정
   const seenItem = new Set();
-  const seenTask = new Set();               // 태스크 id는 보드 전체에서 유일 (DB PK)
   doc.items = doc.items.filter((it) => isObj(it)).map((it, i) => {
     let id = typeof it.id === 'string' && it.id ? it.id : `e${i}`;
     while (seenItem.has(id)) id = `${id}_`;
@@ -326,7 +336,9 @@ export function normalize(doc) {
     // (옛 board-pointer alias(숫자)는 자연히 버려진다.)
     n.alias = typeof it.alias === 'string' && it.alias.trim() ? it.alias.trim() : null;
 
-    // 순서 없는 태스크(액션 아이템). 이벤트 본질이라 place가 아니라 item에 직접 둔다.
+    // 순서 없는 태스크(액션 아이템). 태스크도 이벤트라 여러 카드에 함께 담길 수 있다(다중 소속) —
+    // 같은 id는 한 카드 목록 안에서만 겹치면 안 된다(간선 PK). 다른 카드와 겹치는 건 같은 이벤트다.
+    const seenTask = new Set();
     n.tasks = (Array.isArray(it.tasks) ? it.tasks : []).filter(isObj).map((t) => {
       let tid = typeof t.id === 'string' && t.id ? t.id : newId('k');
       while (seenTask.has(tid)) tid = newId('k');
@@ -427,6 +439,9 @@ export function normalize(doc) {
     warnings.push('끊어지거나 순환하는 관계를 정리했습니다.');
   }
 
+  // ── 조합(구성) — 태스크와 본질이 다른 순서 없는 포함 (docs/SAVE.md §5)
+  normalizeCompose(doc, warnings);
+
   doc.version = SCHEMA_VERSION;
   return { doc, warnings };
 }
@@ -434,10 +449,6 @@ export function normalize(doc) {
 /** 관계 목록 정규화 — 종류 허용, 끝점 존재, 자기순환 금지, 중복 제거, 순환 금지 종류는 사이클 차단. */
 function normalizeRelations(doc, itemIds) {
   const acyclic = new Set(RELATION_TYPES.filter((r) => r.acyclic).map((r) => r.key));
-  const symmetric = new Set(RELATION_TYPES.filter((r) => r.symmetric).map((r) => r.key));
-  // 보드를 넘나드는 관계(동일·조합)는 반대쪽 끝이 다른 보드에 있을 수 있다. 한쪽만 이 보드
-  // 안이면 살린다 — 안 그러면 정규화가 매번 보드 밖 대상을 끊어 버린다.
-  const crossBoard = new Set(RELATION_TYPES.filter((r) => r.crossBoard).map((r) => r.key));
   const src = [];
   // 관계는 doc.relations에서 받는다. 단 포함(contain)은 item.parent가 authoritative라
   // 입력의 contain은 버리고 item.parent에서 다시 만든다(중복·불일치 방지).
@@ -460,61 +471,18 @@ function normalizeRelations(doc, itemIds) {
     return false;
   };
 
-  // 모순 방지 1 — 같은 두 이벤트가 '동일'이면서 '조합'일 수 없다. 조합(다른 이벤트들을 합친
-  // 것)이 더 구체적인 주장이라 조합을 남기고 동일을 버린다. combinePairs는 정렬된 끝점 키.
-  const pairKey = (a, b) => [a, b].sort().join('|');
-  const combinePairs = new Set();
-  for (const r of src) {
-    if (isObj(r) && r.type === 'combine' && typeof r.from === 'string' && typeof r.to === 'string' && r.from !== r.to) {
-      combinePairs.add(pairKey(r.from, r.to));
-    }
-  }
-
-  // 모순 방지 2 — 포함(contain) 관계로 조상↔자손인 두 이벤트는 '동일'일 수 없다(상위 일정과
-  // 그 안의 카드가 '같은 이벤트'라는 건 구조상 모순). contain 그래프를 미리 쌓아 두고, same
-  // 관계의 두 끝이 서로 조상/자손이면 버린다. (UI는 후보에서 미리 빼지만, 옛 데이터엔 남아
-  // 있을 수 있어 로드 때 스스로 정리한다.)
-  const containAdj = new Map();
-  for (const r of src) {
-    if (isObj(r) && r.type === 'contain' && typeof r.from === 'string' && typeof r.to === 'string') {
-      if (!containAdj.has(r.from)) containAdj.set(r.from, new Set());
-      containAdj.get(r.from).add(r.to);
-    }
-  }
-  const containReaches = (s, t) => {
-    const stack = [s]; const vis = new Set();
-    while (stack.length) {
-      const node = stack.pop();
-      if (node === t) return true;
-      if (vis.has(node)) continue;
-      vis.add(node);
-      for (const m of (containAdj.get(node) ?? [])) stack.push(m);
-    }
-    return false;
-  };
-  const containRelated = (a, b) => containReaches(a, b) || containReaches(b, a);
-
   const seen = new Set();
   const out = [];
   for (const r of src) {
-    // 모르는 종류(옛 same·combine 등)는 버린다 — dep로 바꾸지 않는다(동일·조합은 관계가 아님).
+    // 모르는 종류(옛 same·combine 등)는 버린다 — 동일은 합치기 작업, 조합은 구성(doc.compose)이지
+    // 관계가 아니다(docs/SYSTEM.md). dep로 바꾸지도 않는다.
     if (!RELATION_KEYS.includes(r.type)) continue;
     const type = r.type;
     const { from, to } = r;
     if (typeof from !== 'string' || typeof to !== 'string') continue;
     if (from === to) continue;
-    // 동일인데 같은 쌍이 조합으로도 걸려 있으면 버린다(조합 우선).
-    if (type === 'same' && combinePairs.has(pairKey(from, to))) continue;
-    // 동일인데 두 끝이 포함(상하위) 관계면 버린다(조상↔자손은 다른 이벤트).
-    if (type === 'same' && containRelated(from, to)) continue;
-    const inHere = crossBoard.has(type)
-      ? (itemIds.has(from) || itemIds.has(to))   // 한쪽만 이 보드여도 OK
-      : (itemIds.has(from) && itemIds.has(to));  // 선행·포함은 양끝 다 이 보드
-    if (!inHere) continue;
-    // 대칭 관계(동일)는 (a,b)와 (b,a)가 같다 — 끝점을 정렬해 중복을 없앤다.
-    const key = symmetric.has(type)
-      ? `${type}|${[from, to].sort().join('|')}`
-      : `${type}|${from}|${to}`;
+    if (!itemIds.has(from) || !itemIds.has(to)) continue;   // 선행·포함은 양끝이 이 보드에
+    const key = `${type}|${from}|${to}`;
     if (seen.has(key)) continue;
     if (acyclic.has(type) && reaches(type, to, from)) continue;   // from→to가 순환을 만들면 버린다
     seen.add(key);
@@ -524,6 +492,53 @@ function normalizeRelations(doc, itemIds) {
     adj.get(ak).add(to);
   }
   return out;
+}
+
+/**
+ * 조합(구성) 정리 — doc.compose = [{parent, child}] (docs/SAVE.md §5).
+ * 조합은 여러 이벤트로 한 이벤트가 만들어진 것이다. 부모는 이 보드의 트랙·카드여야 하고(보드→트랙은
+ * doc.tracks가 맡는다), 대상은 어느 보드의 이벤트든 된다 — 대상 쪽은 이 문서가 다 알지 못한다.
+ * 문서 안에서 알 수 있는 구조 위반만 끊는다: 자기 자신, 자기 조상(순환), 같은 쌍의 다른 포함(이미
+ * 하위 카드·태스크·트랙 위 카드로 담긴 것 — 한 쌍에 간선은 하나다). 보드를 넘는 순환은 저장이 거부한다.
+ */
+function normalizeCompose(doc, warnings) {
+  const itemById = new Map(doc.items.map((i) => [i.id, i]));
+  const trackIds = new Set(doc.tracks.map((t) => t.id));
+  // 문서 안에서 부모 → 자식 (하위 카드·태스크·트랙 위 카드)
+  const kids = new Map();
+  const addKid = (p, c) => { if (!kids.has(p)) kids.set(p, new Set()); kids.get(p).add(c); };
+  for (const it of doc.items) {
+    if (it.parent) addKid(it.parent, it.id);
+    else for (const t of (it.place?.tracks ?? [it.place?.t])) addKid(t, it.id);
+    for (const k of (it.tasks ?? [])) addKid(it.id, k.id);
+  }
+  // 이 부모의 조상 (문서 안) — 카드면 상위 카드 사슬 + 트랙, 트랙이면 없음
+  const ancestors = (id) => {
+    const out = new Set();
+    let cur = itemById.get(id);
+    let guard = 0;
+    while (cur && guard++ < 256) {
+      if (cur.parent) { out.add(cur.parent); cur = itemById.get(cur.parent); continue; }
+      for (const t of (cur.place?.tracks ?? [cur.place?.t])) out.add(t);
+      break;
+    }
+    return out;
+  };
+
+  const seen = new Set();
+  const before = Array.isArray(doc.compose) ? doc.compose.length : 0;
+  doc.compose = (Array.isArray(doc.compose) ? doc.compose : []).filter((c) => {
+    if (!isObj(c) || typeof c.parent !== 'string' || typeof c.child !== 'string') return false;
+    if (!c.parent || !c.child || c.parent === c.child) return false;
+    if (!itemById.has(c.parent) && !trackIds.has(c.parent)) return false;   // 부모가 이 보드에 없다
+    if (ancestors(c.parent).has(c.child)) return false;                     // 자기 조상을 품으면 순환
+    if (kids.get(c.parent)?.has(c.child)) return false;                      // 같은 쌍이 이미 다른 포함
+    const key = `${c.parent}\u0001${c.child}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).map((c) => ({ parent: c.parent, child: c.child }));
+  if (doc.compose.length < before) warnings.push('맞지 않는 조합(구성)을 정리했습니다.');
 }
 
 /** 0~1 비율. 비어 있으면 null (= 자동 배치) */
@@ -572,64 +587,59 @@ export function newId(prefix) {
 }
 
 /**
- * 보드-독립 재식별 (docs/DIRECTION.md #3).
+ * 보드-독립 재식별 (docs/DIRECTION.md #3, docs/SAVE.md §8).
  *
- * 문서의 모든 이벤트에 **새 id**를 주고 참조(상위 일정·관계·태스크)를 함께 옮긴다.
- * 프로젝트 복제·반입으로 같은 id가 여러 보드에 흩어지면, 나중에 "같은 이벤트가 여러
- * 보드에" 올라갈 때 서로 다른 이벤트가 같은 키를 갖는 충돌이 생긴다. 복제본은 별개
- * 이벤트이므로 여기서 새 식별을 부여해 그 충돌을 원천에서 막는다.
+ * 이벤트에 **새 id**를 주고 참조(상위 일정·관계·태스크·조합)를 함께 옮긴다. 복제·반입·예시 로드맵으로
+ * 같은 id가 여러 보드에 흩어지면 서로 다른 이벤트가 같은 키를 갖고, 저장이 남의 이벤트를 덮어쓰거나
+ * 몰래 공유하게 된다. 새 식별을 부여해 그 충돌을 원천에서 막는다.
  *
- * 입력(정규화된 문서 모양)을 변형하고 그대로 돌려준다.
+ * @param {object} doc 정규화된 문서 모양 (변형해서 그대로 돌려준다)
+ * @param {{only?: (id:string) => boolean}} [opts]
+ *   only 없음  — 전부 새 id (복제본). 트랙도 새 id.
+ *   only 있음  — 고른 카드·태스크·트랙만 새 id (충돌하는 것만). 'track:2:t0'처럼 다른 보드 트랙 id를
+ *                물고 온 트랙도 새 id를 받아야, 저장이 남의 트랙을 이 보드에 몰래 붙이지 않는다.
  */
-export function reidentify(doc) {
-  const map = new Map();                       // 옛 id → 새 id
+export function reidentify(doc, { only = null } = {}) {
+  const pick = only ?? (() => true);
+  const map = new Map();                       // 옛 id → 새 id (카드·태스크)
   const used = new Set();
   const fresh = (pfx) => { let x; do { x = newId(pfx); } while (used.has(x)); used.add(x); return x; };
+  const to = (id) => map.get(id) ?? id;
 
   for (const it of doc.items ?? []) {
+    if (!pick(it.id)) continue;
     const nu = fresh('e');
     map.set(it.id, nu);
     it.id = nu;
   }
-  // 트랙도 새 식별 — 복제본이 원본 트랙 id('track:{원본}:…')를 물고 가면, 저장 때 접두가
+  // 트랙도 새 식별(전부일 때만) — 복제본이 원본 트랙 id('track:{원본}:…')를 물고 가면, 저장 때 접두가
   // 겹치고 원본 보드의 포함까지 건드린다. 트랙 id를 새로 주고 place.t 참조를 함께 옮긴다.
   const tmap = new Map();
-  for (const t of doc.tracks ?? []) { const nu = fresh('t'); tmap.set(t.id, nu); t.id = nu; }
+  for (const t of doc.tracks ?? []) { if (!pick(t.id)) continue; const nu = fresh('t'); tmap.set(t.id, nu); t.id = nu; }
+  const tto = (id) => tmap.get(id) ?? id;
+
+  const taskMap = new Map();                   // 같은 태스크가 여러 카드에 있으면 같은 새 id로
   for (const it of doc.items ?? []) {
-    if (it.parent) it.parent = map.get(it.parent) ?? null;
-    if (it.place && tmap.has(it.place.t)) it.place.t = tmap.get(it.place.t);
-    if (it.place && Array.isArray(it.place.tracks)) it.place.tracks = it.place.tracks.map((id) => tmap.get(id) ?? id);
-    for (const t of (Array.isArray(it.tasks) ? it.tasks : [])) t.id = fresh('k');
+    if (it.parent) it.parent = to(it.parent);
+    if (Array.isArray(it.dp)) it.dp = it.dp.map(to);            // 정규화 전 옛 문서의 선행
+    if (it.t) it.t = tto(it.t);                                  // 정규화 전 옛 문서의 트랙
+    if (it.place) it.place.t = tto(it.place.t);
+    if (it.place && Array.isArray(it.place.tracks)) it.place.tracks = it.place.tracks.map(tto);
+    for (const t of (Array.isArray(it.tasks) ? it.tasks : [])) {
+      if (!pick(t.id)) continue;
+      if (!taskMap.has(t.id)) taskMap.set(t.id, fresh('k'));
+      t.id = taskMap.get(t.id);
+    }
   }
-  doc.relations = (Array.isArray(doc.relations) ? doc.relations : [])
-    .map((r) => ({ ...r, id: fresh('r'), from: map.get(r.from), to: map.get(r.to) }))
-    .filter((r) => r.from && r.to);            // 끝점을 못 옮긴 관계는 버린다
+  const any = (id) => tto(taskMap.get(id) ?? to(id));
+  // 없던 필드는 만들지 않는다 — 정규화 전 옛 문서(선행이 item.dp에 있음)를 그대로 넘겨받을 수 있다.
+  if (Array.isArray(doc.relations)) {
+    doc.relations = doc.relations.map((r) => ({ ...r, id: only ? r.id : fresh('r'), from: to(r.from), to: to(r.to) }));
+  }
+  // 조합: 부모(이 보드 트랙·카드)와, 이 보드 안의 대상(카드·트랙·태스크)을 옮긴다. 다른 보드의 대상은
+  // 그대로 — 복제본도 같은 이벤트들로 만들어진 것이다.
+  if (Array.isArray(doc.compose)) {
+    doc.compose = doc.compose.map((c) => ({ parent: any(c.parent), child: any(c.child) }));
+  }
   return doc;
 }
-
-/**
- * 'same'(동일) 관계로 이어진 이벤트 무리 — 주어진 id와 같은 이벤트로 묶인 다른 id들.
- * 대칭·이행적이라 연결 요소(BFS)로 구한다.
- */
-export function sameGroupOf(relations, id) {
-  const adj = new Map();
-  for (const r of (relations ?? [])) {
-    if (r?.type !== 'same') continue;
-    if (!adj.has(r.from)) adj.set(r.from, new Set());
-    if (!adj.has(r.to)) adj.set(r.to, new Set());
-    adj.get(r.from).add(r.to);
-    adj.get(r.to).add(r.from);
-  }
-  const out = new Set();
-  const stack = [id];
-  const vis = new Set([id]);
-  while (stack.length) {
-    const n = stack.pop();
-    for (const m of (adj.get(n) ?? [])) if (!vis.has(m)) { vis.add(m); out.add(m); stack.push(m); }
-  }
-  return out;   // 자기 자신은 포함하지 않는다
-}
-// 동일(same)은 '서로 같은 이벤트'라는 관계일 뿐, 본질을 서로 덮어쓰지 않는다. 각 이벤트는
-// 자기 이름·상태·기간을 그대로 지킨다(§3.4·§3.5). 예전엔 same로 묶인 카드끼리 제목을 맞추는
-// propagateSame가 있었으나, 사용자가 지은 이름을 덮어써 데이터를 망가뜨려 제거했다. 같은
-// '이벤트 자체'(동일 id)를 여러 보드에 둔 경우의 본질 공유는 tabs.js syncFromActive가 맡는다.

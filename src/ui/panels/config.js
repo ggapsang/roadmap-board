@@ -11,7 +11,7 @@
 import { newId } from '../../core/schema.js';
 import { DISPLAY_LIMITS, STATUSES, statusList } from '../../config/index.js';
 import { $, el, clear, button, ICONS } from '../dom.js';
-import { openCombinePicker, containedChildren } from '../combine.js';
+import { openCombinePicker, composedOf } from '../combine.js';
 import { toast } from '../toast.js';
 
 export class ConfigPanel {
@@ -120,11 +120,11 @@ export class ConfigPanel {
         on: { input: (e) => this.store.commit('트랙 라벨', () => { track.lab = e.target.value; }) },
       });
 
-      // 트랙도 이벤트다 — 다른 프로젝트의 트랙·카드를 조합(포함)할 수 있다(docs/SYSTEM.md §6.2).
-      const combN = containedChildren(this.store, track.id).size;
+      // 트랙도 이벤트다 — 여러 이벤트로 이 트랙을 이룰 수 있다(조합=구성, docs/SAVE.md §5).
+      const combN = composedOf(this.store, track.id).size;
       const row = el('div.trow', { className: track.id === this.view.selectedTrack ? 'trow active' : 'trow' }, [
         el('div.names', {}, [lab, name]),
-        button({ className: 'mini' + (combN ? ' on' : ''), iconPath: ICONS.plus, title: combN ? `조합 ${combN}개 — 편집` : '다른 프로젝트에서 조합', onClick: () => this.#combine(track.id) }),
+        button({ className: 'mini' + (combN ? ' on' : ''), iconPath: ICONS.plus, title: combN ? `조합 ${combN}개 — 편집` : '조합 — 여러 이벤트로 이 트랙을 이루기', onClick: () => this.#combine(track.id) }),
         button({ className: 'mini', iconPath: ICONS.up, title: '위로', onClick: () => this.move(i, -1) }),
         button({ className: 'mini', iconPath: ICONS.down, title: '아래로', onClick: () => this.move(i, +1) }),
         button({ className: 'mini', iconPath: ICONS.trash, title: '삭제', onClick: () => this.remove(i) }),
@@ -133,7 +133,7 @@ export class ConfigPanel {
     });
   }
 
-  /** 이 트랙(=이벤트)에 다른 프로젝트의 트랙·카드를 조합(포함)으로 담는다. 카드로 안 그린다. */
+  /** 이 트랙(=이벤트)을 이루는 조합 대상을 고른다(구성). 보드에 카드로 안 그린다. */
   async #combine(trackId) {
     const changed = await openCombinePicker(this.store, this.adapter, trackId);
     if (changed) this.#renderTracks();
@@ -154,29 +154,50 @@ export class ConfigPanel {
     this.render();
   }
 
+  /**
+   * 트랙을 보드에서 뺀다. 이 트랙에만 놓인 카드(와 그 안의 하위 카드)는 함께 빠지고, 다른 트랙에도
+   * 소속된 카드는 남는다 — 소속에서 이 트랙만 지운다. 빠진 트랙·카드는 이벤트로 남아 휴지통(첫 화면)에
+   * 구조째 간다(docs/SAVE.md §7). 방금 만든 것이면 바로 없어진다.
+   */
   remove(index) {
     const track = this.store.tracks[index];
     if (this.store.tracks.length === 1) { toast('마지막 트랙은 삭제할 수 없습니다', 'warn'); return; }
 
-    const count = this.store.items.filter((x) => x.place.t === track.id).length;
+    const membersOf = (it) => (Array.isArray(it.place.tracks) && it.place.tracks.length ? it.place.tracks : [it.place.t]);
+    const only = this.store.items.filter((x) => !x.parent && membersOf(x).every((t) => t === track.id));
+    const gone = new Set(only.map((x) => x.id));
+    const walk = (pid) => { for (const x of this.store.items) if (x.parent === pid && !gone.has(x.id)) { gone.add(x.id); walk(x.id); } };
+    for (const x of only) walk(x.id);
+    const count = gone.size;
     const msg = count
-      ? `'${track.name}' 트랙과 일정 ${count}건을 삭제합니다. 계속할까요?`
-      : `'${track.name}' 트랙을 삭제합니다. 계속할까요?`;
+      ? `'${track.name}' 트랙을 보드에서 뺍니다. 이 트랙에만 있던 일정 ${count}건도 함께 빠집니다(휴지통에서 영구 삭제). 계속할까요?`
+      : `'${track.name}' 트랙을 보드에서 뺍니다. 계속할까요?`;
     if (!confirm(msg)) return;
 
-    this.store.commit('트랙 삭제', (doc) => {
-      const removed = new Set(doc.items.filter((x) => x.place.t === track.id).map((x) => x.id));
-      doc.items = doc.items.filter((x) => x.place.t !== track.id);
-      doc.relations = (doc.relations ?? []).filter((r) => !removed.has(r.from) && !removed.has(r.to));
+    this.store.commit('트랙 빼기', (doc) => {
+      doc.items = doc.items.filter((x) => !gone.has(x.id));
+      doc.relations = (doc.relations ?? []).filter((r) => !gone.has(r.from) && !gone.has(r.to));
+      doc.compose = (doc.compose ?? []).filter((c) => c.parent !== track.id && !gone.has(c.parent));
       doc.tracks.splice(index, 1);
-      doc.items.forEach((it) => {
-        const ti = doc.tracks.findIndex((x) => x.id === it.place.t);
-        it.place.sp = Math.min(it.place.sp, doc.tracks.length - ti);
-      });
+      const order = new Map(doc.tracks.map((t, i) => [t.id, i]));
+      const byId = new Map(doc.items.map((x) => [x.id, x]));
+      // 다른 트랙에도 소속된 카드 — 이 트랙만 소속에서 지우고, 홈이 빠졌으면 남은 첫 트랙이 홈이다.
+      for (const it of doc.items) {
+        if (it.parent) continue;
+        const left = membersOf(it).filter((t) => order.has(t)).sort((a, b) => order.get(a) - order.get(b));
+        it.place.tracks = left;
+        it.place.t = left[0];
+        let run = 1;
+        for (let k = 1; k < left.length; k += 1) { if (order.get(left[k]) === order.get(left[k - 1]) + 1) run += 1; else break; }
+        it.place.sp = run;
+      }
+      // 하위 카드는 상위의 트랙을 따른다
+      const homeOf = (it, guard = 0) => (it.parent && byId.has(it.parent) && guard < 64 ? homeOf(byId.get(it.parent), guard + 1) : it.place.t);
+      for (const it of doc.items) if (it.parent) it.place.t = homeOf(it);
     });
     this.view.selectedTrack = null;
     this.render();
-    toast(count ? `트랙과 일정 ${count}건을 삭제했습니다` : '트랙을 삭제했습니다');
+    toast(count ? `트랙과 일정 ${count}건을 보드에서 뺐습니다 — Ctrl+Z로 되돌립니다` : '트랙을 보드에서 뺐습니다');
   }
 
   add() {

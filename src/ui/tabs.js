@@ -5,18 +5,15 @@
  * 문서(doc)를 **메모리에 그대로 들고** 있다가, 탭을 바꾸면 DB를 다시 읽지 않고 그 문서로
  * 즉시 갈아끼운다(리로드 없음 → 빠르고, 만지던 상태가 날아가지 않는다). 규칙 12.
  *
- * 실시간 반영: 같은 이벤트(동일 id)가 여러 보드에 놓여 있으면, 활성 보드에서 바꾼 본질을
- * 열려 있는 다른 탭의 같은 이벤트에도 즉시 퍼뜨린다(협업 도구의 공유 상태처럼). 동일(same)
- * 관계는 서로 다른 이벤트를 잇는 것이라 본질을 복사하지 않는다 — 각자 제목을 지킨다.
+ * 실시간 반영: 저장이 다른 보드의 화면을 바꾸면(같은 이벤트가 여러 보드에 놓인 경우) 메인이
+ * 그 보드들을 알려 주고, 그 탭 캐시를 '낡음'으로 표시한다. 낡은 탭은 돌아갈 때 DB에서 다시 읽는다.
+ * 영향이 없으면 캐시로 즉시 전환한다 (docs/SAVE.md §6). 다른 탭 문서를 직접 고치지 않는다(규약 2).
  *
  *   +          새 보드 선택 탭
  *   탭 클릭    그 보드로 전환 (캐시가 있으면 즉시)
  *   탭 ×       탭 닫기 (마지막 하나면 선택 화면으로)
  */
 import { $, el, clear, icon, ICONS } from './dom.js';
-
-/** 본질(공유되는 것). 별칭·좌표·부모는 배치라 제외. */
-const ESSENCE = ['ti', 's', 'e', 'ty', 'st', 'og', 'pg', 'note'];
 
 export class BoardTabs {
   /**
@@ -39,6 +36,7 @@ export class BoardTabs {
     this.active = -1;
     this.seq = 0;
     this.docs = new Map();  // boardId -> 메모리 문서(살아 있는 참조)
+    this.stale = new Set(); // 다른 보드의 저장·합치기로 화면이 달라진 보드 — 돌아갈 때 다시 읽는다
   }
 
   /** 처음엔 보드 선택 탭 하나. */
@@ -64,13 +62,14 @@ export class BoardTabs {
       this.render();
       return;
     }
-    const cached = this.docs.get(t.boardId);
+    const cached = this.stale.has(t.boardId) ? null : this.docs.get(t.boardId);
     if (cached) {
       this.adoptCached(cached, t.boardId);    // 즉시 — DB 안 읽음, 저장 대상만 맞춘다
     } else {
       this.launcher.hide();                   // 런처를 먼저 내리고 로딩 표시(빈 보드 대신)
       const doc = await this.openProject(t.boardId);
       this.docs.set(t.boardId, doc);
+      this.stale.delete(t.boardId);
     }
     t.name = this.boardName() || t.name;
     this.launcher.hide();
@@ -114,7 +113,7 @@ export class BoardTabs {
   closeTab(i) {
     if (i < 0 || i >= this.tabs.length) return;
     const [gone] = this.tabs.splice(i, 1);
-    if (gone && gone.boardId != null) this.docs.delete(gone.boardId);
+    if (gone && gone.boardId != null) { this.docs.delete(gone.boardId); this.stale.delete(gone.boardId); }
     if (!this.tabs.length) {
       this.tabs.push({ key: (this.seq += 1), boardId: null, name: '보드 선택' });
       this.active = 0;
@@ -124,9 +123,31 @@ export class BoardTabs {
     this.#apply();
   }
 
+  /** 다른 보드의 저장이 이 보드들의 화면을 바꿨다 — 돌아갈 때 다시 읽는다. */
+  markStale(ids) {
+    const active = this.#cur()?.boardId;
+    for (const id of ids ?? []) if (id !== active) this.stale.add(id);
+  }
+
+  /** 합치기처럼 DB 전체를 바꾼 뒤 — 활성 보드 말고는 전부 다시 읽게 한다. */
+  markAllStale() {
+    const active = this.#cur()?.boardId;
+    for (const id of this.docs.keys()) if (id !== active) this.stale.add(id);
+  }
+
+  /** 활성 보드를 DB에서 다시 읽는다(캐시도 갈아끼운다). 합치기·되돌리기 뒤에 쓴다. */
+  async reloadActive() {
+    const t = this.#cur();
+    if (!t || t.boardId == null) return;
+    const doc = await this.openProject(t.boardId);
+    this.docs.set(t.boardId, doc);
+    this.stale.delete(t.boardId);
+  }
+
   /** 보드가 삭제되면 그 탭도 닫고 캐시도 버린다. */
   boardClosed(id) {
     this.docs.delete(id);
+    this.stale.delete(id);
     const i = this.tabs.findIndex((t) => t.boardId === id);
     if (i >= 0) this.closeTab(i);
   }
@@ -142,32 +163,6 @@ export class BoardTabs {
   syncActiveName() {
     const t = this.#cur();
     if (t && t.boardId != null) { t.name = this.boardName() || t.name; this.render(); }
-  }
-
-  /**
-   * 실시간 반영 — 활성 보드에서 바뀐 이벤트 본질을, 열려 있는 다른 탭의 '같은 이벤트'(동일
-   * id)에만 퍼뜨린다. 동일(same) 관계로 묶인 다른 이벤트는 각자 이름을 지키므로 건드리지
-   * 않는다(덮어쓰기 금지). 좌표·부모는 배치라 놔둔다.
-   */
-  syncFromActive() {
-    const src = this.getDoc();
-    if (!src || !Array.isArray(src.items)) return;
-    const cur = this.#cur();
-    const activeBoardId = cur ? cur.boardId : null;
-
-    // '진짜 같은 이벤트'(같은 id로 여러 보드에 놓인 것)만 맞춘다. 동일(same) 관계는 서로 다른
-    // 이벤트를 잇는 것이라 본질을 복사하지 않는다 — 각자 제목을 지킨다(덮어쓰기 금지).
-    const essenceById = new Map();
-    for (const it of src.items) essenceById.set(it.id, it);
-
-    for (const [boardId, doc] of this.docs) {
-      if (boardId === activeBoardId || !doc || !Array.isArray(doc.items)) continue;
-      for (const it of doc.items) {
-        const srcItem = essenceById.get(it.id);   // 오직 같은 id
-        if (!srcItem || srcItem === it) continue;
-        for (const k of ESSENCE) if (it[k] !== srcItem[k]) it[k] = srcItem[k];
-      }
-    }
   }
 
   render() {

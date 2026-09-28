@@ -26,6 +26,21 @@ export class StorageAdapter {
   async listProjects() { return []; }
   async listEvents() { return []; }
   async eventCards() { return []; }
+  async eventsById() { return []; }
+  async eventAncestors(id) { return [id]; }
+  /** 휴지통 — 부모를 모두 잃은 이벤트 (docs/SAVE.md §7) */
+  get hasTrash() { return false; }
+  async listTrash() { return []; }
+  async purgeTrash() { return { purged: 0 }; }
+  async emptyTrash() { return { purged: 0 }; }
+  /** 보드 삭제 전 확인 — 함께 지워질 카드 수 / 다른 곳에도 있어 남는 카드 수 */
+  async deletePreview() { return null; }
+  /**
+   * 저장이 다른 보드 화면을 바꿨을 때(그 보드들을 다시 읽어야 할 때) 부른다 (docs/SAVE.md §6).
+   * 저장이 순환이라 넣지 못한 간선이 있을 때는 onRejected.
+   */
+  onStale = null;
+  onRejected = null;
   /** 동일 매핑 — 두 이벤트를 하나로 합친다(§7.2). {ok, rejected?, undo?} */
   async mergeEvents() { return { ok: false, rejected: '지원하지 않습니다.' }; }
   async unmergeEvents() { return { ok: false }; }
@@ -55,6 +70,13 @@ export class ElectronAdapter extends StorageAdapter {
   async listProjects() { return this.api.listProjects(); }
   async listEvents() { return this.api.listEvents ? this.api.listEvents() : []; }
   async eventCards(id) { return this.api.eventCards ? this.api.eventCards(id) : []; }
+  async eventsById(ids) { return this.api.eventsById ? this.api.eventsById(ids) : []; }
+  async eventAncestors(id) { return this.api.eventAncestors ? this.api.eventAncestors(id) : [id]; }
+  get hasTrash() { return !!this.api.listTrash; }
+  async listTrash() { return this.api.listTrash ? this.api.listTrash() : []; }
+  async purgeTrash(ids) { return this.api.purgeTrash ? this.api.purgeTrash(ids) : { purged: 0 }; }
+  async emptyTrash() { return this.api.emptyTrash ? this.api.emptyTrash() : { purged: 0 }; }
+  async deletePreview(id) { return this.api.deletePreview ? this.api.deletePreview(id) : null; }
   async mergeEvents(keepId, dropId) { return this.api.mergeEvents ? this.api.mergeEvents(keepId, dropId) : { ok: false, rejected: '지원하지 않습니다.' }; }
   async unmergeEvents(snapshot) { return this.api.unmergeEvents ? this.api.unmergeEvents(snapshot) : { ok: false }; }
 
@@ -80,7 +102,12 @@ export class ElectronAdapter extends StorageAdapter {
   }
 
   async load() { return this.api.load(); }
-  async save(doc) { await this.api.save(doc, this.lastLabel); }
+  async save(doc) {
+    const res = await this.api.save(doc, this.lastLabel);
+    // 저장은 바뀐 것만 쓴다 — 이 저장으로 화면이 달라진 다른 보드를 알려 준다(탭 캐시를 낡음으로).
+    if (res?.affected?.length) this.onStale?.(res.affected);
+    if (res?.rejected?.length) this.onRejected?.(res.rejected);
+  }
 
   // ── SQLite에서만 되는 것들 ──────────────────────────────
   get hasHistory() { return true; }

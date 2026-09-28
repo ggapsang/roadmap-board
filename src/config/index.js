@@ -66,7 +66,8 @@ export const DEFAULT_TYPE = 'bar';
 export const RELATION_TYPES = [
   { key: 'dep', label: '선행', acyclic: true },
   { key: 'contain', label: '포함', acyclic: true },   // 상위 일정 안에 든 카드. 지금은 item.parent가 렌더용 사본.
-  // 동일=합치기 작업, 조합=포함이라 관계 타입이 아니다(docs/SYSTEM.md §7). 아래는 미구현 관계.
+  // 동일=합치기 작업, 조합=구성(순서 없는 포함, doc.compose)이라 관계 타입이 아니다(docs/SYSTEM.md §7,
+  // docs/SAVE.md §5). 아래는 미구현 관계.
   // { key: 'merge', label: '합류' },   // 여러 → 하나 (트리)
   // { key: 'cause', label: '원인', acyclic: true },
   // { key: 'join',  label: '합류' },
@@ -147,6 +148,12 @@ export const DISPLAY_LIMITS = {
 
 /** undo 스택 최대 깊이 (기획안 §5) */
 export const UNDO_LIMIT = 60;
+
+/**
+ * 방금 만든 이벤트를 이 시간(분) 안에 지우면 휴지통을 거치지 않고 바로 없앤다 —
+ * 실수로 만들었다가 바로 지운 것 (docs/SAVE.md §7). 이번 실행 중에 만든 것만 해당한다.
+ */
+export const TRASH_GRACE_MIN = 5;
 
 /** 상태 요약바의 "향후 N일 마일스톤" */
 export const UPCOMING_DAYS = 14;

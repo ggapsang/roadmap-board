@@ -138,7 +138,7 @@
         <div id="i-same"></div>
       </div>
       <div class="fld">
-        <label>조합 <span class="muted">이 이벤트가 하위로 품는 다른 프로젝트 이벤트(포함) · 둘 이상의 묶음 · 상세·펼침에 나옵니다</span></label>
+        <label>조합 <span class="muted">이 이벤트를 이루는 이벤트들(어느 보드든) · 둘 이상 · 태스크와 다름 · 상세에 나옵니다</span></label>
         <div id="i-combine"></div>
       </div>
       <div class="fld">
@@ -178,7 +178,7 @@
     </section>
   </div>
   <footer>
-    <button class="btn outline danger" id="i-del" type="button">삭제</button>
+    <button class="btn outline danger" id="i-del" type="button" title="이 보드에서 뺍니다 — 휴지통(첫 화면)으로. Ctrl+Z로 되돌립니다">보드에서 빼기</button>
     <button class="btn outline" id="i-dup" type="button">복제</button>
   </footer>
 </aside>
@@ -196,7 +196,7 @@
     <button class="btn cta wide" id="t-add" type="button">
       <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>트랙 추가</button>
     <p class="note">위 칸은 분류 라벨, 아래 칸은 트랙 이름입니다. 요구사항·작업패키지·조직 등
-      무엇을 축으로 삼을지는 정해져 있지 않습니다. 삭제하면 해당 트랙의 일정도 함께 제거됩니다.</p>
+      무엇을 축으로 삼을지는 정해져 있지 않습니다. 트랙을 빼면 그 트랙에만 있던 일정도 함께 휴지통으로 갑니다.</p>
 
     <div class="sect">담당 조직</div>
     <div class="tlist" id="olist"></div>
@@ -288,6 +288,8 @@
         <h1>WOLFPACK</h1>
         <p>보드를 고르거나 새로 만듭니다.</p>
       </div>
+      <button class="btn icon" id="l-trash" type="button" title="휴지통 — 보드에서 빠진 이벤트" aria-label="휴지통" hidden>
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13"/></svg></button>
       <button class="btn icon" id="l-theme" type="button" title="테마 전환" aria-label="테마 전환">
         <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9Z"/></svg></button>
       <button class="btn icon" id="l-close" type="button" title="닫기" aria-label="닫기" hidden>

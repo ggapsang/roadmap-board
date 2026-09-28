@@ -11,10 +11,15 @@ import { el, $, clear, icon, ICONS } from './dom.js';
 let host = null;
 
 function ensureHost() {
-  if (host) return host;
-  host = el('div.dlg-scrim', { hidden: true });
+  if (!host) host = el('div.dlg-scrim', { hidden: true });
+  // 매번 맨 뒤로 옮긴다 — 다른 팝업(휴지통 등) 위에서 확인 창을 띄워도 그 위에 오게.
   document.body.append(host);
   return host;
+}
+
+/** 공용 확인 창이 떠 있는가 — 그 아래 팝업이 Esc를 가로채지 않게. */
+export function dialogOpen() {
+  return !!host && !host.hidden;
 }
 
 /**

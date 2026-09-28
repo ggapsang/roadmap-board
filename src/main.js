@@ -68,7 +68,12 @@ async function boot() {
     },
   });
 
-  const itemPanel = new ItemPanel({ store, view, panels, adapter, openProject: (id) => tabs.openBoard(id) });
+  const itemPanel = new ItemPanel({
+    store, view, panels, adapter,
+    openProject: (id) => tabs.openBoard(id),
+    // 합치기·되돌리기는 DB 전체를 바꾼다 — 이 보드는 다시 읽고, 다른 탭은 돌아갈 때 다시 읽는다.
+    reloadBoard: async () => { tabs.markAllStale(); await tabs.reloadActive(); },
+  });
   const configPanel = new ConfigPanel({ store, view, panels, adapter });
   const dataPanel = new DataPanel({
     store, view, panels, adapter,
@@ -92,6 +97,11 @@ async function boot() {
     getDoc: () => store.doc,
     boardName: () => store.meta.name,
   });
+
+  // 저장은 바뀐 것만 쓴다(docs/SAVE.md). 그 저장으로 다른 보드 화면이 달라졌으면 그 탭은 돌아갈 때
+  // 다시 읽는다. 순환이라 넣지 못한 포함은 알린다.
+  adapter.onStale = (ids) => tabs.markStale(ids);
+  adapter.onRejected = (list) => toast(`포함이 순환해서 ${list.length}건은 넣지 않았습니다`, 'warn');
 
   const toolbar = initToolbar({
     store, view,
@@ -139,8 +149,6 @@ async function boot() {
     if (['replace', 'undo', 'redo', 'adopt'].includes(reason)) rebuild();
     else refresh();
     tabs?.syncActiveName();   // 보드 이름이 바뀌었으면 탭 이름도 맞춘다
-    // 실시간 반영 — 같은 이벤트(다중 소속·동일 관계)를 열려 있는 다른 탭에도 즉시 퍼뜨린다.
-    if (reason !== 'adopt') tabs?.syncFromActive();
     if (panels.current === 'pData') $('d-json').value = store.toJSON();
   });
   view.on('change', () => refresh());

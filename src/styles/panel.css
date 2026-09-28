@@ -226,3 +226,21 @@ body.panel-open{--panel-w:var(--panel-size)}
 .combine-summary{display:flex;flex-direction:column;gap:4px;margin-top:var(--u2)}
 .combine-chip{display:flex;align-items:center;gap:var(--u2);font-size:13px;padding:2px 0}
 .combine-chip-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ── 휴지통 팝업 (첫 화면) — docs/SAVE.md §7 ─────────────── */
+.trash-dlg h2{display:flex;align-items:baseline;gap:var(--u2)}
+.trash-count{font-size:12px;font-weight:500;color:var(--text-tertiary)}
+.trash-list{max-height:52vh;overflow:auto;margin-top:var(--u3);
+  border:1px solid var(--border-subtle);border-radius:var(--r-control)}
+.trash-list .empty{color:var(--text-tertiary);font-size:13px;padding:var(--u4);text-align:center}
+.trash-row{display:flex;align-items:center;gap:var(--u2);padding:var(--u2) var(--u3);
+  border-bottom:1px solid var(--border-subtle)}
+.trash-row:last-child{border-bottom:0}
+.trash-row:hover{background:var(--bg-hover)}
+.trash-main{flex:1;min-width:0}
+.trash-title{font-size:13px;line-height:20px;font-weight:500;color:var(--text-primary);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trash-sub{font-size:11px;line-height:16px;color:var(--text-tertiary);font-variant-numeric:tabular-nums}
+.trash-row .trash-del{margin-top:0;flex:none;gap:var(--u1)}
+.trash-row .trash-del:hover{color:var(--error-500);border-color:var(--error-500)}
+.trash-dlg .dlg-actions{align-items:center}

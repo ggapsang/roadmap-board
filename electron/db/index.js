@@ -21,17 +21,33 @@ export function openDatabase(file) {
   db.pragma('foreign_keys = ON');
   db.pragma('synchronous = NORMAL');
 
-  migrate(db);
+  migrate(db, file);
   return db;
 }
 
-function migrate(db) {
+/**
+ * 데이터를 손대기 전에 백업한다 (LESSONS #8). 이미 쓰던 DB(user_version>0)에 적용할
+ * 마이그레이션이 있을 때만, 같은 폴더에 `{파일}.v{현재}-{시각}.bak`으로 떠 둔다.
+ * VACUUM INTO는 WAL에 남은 내용까지 일관된 한 파일로 쓴다.
+ */
+function backupBeforeMigrate(db, file, current) {
+  if (current === 0) return;                       // 새 DB — 지킬 데이터가 없다
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const dest = `${file}.v${current}-${stamp}.bak`;
+  db.exec(`VACUUM INTO '${dest.replace(/'/g, "''")}'`);
+  console.log(`[db] 마이그레이션 전 백업: ${dest}`);
+}
+
+function migrate(db, dbFile) {
   const files = fs.readdirSync(MIGRATIONS_DIR)
     .filter((f) => f.endsWith('.sql'))
     .sort();
 
   const current = db.pragma('user_version', { simple: true });
   let applied = 0;
+
+  const pending = files.filter((f) => Number(f.slice(0, 3)) > current);
+  if (pending.length) backupBeforeMigrate(db, dbFile, current);
 
   for (const file of files) {
     const version = Number(file.slice(0, 3));
