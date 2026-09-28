@@ -42,6 +42,39 @@ export function buildGraph(data, cfg = GRAPH) {
 }
 
 /**
+ * 범위 — 한 이벤트(rootId)가 품은 것 + 한 걸음 (2026-09-28 사용자 결정: 펼친 이벤트에서 연 그래프).
+ *   안쪽  rootId와, 포함을 부모 → 자식으로 끝까지 따라 닿는 이벤트(포함 세 종류 모두 — 구성도 포함이다)
+ *   바깥  안쪽과 엣지 하나로 바로 이어진 이벤트(포함·관계, 방향 무관). n.outside = true — 흐리게 그린다
+ * 엣지는 한쪽 끝이라도 안쪽인 것만 남긴다. 크기(desc·r)·순환은 **전체**에서 계산한 값을 그대로 둔다 —
+ * 잘라 낸 뒤 다시 세면 바깥 이벤트가 실제보다 작아 보인다(G-12). 차수만 이 범위 안에서 다시 센다.
+ * 역할(무엇이 보드인지)을 보지 않는다 — 출발 이벤트 하나와 포함·관계만 본다(G-07).
+ * @returns {{nodes, links, byId, inside:number, outside:number}|null} rootId가 그래프에 없으면 null
+ */
+export function scopeGraph(graph, rootId) {
+  if (rootId == null || !graph.byId.has(rootId)) return null;
+  const kids = new Map();
+  for (const l of graph.links) {
+    if (l.family !== 'contain') continue;
+    if (!kids.has(l.from)) kids.set(l.from, []);
+    kids.get(l.from).push(l.to);
+  }
+  const inside = new Set([rootId]);
+  const stack = [rootId];
+  while (stack.length) {
+    const v = stack.pop();
+    for (const c of kids.get(v) ?? []) if (!inside.has(c)) { inside.add(c); stack.push(c); }
+  }
+  const links = graph.links.filter((l) => inside.has(l.from) || inside.has(l.to));
+  const keep = new Set(inside);
+  for (const l of links) { keep.add(l.from); keep.add(l.to); }
+  const nodes = graph.nodes.filter((n) => keep.has(n.id));   // 원래 순서 그대로 — 같은 데이터면 같은 배치(G-22)
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  for (const n of nodes) { n.outside = !inside.has(n.id); n.degree = 0; }
+  for (const l of links) { byId.get(l.from).degree += 1; byId.get(l.to).degree += 1; }
+  return { nodes, links, byId, inside: inside.size, outside: nodes.length - inside.size };
+}
+
+/**
  * 순환 표시(G-19, 4.1) — 방향 중력이 걸리는 계열마다가 아니라, 같은 방향으로 미는 엣지들을 **합친** 그래프에서
  * 강결합 요소(Tarjan)를 찾는다. 흐름 쪽은 선행·합류·원인을 합친다(각자는 순환 금지여도 합치면 순환일 수 있다).
  * 크기 2 이상 요소 안의 엣지는 inCycle — 방향 중력에서 뺀다.

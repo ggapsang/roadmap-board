@@ -84,7 +84,12 @@ async function boot() {
 
   // 그래프 뷰 — 모든 보드의 이벤트·포함·관계(읽기 전용). 보드와 무관한 독립 탭으로 연다.
   const graphView = new GraphView({ adapter, store });
-  $('btnGraph').addEventListener('click', () => { panels.close(); tabs.openGraph(); });
+  // 보드의 그래프 = 이 보드가 품은 것 + 한 걸음. 전체 그래프는 첫 화면에서.
+  $('btnGraph').addEventListener('click', () => {
+    if (tabs.graphActive) return;              // 보드 도구 모음의 버튼 — 그래프 탭에선 보드가 없다
+    panels.close();
+    tabs.openGraph({ scope: adapter.projectId ?? null, name: store.meta.name ?? '' });
+  });
 
   const launcher = new Launcher({
     adapter,

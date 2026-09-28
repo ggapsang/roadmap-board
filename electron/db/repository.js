@@ -270,8 +270,12 @@ export class BoardRepository {
    * 모든 이벤트(보드 화면 밖·휴지통 포함)가 노드다. 정렬은 id순 — 같은 데이터면 같은 배치(G-22).
    * 읽기만 한다(G-01).
    */
-  graphData() {
+  graphData(boardId = null) {
+    // 보드에서 연 그래프는 그 보드의 루트(펼친 이벤트)에서 출발한다 — 범위는 렌더러가 자른다(core/graph.js scopeGraph).
+    const root = boardId == null ? null
+      : this.db.prepare('SELECT root_event_id AS r FROM board WHERE id = ?').get(boardId)?.r ?? null;
     return {
+      root,
       events: this.db.prepare('SELECT id, title, status FROM event ORDER BY id').all(),
       contain: this.db.prepare("SELECT parent_id, child_id, ordered, compose FROM containment WHERE child_id NOT LIKE 'board:%' ORDER BY parent_id, child_id").all(),
       rels: this.db.prepare('SELECT id, type, from_id, to_id FROM rel ORDER BY id').all(),

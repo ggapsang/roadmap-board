@@ -73,7 +73,7 @@ export class ElectronAdapter extends StorageAdapter {
   async listEvents() { return this.api.listEvents ? this.api.listEvents() : []; }
   async eventCards(id) { return this.api.eventCards ? this.api.eventCards(id) : []; }
   async eventsById(ids) { return this.api.eventsById ? this.api.eventsById(ids) : []; }
-  async graphData() { return this.api.graphData ? this.api.graphData() : null; }
+  async graphData(boardId = null) { return this.api.graphData ? this.api.graphData(boardId) : null; }
   async eventAncestors(id) { return this.api.eventAncestors ? this.api.eventAncestors(id) : [id]; }
   get hasTrash() { return !!this.api.listTrash; }
   async listTrash() { return this.api.listTrash ? this.api.listTrash() : []; }

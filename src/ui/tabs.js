@@ -14,8 +14,9 @@
  *   탭 끌기    순서 바꾸기 (브라우저처럼)
  *   탭 ×       탭 닫기 (마지막 하나면 선택 화면으로)
  *
- * 탭은 세 종류다 — 보드 선택(boardId null), 보드(boardId), 그래프(kind 'graph'). 그래프는 어느 보드에도
- * 속하지 않는다(모든 보드의 이벤트를 그린다) — 보드와 무관한 독립 탭이고, 하나만 연다.
+ * 탭은 세 종류다 — 보드 선택(boardId null), 보드(boardId), 그래프(kind 'graph'). 그래프 탭은 보드 탭이 아니다
+ * (boardId는 늘 null — 보드 문서·낡음 표시와 무관). 범위(scope)마다 하나씩 연다: 첫 화면에서 연 전체(scope null),
+ * 보드에서 연 '그 보드가 품은 것 + 한 걸음'(scope = 보드 id).
  */
 import { $, el, clear, icon, ICONS } from './dom.js';
 import { attachTabReorder } from './reorder.js';
@@ -84,7 +85,7 @@ export class BoardTabs {
     if (t?.kind === 'graph') {                 // 보드와 무관 — 보드 문서는 그대로 두고 그래프만 보인다
       this.launcher.hide();
       this.render();
-      await this.graph?.show();
+      await this.graph?.show({ scope: t.scope ?? null, name: t.name });
       return;
     }
     this.graph?.hide();
@@ -123,15 +124,19 @@ export class BoardTabs {
     this.#apply();
   }
 
-  /** 그래프 탭 — 이미 있으면 그 탭으로, 활성 탭이 보드 선택 화면이면 그 자리에서, 아니면 새 탭으로. */
-  async openGraph() {
-    const found = this.tabs.findIndex((t) => t.kind === 'graph');
-    if (found >= 0) { await this.activate(found); return; }
+  /**
+   * 그래프 탭 — 범위마다 하나. 그 범위의 탭이 있으면 그 탭으로, 활성 탭이 보드 선택 화면이면 그 자리에서,
+   * 아니면 새 탭으로. scope = 보드 id면 그 보드가 품은 것 + 한 걸음, null이면 전체.
+   * @param {{scope?:number|null, name?:string}} [o] name은 탭 이름(보드 이름)
+   */
+  async openGraph({ scope = null, name = '' } = {}) {
+    const found = this.tabs.findIndex((t) => t.kind === 'graph' && (t.scope ?? null) === scope);
+    if (found >= 0) { this.tabs[found].name = name || this.tabs[found].name; await this.activate(found); return; }
     this.#stash();
     const cur = this.#cur();
-    if (this.#isPicker(cur)) { cur.kind = 'graph'; cur.name = '그래프'; }
+    if (this.#isPicker(cur)) { cur.kind = 'graph'; cur.scope = scope; cur.name = name; }
     else {
-      this.tabs.push({ key: (this.seq += 1), boardId: null, kind: 'graph', name: '그래프' });
+      this.tabs.push({ key: (this.seq += 1), boardId: null, kind: 'graph', scope, name });
       this.active = this.tabs.length - 1;
     }
     await this.#apply();
@@ -159,7 +164,7 @@ export class BoardTabs {
     if (i < 0 || i >= this.tabs.length) return;
     const [gone] = this.tabs.splice(i, 1);
     if (gone && gone.boardId != null) { this.docs.delete(gone.boardId); this.stale.delete(gone.boardId); }
-    if (gone?.kind === 'graph') this.graph?.hide({ reset: true });   // 닫으면 다음엔 처음부터(결정적 배치)
+    if (gone?.kind === 'graph') this.graph?.hide({ reset: true, scope: gone.scope ?? null });   // 닫으면 그 범위는 다음엔 처음부터(결정적 배치)
     if (!this.tabs.length) {
       this.tabs.push({ key: (this.seq += 1), boardId: null, name: '보드 선택' });
       this.active = 0;
@@ -201,7 +206,7 @@ export class BoardTabs {
   /** 보드 이름이 바뀌면 탭 이름도 맞춘다. */
   renameBoard(id, name) {
     let hit = false;
-    for (const t of this.tabs) if (t.boardId === id) { t.name = name; hit = true; }
+    for (const t of this.tabs) if (t.boardId === id || (t.kind === 'graph' && t.scope === id)) { t.name = name; hit = true; }
     if (hit) this.render();
   }
 
@@ -222,7 +227,8 @@ export class BoardTabs {
         on: { click: (e) => { if (e.currentTarget.isConnected) this.activate(this.tabs.indexOf(t)); } },
       }, [
         t.kind === 'graph' ? icon(ICONS.graph) : null,
-        el('span.tab-name', { text: t.kind === 'graph' ? '그래프' : t.boardId == null ? '보드 선택' : (t.name || '보드') }),
+        el('span.tab-name', { text: t.kind === 'graph' ? (t.scope == null ? '그래프' : `그래프 · ${t.name || '보드'}`)
+          : t.boardId == null ? '보드 선택' : (t.name || '보드') }),
         el('button.tab-x', {
           type: 'button', title: '탭 닫기', attrs: { 'aria-label': '탭 닫기' },
           on: { click: (e) => { e.stopPropagation(); if (e.currentTarget.isConnected) this.closeTab(this.tabs.indexOf(t)); } },

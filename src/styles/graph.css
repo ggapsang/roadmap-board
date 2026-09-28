@@ -45,6 +45,9 @@
 .gv-node{fill:var(--graph-node);stroke:var(--graph-node-edge);stroke-width:1.5;cursor:pointer;
   transition:opacity .12s ease,fill .12s ease}
 @media (prefers-reduced-motion:reduce){.gv-node{transition:none}}
+/* 범위 밖 한 걸음 — 비운 원·점선 테두리. 호버·선택 강조(dim·focus)가 뒤에서 이긴다 */
+.gv-node.outside{fill:var(--bg-canvas);stroke-dasharray:3 2;opacity:.6}
+.gv-label.outside{opacity:.6}
 .gv-node.dim{opacity:.18}
 .gv-node.near{fill:var(--text-secondary)}
 .gv-node.focus,.gv-node.sel{fill:var(--accent)}

@@ -25,7 +25,7 @@ contextBridge.exposeInMainWorld('roadmapDB', {
   eventCards: (id) => call('event:cards', id),
   eventsById: (ids) => call('event:get', ids),
   // 그래프 뷰 — 이벤트·포함·관계 전체(읽기 전용)
-  graphData: () => call('graph:data'),
+  graphData: (boardId) => call('graph:data', boardId ?? null),
   eventAncestors: (id) => call('event:ancestors', id),
   // 휴지통 — 부모를 모두 잃은 이벤트. 영구 삭제·비우기
   listTrash: () => call('trash:list'),

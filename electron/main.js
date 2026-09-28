@@ -2215,7 +2215,14 @@ async function runSmoke(target) {
       const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '').replace(/(['"`])(?:\\.|(?!\1).)*\1/g, '""');
       const code = ['src/core/graph.js', 'src/ui/graph.js'].map((f) => strip(fs.readFileSync(path.join(ROOT, f), 'utf8'))).join('\n');
       const c9 = !/\b(track|board|card|task)s?\b|트랙|보드|카드|태스크/i.test(code);
-      graphCheck = { c1, c2, c3, c4, c5, c6, c7, c9 };
+      // 10: 범위(펼친 이벤트에서 연 그래프) — 품은 것 + 한 걸음, 크기는 전체에서 센 그대로
+      const full = G.buildGraph({ events, contain, rels });
+      const sc = G.scopeGraph(G.buildGraph({ events, contain, rels }), 'B1');
+      const c10 = { inside: sc?.inside, outside: sc?.nodes.filter((n) => n.outside).map((n) => n.id).sort(),
+        noB2: !sc?.byId.has('B2'), sizeKept: sc?.byId.get('B2t0')?.r === full.byId.get('B2t0').r,
+        linksTouchInside: !!sc && sc.links.every((l) => !sc.byId.get(l.from).outside || !sc.byId.get(l.to).outside),
+        missing: G.scopeGraph(full, 'nope') === null };
+      graphCheck = { c1, c2, c3, c4, c5, c6, c7, c9, c10 };
     } catch (err) { graphCheck = { error: String(err?.stack ?? err) }; }
 
     // 실제 화면 — 열기·노드 수·재현성·끌기/호버/중력 조절 후 데이터 불변(8)
@@ -2230,7 +2237,7 @@ async function runSmoke(target) {
         const r = window.__roadmap;
         const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
         const savedPref = localStorage.getItem('wolfpack:graph-view');   // 사용자 설정 — 끝나고 되돌린다
-        document.getElementById('btnGraph').click();
+        await r.tabs.openGraph();                             // 전체 — 첫 화면의 그래프 버튼과 같은 길
         const gv = r.graphView;
         for (let i = 0; i < 40 && !gv.graph; i += 1) await sleep(100);
         if (!gv.graph) return { error: 'graph not ready', tabs: JSON.stringify(r.tabs.tabs), active: r.tabs.active, hidden: gv.root.hidden, launcher: r.launcher.visible, count: gv.count.textContent };
@@ -2266,15 +2273,39 @@ async function runSmoke(target) {
         await sleep(200);
         // 다시 열면 같은 배치(결정적)
         r.tabs.closeTab(r.tabs.tabs.findIndex((t) => t.kind === 'graph')); await sleep(150);
-        document.getElementById('btnGraph').click();
+        await r.tabs.openGraph();
         for (let i = 0; i < 40 && !gv.graph; i += 1) await sleep(100);
         const posB = gv.graph.nodes.map((n) => n.x.toFixed(3) + ',' + n.y.toFixed(3)).join(';');
         const hasStorage = !!localStorage.getItem('wolfpack:graph-view');
         if (savedPref == null) localStorage.removeItem('wolfpack:graph-view'); else localStorage.setItem('wolfpack:graph-view', savedPref);
         const nodeCount = gv.graph.nodes.length;             // 탭을 닫으면 그래프가 비워진다(다음엔 처음부터)
-        r.tabs.closeTab(r.tabs.tabs.findIndex((t) => t.kind === 'graph'));
+        // 보드의 그래프 버튼 — 그 보드가 품은 것 + 한 걸음, 전체와 다른 탭
+        const b1 = r.adapter.projectId;
+        await r.tabs.openBoard(b1); await sleep(250);
+        const cardIds = r.store.items.map((i) => i.id);
+        document.getElementById('btnGraph').click();
+        for (let i = 0; i < 40 && !(gv.graph && gv.scope === b1); i += 1) await sleep(100);
+        const graphTabs = r.tabs.tabs.filter((t) => t.kind === 'graph');
+        const sg = gv.graph;
+        // 기대값 — 같은 저장소 데이터를 범위로 잘라 센 수(합성 c10이 규칙을, 여기는 화면이 그 결과를 그리는지)
+        const G2 = await import('./src/core/graph.js');
+        const raw = await r.adapter.graphData(b1);
+        const want = G2.scopeGraph(G2.buildGraph(raw), raw.root);
+        const scoped = {
+          tabs: graphTabs.length, tabName: document.querySelector('#tabbar .tab.active .tab-name')?.textContent ?? '',
+          title: gv.title.textContent, count: sg.nodes.length === want.nodes.length && sg.nodes.length <= nodeCount,
+          allCards: cardIds.every((id) => sg.byId.has(id) && !sg.byId.get(id).outside),
+          outsideDrawn: document.querySelectorAll('#graphView .gv-node.outside').length === sg.nodes.filter((n) => n.outside).length,
+        };
+        // 전체 탭으로 돌아가면 전체, 다시 보드 그래프 탭으로 오면 그 범위(보던 모습 그대로)
+        await r.tabs.activate(r.tabs.tabs.findIndex((t) => t.kind === 'graph' && t.scope == null)); await sleep(250);
+        scoped.backToAll = gv.scope === null && gv.graph.nodes.length === nodeCount;
+        await r.tabs.activate(r.tabs.tabs.findIndex((t) => t.kind === 'graph' && t.scope === b1)); await sleep(250);
+        scoped.backToScoped = gv.scope === b1 && gv.graph.nodes.length === sg.nodes.length && gv.title.textContent === scoped.title;
+        for (let k = r.tabs.tabs.length - 1; k >= 0; k -= 1) if (r.tabs.tabs[k].kind === 'graph') r.tabs.closeTab(k);
+        await r.tabs.openBoard(b1);
         await sleep(150);
-        return { nodes: nodeCount, circles, uniq, edgeLabelsIdle, arrows, hoverLabels, hoverKeptLayout, pinned, released, sameReopen: posA === posB, closed: document.getElementById('graphView').hidden, hasStorage };
+        return { scoped, nodes: nodeCount, circles, uniq, edgeLabelsIdle, arrows, hoverLabels, hoverKeptLayout, pinned, released, sameReopen: posA === posB, closed: document.getElementById('graphView').hidden, hasStorage };
       })();
       const guard = new Promise((res) => setTimeout(() => res({ error: 'timeout' }), 15000));
       return Promise.race([run.catch((e) => ({ error: String(e) })), guard]);
@@ -2373,6 +2404,11 @@ async function runSmoke(target) {
     && graphCheck?.ui?.edgeLabelsIdle === 0 && graphCheck?.ui?.arrows === true && graphCheck?.ui?.hoverLabels > 0 && graphCheck?.ui?.hoverKeptLayout === true
     && graphCheck?.ui?.pinned === true && graphCheck?.ui?.released === true && graphCheck?.ui?.sameReopen === true && graphCheck?.ui?.closed === true
     && graphCheck?.ui?.c8unchanged === true
+    && graphCheck?.c10?.inside === 40 && JSON.stringify(graphCheck?.c10?.outside) === JSON.stringify(['B2t0', 'B2t2c0'])
+    && graphCheck?.c10?.noB2 === true && graphCheck?.c10?.sizeKept === true && graphCheck?.c10?.linksTouchInside === true && graphCheck?.c10?.missing === true
+    && graphCheck?.ui?.scoped?.tabs === 2 && /^그래프 · /.test(graphCheck?.ui?.scoped?.tabName ?? '') && graphCheck?.ui?.scoped?.count === true
+    && graphCheck?.ui?.scoped?.allCards === true && graphCheck?.ui?.scoped?.outsideDrawn === true
+    && graphCheck?.ui?.scoped?.backToAll === true && graphCheck?.ui?.scoped?.backToScoped === true
     && styleUi?.noCurrentInCombine === true && styleUi?.detailLabel === '세부내역' && styleUi?.sizeLabel === '사이즈 수동 설정' && styleUi?.descBlock === true
     && relCheck?.allDep === true && relCheck?.added === true && relCheck?.removed === true
     && scaleCheck?.options === 4 && scaleCheck?.defaultMode === 'month-week'
@@ -2736,7 +2772,7 @@ function registerIpc() {
   // 이벤트 몇 개의 본질 · 조상(조합 대상에서 빼야 순환이 안 생긴다)
   ipcMain.handle('event:get', guard((_e, ids) => repo.eventsById(ids)));
   // 그래프 뷰 — 이벤트·포함·관계 전체(읽기 전용)
-  ipcMain.handle('graph:data', guard(() => repo.graphData()));
+  ipcMain.handle('graph:data', guard((_e, boardId) => repo.graphData(boardId ?? null)));
   ipcMain.handle('event:ancestors', guard((_e, id) => repo.ancestorsOf(id)));
   // 휴지통 — 부모를 모두 잃은 이벤트 (docs/SAVE.md §7)
   ipcMain.handle('trash:list', guard(() => repo.listTrash()));

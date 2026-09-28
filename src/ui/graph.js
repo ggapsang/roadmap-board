@@ -8,9 +8,12 @@
  *   - SVG 요소는 데이터가 바뀔 때만 만들고, 틱마다 좌표 속성만 고친다(G-24).
  *   - 호버·선택은 색·불투명도만 바꾼다(G-28). 라벨은 호버·선택한 노드에 이어진 엣지에만(G-16).
  *   - 역할 이름(보드·트랙·카드·태스크)으로 나누지 않는다 — 모든 노드는 같은 원, 크기만 다르다(G-07·G-08).
+ *
+ * 범위(scope) — 첫 화면에서 열면 전체, 보드에서 열면 그 보드가 품은 것 + 한 걸음(core/graph.js scopeGraph).
+ * 범위마다 탭이 따로라, 범위별로 보던 배치·확대·선택을 따로 기억한다(메모리에만).
  */
 import { GRAPH } from '../config/index.js';
-import { buildGraph, initialLayout, createSimulation, settle } from '../core/graph.js';
+import { buildGraph, scopeGraph, initialLayout, createSimulation, settle } from '../core/graph.js';
 import { $, el, clear } from './dom.js';
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -35,6 +38,9 @@ export class GraphView {
     this.view = { k: 1, x: 0, y: 0 };
     this.hover = null;
     this.selected = null;
+    this.scope = null;           // 펼친 범위의 저장소 id — null이면 전체
+    this.scopeName = '';
+    this.saved = new Map();      // 범위 → { graph, view, selected } (탭을 오갈 때 보던 모습)
     this.#build();
     // 다른 화면에서 이벤트·관계가 바뀌면 그래프도 — 보던 좌표는 유지하고 낮은 온도로 다시 가열(4.6)
     let t = null;
@@ -92,8 +98,9 @@ export class GraphView {
     this.vp.append(this.gLinks, this.gNodes, this.gLabels, this.gEdgeLabels);
     this.svg.append(defs, this.vp);
 
+    this.title = el('h2', { text: '그래프' });
     const bar = el('div.gv-bar', {}, [
-      el('h2', { text: '그래프' }),
+      this.title,
       this.count,
       el('div.gv-controls', {}, [
         slider('structure', '구조 중력'),
@@ -114,18 +121,36 @@ export class GraphView {
    * 그래프 탭을 보인다 — 보드와 무관한 독립 탭(BoardTabs가 부른다). 처음이면 결정적 배치로 새로 그리고,
    * 탭을 오가다 돌아오면 보던 배치·확대는 그대로 두고 데이터만 새로 받는다(4.6).
    */
-  async show() {
+  async show({ scope = null, name = '' } = {}) {
     this.root.hidden = false;
     this.hover = null;                                     // 지난번 호버가 남아 처음부터 흐려지지 않게
+    if (scope !== this.scope) {                            // 다른 범위의 탭 — 보던 모습을 맡기고 그 범위 것을 꺼낸다
+      this.sim?.stop();
+      if (this.graph) this.saved.set(this.scope, { graph: this.graph, view: this.view, selected: this.selected });
+      const s = this.saved.get(scope);
+      this.scope = scope;
+      this.graph = s?.graph ?? null;
+      this.view = s?.view ?? { k: 1, x: 0, y: 0 };
+      this.selected = s?.selected ?? null;
+      this.info.hidden = true;
+    }
+    this.scopeName = name;
+    this.title.textContent = scope == null ? '그래프 — 전체' : `그래프 — ${name || '이 범위'}`;
     if (!this.graph) { this.selected = null; await this.load({ keepPositions: false, fit: true }); }
-    else await this.load({ keepPositions: true });
+    else { this.#applyView(); await this.load({ keepPositions: true }); }
   }
 
-  /** 가린다. reset이면(탭을 닫음) 다음에 열 때 처음부터 — 같은 데이터면 같은 배치(G-22) */
-  hide({ reset = false } = {}) {
+  /**
+   * 가린다. reset이면(탭을 닫음) 그 범위는 다음에 열 때 처음부터 — 같은 데이터면 같은 배치(G-22).
+   * scope를 주면 그 범위만 잊는다(다른 범위 탭은 보던 모습 그대로). 안 주면 지금 범위.
+   */
+  hide({ reset = false, scope } = {}) {
     this.root.hidden = true;
     this.sim?.stop();
-    if (reset) { this.graph = null; this.selected = null; this.view = { k: 1, x: 0, y: 0 }; }
+    if (!reset) return;
+    const which = scope === undefined ? this.scope : scope;
+    this.saved.delete(which);
+    if (which === this.scope) { this.graph = null; this.selected = null; this.view = { k: 1, x: 0, y: 0 }; }
   }
 
   /**
@@ -134,10 +159,16 @@ export class GraphView {
    */
   async load({ keepPositions = true, fit = false } = {}) {
     let data = null;
-    try { data = await this.adapter.graphData?.(); } catch { data = null; }
+    const scope = this.scope;
+    try { data = await this.adapter.graphData?.(scope); } catch { data = null; }
+    if (scope !== this.scope) return;                      // 받는 사이 다른 범위 탭으로 옮겨 갔다
     if (!data) { this.#empty('그래프는 SQLite(데스크톱 앱)에서만 볼 수 있습니다.'); return; }
     const keep = keepPositions && this.graph ? new Map(this.graph.nodes.map((n) => [n.id, { x: n.x, y: n.y }])) : null;
     let g = buildGraph(data);
+    if (scope != null) {
+      g = scopeGraph(g, data.root);
+      if (!g) { this.graph = null; this.#empty('이 범위의 출발 이벤트를 찾을 수 없습니다(지워졌을 수 있습니다).'); return; }
+    }
     if (this.prefs.hideIsolated) {                         // 4.8 — 포함도 관계도 없는 이벤트 숨기기
       const nodes = g.nodes.filter((n) => n.degree > 0);
       g = { nodes, links: g.links, byId: new Map(nodes.map((n) => [n.id, n])) };
@@ -148,7 +179,9 @@ export class GraphView {
     this.sim = createSimulation(g, this.sliders);
     this.sim.on('tick', () => this.#draw());
     this.#elements();
-    this.count.textContent = `이벤트 ${g.nodes.length} · 포함·관계 ${g.links.length}`;
+    this.count.textContent = scope == null
+      ? `이벤트 ${g.nodes.length} · 포함·관계 ${g.links.length}`
+      : `안쪽 ${g.nodes.filter((n) => !n.outside).length} · 바깥(한 걸음) ${g.nodes.filter((n) => n.outside).length} · 포함·관계 ${g.links.length}`;
     if (!keep) { settle(this.sim); this.#draw(); if (fit) this.fit(); } else this.#reheat(0.3);
     if (this.selected && !g.byId.has(this.selected)) this.selected = null;
     this.#emphasis();
@@ -182,14 +215,15 @@ export class GraphView {
       this.linkEls.set(l.id, p);
     }
     for (const n of nodes) {
-      const c = svg('circle', { class: 'gv-node', r: n.r.toFixed(2) });
+      // 바깥(범위 밖, 한 걸음) — 흐린 테두리 원. 크기는 전체에서 센 그대로
+      const c = svg('circle', { class: 'gv-node' + (n.outside ? ' outside' : ''), r: n.r.toFixed(2) });
       c.dataset.id = n.id;
       const title = svg('title');
       title.textContent = n.title || '(제목 없음)';
       c.append(title);
       this.gNodes.append(c);
       this.nodeEls.set(n.id, c);
-      const t = svg('text', { class: 'gv-label', 'text-anchor': 'middle' });
+      const t = svg('text', { class: 'gv-label' + (n.outside ? ' outside' : ''), 'text-anchor': 'middle' });
       t.textContent = n.title || '(제목 없음)';
       this.gLabels.append(t);
       this.labelEls.set(n.id, t);
