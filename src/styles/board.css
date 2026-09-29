@@ -150,7 +150,12 @@ body.panel-open .cal{min-width:0}
 
 /* 비고를 카드에 함께 보여 줄 때 */
 .ev .card-note{margin-top:var(--u1);font-size:calc(11px * var(--fs,1));line-height:16px;
-  color:var(--text-secondary);white-space:pre-wrap;word-break:keep-all;overflow:hidden}
+  color:var(--text-secondary);word-break:keep-all;overflow:hidden}
+/* 카드 위 마크다운 — 좁은 칸이라 문단·목록 간격을 줄인다 */
+.ev .card-note.md-body p,.ev .card-note.md-body ul,.ev .card-note.md-body ol,
+.ev .card-note.md-body blockquote,.ev .card-note.md-body pre,.ev .card-note.md-body table{margin-bottom:var(--u1)}
+.ev .card-note.md-body ul,.ev .card-note.md-body ol{padding-left:var(--u4)}
+.ev .card-note.md-body h4,.ev .card-note.md-body h5,.ev .card-note.md-body h6{margin:var(--u1) 0 2px;font-size:1.05em}
 
 /* 일정 안에 일정 — 상위 카드는 제목만 위에 두고 아래를 자식에게 내준다.
    메타(기간·담당)는 숨긴다. 자식이 날짜 위치대로 들어오면서 겹치기 때문이다. */

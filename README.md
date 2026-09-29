@@ -61,7 +61,7 @@ npm run dist
 - **처음 실행할 때 "Windows의 PC 보호" 경고가 뜬다** — 코드 서명 인증서가 없어서다. **추가 정보 › 실행**을 누르면 된다.
 - 데이터는 설치판·포터블 모두 각자 PC의 `%APPDATA%\wolfpack\wolfpack.db`에 저장된다(포터블도 exe 옆이 아니다). `npm start`로 쓰는 것과 **같은 폴더**라,
   한 PC에서 설치판과 `npm start`를 함께 쓰면 같은 보드가 보인다(둘을 동시에 켜 두지는 말 것).
-- 새 버전을 낼 때는 `package.json`의 `version`을 올린 뒤 다시 만든다. 설치 파일을 다시 실행하면 덮어 설치되고 데이터는 그대로 남는다.
+- 새 버전을 낼 때는 `package.json`의 `version`을 올리고 [CHANGELOG.md](./CHANGELOG.md)에 바뀐 것을 적은 뒤 다시 만든다. 설치 파일을 다시 실행하면 덮어 설치되고 데이터는 그대로 남는다.
 - `npm run dist`는 `scripts/dist.mjs`로 electron-builder를 돌린다. 막 풀어 놓은 `WOLFPACK.exe`를 Windows Defender 검사나
   `dist` 폴더를 연 탐색기가 잡고 있으면 `EBUSY: resource busy or locked`로 실패하는데, 그때만 몇 초 뒤 최대 3번 다시 한다.
   `dist`의 exe가 켜져 있으면 빌드 전에 알려 주고 멈춘다. 계속 걸리면 Windows 보안에서 `dist` 폴더를 검사 제외로 둔다(관리자).

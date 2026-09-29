@@ -5,6 +5,7 @@
  * 카드는 다른 카드를 품을 수 있다. 자식은 상위 카드 엘리먼트 안에 들어가고,
  * 세로 위치는 상위 카드의 시작일을 기준으로 잡는다.
  */
+import { renderMarkdown } from '../markdown.js';
 import { LAYOUT } from '../../config/index.js';
 import { el } from '../dom.js';
 
@@ -29,7 +30,6 @@ function addHorizontalGrips(node, { span = false } = {}) {
 /**
  * @param {object} item
  * @param {object} ctx
- *   ppd         위치 하나(일 또는 칸)당 픽셀 — 크기 강제(hd) 높이용
  *   timeline    위치 읽기·표시 (core/timeline.js)
  *   placement   레인 배치
  *   selectedId  선택된 일정
@@ -38,7 +38,7 @@ function addHorizontalGrips(node, { span = false } = {}) {
  *   hasChildren 자식을 품는 카드인가
  */
 export function renderCard(item, ctx) {
-  const { ppd, scale, timeline, placement, selectedId, match, parent, hasChildren, spanBox, echo } = ctx;
+  const { scale, timeline, placement, selectedId, match, parent, hasChildren, spanBox, echo } = ctx;
   const isMilestone = item.ty === 'ms';
   // 점 마일스톤(시작=끝)만 얇은 표식으로 그린다. 기간 마일스톤은 막대로 떨어진다.
   const msPoint = timeline.isPoint(item);
@@ -138,7 +138,9 @@ export function renderCard(item, ctx) {
   }
 
   // 세로 크기 강제(hd, 위치 단위 — 일 또는 칸)면 기간과 무관하게 그 길이로. 아니면 기간대로.
-  const rawH = forced ? item.place.hd * ppd : scale.heightOf(item);
+  // 강제 길이도 축 배율을 탄다 — 시작 위치부터 hd일만큼을 축에서 잰다. 기본 일당 픽셀로 곱하면 접힌(늘린)
+  // 구간을 지날 때 카드만 원래 길이로 남아 실제보다 길게(짧게) 내려간다.
+  const rawH = forced ? scale.extent(timeline.pos(item)?.s ?? 0, item.place.hd) : scale.heightOf(item);
   const height = Math.max(LAYOUT.minCardHeight, rawH - LAYOUT.cardGap);
 
   node.style.height = height + 'px';
@@ -179,7 +181,7 @@ export function renderCard(item, ctx) {
   node.append(el('div.t', { text: label }), meta);
 
   if (item.place?.showNote && item.note) {
-    node.append(el('div.card-note', { text: item.note }));
+    node.append(el('div.card-note.md-body', {}, renderMarkdown(item.note)));   // 마크다운으로 그린다(원문은 item.note)
   }
   if (item.pg) {
     node.append(el('div.pg', {}, [el('i', { style: { width: item.pg + '%' } })]));

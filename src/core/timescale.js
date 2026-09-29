@@ -88,6 +88,17 @@ export class TimeScale {
     return Math.max(0, this.y(p.e) + this.dayHeight(p.e) - this.y(p.s));
   }
 
+  /**
+   * 위치 p부터 n칸(일)의 픽셀 높이 — 접히거나 늘린 구간의 배율을 탄다. 축 끝을 넘는 몫은 기본 일당 픽셀로 센다
+   * (크기 강제 카드가 축 끝 너머까지 내려갈 수 있다).
+   */
+  extent(p, n) {
+    const end = p + Math.max(0, n);
+    const inAxis = Math.min(end, this.totalDays);
+    const h = inAxis > p ? this.y(inAxis) - this.y(p) : 0;
+    return h + Math.max(0, end - Math.max(p, this.totalDays)) * this.ppd;
+  }
+
   /** 두 날짜 사이의 픽셀 높이 (종료일 inclusive) */
   span(fromIso, toIso) {
     return Math.max(0, this.yOf(toIso) + this.dayHeight(dayIndex(toIso, this.origin)) - this.yOf(fromIso));
@@ -134,6 +145,7 @@ export class SlotScale {
   }
   y(p) { return Math.max(0, Math.min(this.totalDays, p)) * this.ppd; }
   dayHeight() { return this.ppd; }
+  extent(p, n) { return Math.max(0, n) * this.ppd; }
   dayAt(py) { return Math.max(0, py / this.ppd); }
   topOf(item) { return this.y(this.timeline.pos(item)?.s ?? 0); }
   heightOf(item) {

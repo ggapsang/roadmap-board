@@ -939,10 +939,25 @@ async function runSmoke(target) {
       await new Promise((res) => setTimeout(res, 150));
       const hdAfter = it().place.hd;
       const datesUnchanged = it().s === before.s && it().e === before.e;
+      // 강제 높이도 축 배율을 탄다 — 카드가 든 구간을 절반으로 접으면 강제 카드도 그만큼 준다
+      r.store.commit('h25', () => { it().place.hd = 25; });
+      r.board.render();
+      await new Promise((res) => setTimeout(res, 120));
+      const hFull = node().getBoundingClientRect().height;
+      const s0 = it().s, eFold = r.board.timeline.pos(it()).s + 40;
+      const { dateAt } = await import('./src/core/dates.js');
+      r.store.commit('접기', (doc) => { doc.bands.push({ id: 'bfold', mode: 'month-week', from: s0, to: dateAt(r.board.origin, eFold), label: 'F', scale: 0.5 }); });
+      r.board.rebuild();
+      await new Promise((res) => setTimeout(res, 150));
+      const hFold = node().getBoundingClientRect().height;
+      const gap = hFull - 25 * r.board.scale.ppd;           // 카드 사이 간격(펼친 상태의 차이)
+      const folded = Math.abs(hFold - (25 * r.board.scale.ppd * 0.5 + gap)) < 1.5;
+      r.store.commit('접기 원복', (doc) => { doc.bands = doc.bands.filter((b) => b.id !== 'bfold'); });
+      r.board.rebuild();
       r.store.commit('원복', () => { it().place.hd = before.hd; });
       r.board.render();
       await new Promise((res) => setTimeout(res, 100));
-      return { h15, h25, hdAfter, hasTopGrip, datesUnchanged, mapGrew: h25 > h15, dragChanged: hdAfter !== 25 };
+      return { h15, h25, hdAfter, hasTopGrip, datesUnchanged, mapGrew: h25 > h15, dragChanged: hdAfter !== 25, folded, hFull: Math.round(hFull), hFold: Math.round(hFold) };
     })()`), 20000, 'fixed-height');
     console.log('[smoke] fixed-height ' + JSON.stringify(fixedH));
 
@@ -2035,6 +2050,70 @@ async function runSmoke(target) {
     console.log('[smoke] style-ui ' + JSON.stringify(styleUi));
   }
 
+  // 비고 마크다운 — 원문은 그대로 저장, 미리보기·카드 위에서 그린다. HTML은 글자로(주입 안 됨).
+  // 편집 도우미: Enter로 목록 이어 쓰기(빈 항목이면 끝), Ctrl+B 굵게. 포커스를 잃으면 저장된다.
+  let noteMd = null;
+  if (wrote) {
+    noteMd = await target.webContents.executeJavaScript(`(async () => {
+      const run = (async () => {
+        const r = window.__roadmap;
+        const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+        const it = r.store.items.find((x) => !x.parent && x.ty !== 'ms' && !r.store.items.some((k) => k.parent === x.id));
+        const id = it.id;
+        const before = { note: it.note, show: it.place.showNote };
+        document.querySelector('.col [data-id="' + id + '"]').click(); await sleep(250);
+        document.querySelector('#pItem .ptab[data-tab="attr"]').click(); await sleep(80);
+        const ta = document.getElementById('i-note');
+        const md = '# 제목\\n**굵게** *기울임* ~~취소~~ \`코드\`\\n- 하나\\n- 둘\\n\\n1. 첫째\\n2. 둘째\\n\\n- [x] 한 일\\n- [ ] 할 일\\n\\n> 인용\\n\\n[링크](https://example.com) [나쁜](javascript:alert(1))\\n\\n<img src=x onerror="window.__xss=1">';
+        ta.focus(); ta.value = md; ta.dispatchEvent(new Event('change')); await sleep(150);
+        const saved = r.store.item(id).note === md;
+        // 미리보기
+        document.querySelector('#i-note-mode .seg-btn[data-mode="view"]').click(); await sleep(80);
+        const v = document.getElementById('i-note-view');
+        const view = {
+          shown: !v.hidden && ta.hidden,
+          h: !!v.querySelector('h4'), strong: !!v.querySelector('strong'), em: !!v.querySelector('em'), del: !!v.querySelector('del'), code: !!v.querySelector('code'),
+          ul: v.querySelectorAll('ul:not(:has(.md-task)) > li').length, ol: v.querySelectorAll('ol > li').length,
+          tasks: [...v.querySelectorAll('li.md-task')].map((l) => l.classList.contains('done')),
+          quote: !!v.querySelector('blockquote'),
+          links: [...v.querySelectorAll('a')].map((a) => a.getAttribute('href')),
+          noImg: !v.querySelector('img') && window.__xss !== 1 && v.textContent.includes('<img'),
+        };
+        document.querySelector('#i-note-mode .seg-btn[data-mode="edit"]').click(); await sleep(50);
+        const editBack = !ta.hidden && v.hidden;
+        // 목록 이어 쓰기 — '- 셋' 뒤 Enter → '- ', 빈 항목에서 Enter → 표식 지움. 번호는 하나씩 는다.
+        const key = (k, o = {}) => ta.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...o }));
+        ta.focus(); ta.value = '- 셋'; ta.setSelectionRange(4, 4); key('Enter');
+        const cont = ta.value === '- 셋\\n- ';
+        key('Enter');
+        const ended = ta.value === '- 셋\\n';
+        ta.value = '3. 다음'; ta.setSelectionRange(5, 5); key('Enter');
+        const num = ta.value === '3. 다음\\n4. ';
+        ta.value = '- [x] 끝냄'; ta.setSelectionRange(8, 8); key('Enter');
+        const task = ta.value === '- [x] 끝냄\\n- [ ] ';
+        // Ctrl+B — 고른 글자를 굵게
+        ta.value = '중요 표시'; ta.setSelectionRange(0, 2); key('b', { ctrlKey: true });
+        const bold = ta.value === '**중요** 표시';
+        // 도우미로 바꾼 뒤 포커스를 잃으면 저장된다(change)
+        // 스모크 창은 포커스가 없어(뒤에 떠 있다) blur()가 이벤트를 내지 않는다 — 사용자가 다른 곳을 누른 것과 같은 blur를 보낸다
+        ta.dispatchEvent(new FocusEvent('blur')); await sleep(150);
+        const blurSaved = r.store.item(id).note === '**중요** 표시';
+        // 카드 위 — 비고 표시를 켜면 마크다운으로
+        r.store.commit('비고', () => { r.store.item(id).note = md; r.store.item(id).place.showNote = true; });
+        r.board.render(); await sleep(150);
+        const cn = document.querySelector('.col [data-id="' + id + '"] .card-note');
+        const card = { strong: !!cn?.querySelector('strong'), li: cn?.querySelectorAll('li').length ?? 0, noImg: !cn?.querySelector('img') };
+        r.store.commit('원복', () => { r.store.item(id).note = before.note; r.store.item(id).place.showNote = before.show; });
+        document.querySelector('#pItem [data-close]').click();
+        await sleep(100);
+        return { saved, view, editBack, cont, ended, num, task, bold, blurSaved, card };
+      })();
+      const guard = new Promise((res) => setTimeout(() => res({ error: 'timeout' }), 12000));
+      return Promise.race([run.catch((e) => ({ error: String(e) })), guard]);
+    })()`);
+    console.log('[smoke] note-md ' + JSON.stringify(noteMd));
+  }
+
   // 모자관계설정 — 부모 설정 / 자식 설정 탭, 같은 트랙 카드만 후보, 자식을 한꺼번에 넣기, 순환 거부
   let parentChild = null;
   if (wrote) {
@@ -2385,6 +2464,12 @@ async function runSmoke(target) {
     && launcherGraph?.single === true && launcherGraph?.noBoardKeys === true && launcherGraph?.closed === true
     && trashUi?.asked === true && trashUi?.gone === true && trashUi?.purged === true && trashUi?.closed === true
     && styleUi?.tabName === '스타일' && styleUi?.filled === true && styleUi?.painted === true && styleUi?.msFilled === true && styleUi?.childFilled === true && styleUi?.dbFill === 'blue'
+    && noteMd?.saved === true && noteMd?.view?.shown === true && noteMd?.view?.h === true && noteMd?.view?.strong === true
+    && noteMd?.view?.em === true && noteMd?.view?.del === true && noteMd?.view?.code === true
+    && noteMd?.view?.ul === 2 && noteMd?.view?.ol === 2 && JSON.stringify(noteMd?.view?.tasks) === '[true,false]'
+    && noteMd?.view?.quote === true && JSON.stringify(noteMd?.view?.links) === '["https://example.com"]' && noteMd?.view?.noImg === true
+    && noteMd?.editBack === true && noteMd?.cont === true && noteMd?.ended === true && noteMd?.num === true && noteMd?.task === true
+    && noteMd?.bold === true && noteMd?.blurSaved === true && noteMd?.card?.strong === true && noteMd?.card?.li >= 4 && noteMd?.card?.noImg === true
     && styleUi?.hiddenByDefault === true && styleUi?.noteShown === true && styleUi?.noteHidden === true
     && JSON.stringify(styleUi?.titles) === JSON.stringify(['항등설정', '조합설정', '모자관계설정', '선행관계설정'])
     && (styleUi?.btns ?? []).length === 4 && styleUi.btns.every((t) => t === '편집')
@@ -2450,7 +2535,7 @@ async function runSmoke(target) {
     && drill?.kids > 0 && drill?.crumbsVisible === true && drill?.childrenShown === true
     && drill?.containerNotTop === true && drill?.restored === true
     && titleFit?.shrank === true && titleFit?.fits === true
-    && fixedH?.mapGrew === true && fixedH?.hasTopGrip === true && fixedH?.datesUnchanged === true && fixedH?.dragChanged === true
+    && fixedH?.mapGrew === true && fixedH?.hasTopGrip === true && fixedH?.datesUnchanged === true && fixedH?.dragChanged === true && fixedH?.folded === true
     && cornerCheck?.widthChanged === true && cornerCheck?.heightChanged === true && cornerCheck?.topGrew === true
     && sameCheck?.count > 0 && sameCheck?.hasBoard === true && sameCheck?.hasCard === true
     && sameCheck?.hasTrack === true && sameCheck?.hasBoardIds === true
@@ -2486,6 +2571,23 @@ async function runSmoke(target) {
 /** --repro : 실제 데이터에서 조합(구성)·합치기·복사붙여넣기 왕복 점검. 반드시 DB 복사본으로. */
 async function runRepro(target) {
   const boardId = (() => { const i = process.argv.indexOf('--board'); return i >= 0 ? Number(process.argv[i + 1]) : 1; })();
+  // --probe <렌더러 스크립트.js> [--probe-shot <png>] — 실제 DB 복사본에서 임의 점검 스크립트를 돌린다(조사용).
+  // 스크립트는 async 함수 본문이고 반환값이 JSON으로 찍힌다. window.__roadmap이 준비된 뒤 실행된다.
+  const argAt = (flag) => { const i = process.argv.indexOf(flag); return i >= 0 ? process.argv[i + 1] : null; };
+  const probe = argAt('--probe');
+  if (probe) {
+    let code = 0;
+    try {
+      await new Promise((r) => setTimeout(r, 700));
+      const body = fs.readFileSync(path.resolve(probe), 'utf8');
+      const out = await target.webContents.executeJavaScript(`(async () => { ${body}\n})()`);
+      console.log('[probe] ' + JSON.stringify(out, null, 1));
+      const shot = argAt('--probe-shot');
+      if (shot) { fs.writeFileSync(path.resolve(shot), (await target.webContents.capturePage()).toPNG()); console.log('[probe] 캡처 ' + shot); }
+    } catch (err) { console.log('[probe] FAIL ' + (err?.stack ?? err)); code = 1; }
+    app.exit(code);
+    return;
+  }
   try {
     await new Promise((r) => setTimeout(r, 700));
     const out = await target.webContents.executeJavaScript(`(async () => {

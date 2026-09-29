@@ -138,7 +138,17 @@
         <label>소속 트랙 <span class="muted desc">고른 트랙에 놓입니다 · 이웃한 트랙은 한 장으로 걸칩니다</span></label>
         <div class="seg wrap" id="i-span"></div>
       </div>
-      <div class="fld"><label for="i-note">비고 <span class="muted desc">카드에 보일지는 스타일 탭에서 정합니다(기본: 숨김)</span></label><textarea id="i-note"></textarea></div>
+      <div class="fld note-fld">
+        <div class="note-head">
+          <label for="i-note">비고 <span class="muted desc">마크다운으로 씁니다 · 카드에 보일지는 스타일 탭에서 정합니다(기본: 숨김)</span></label>
+          <div class="seg" id="i-note-mode" role="radiogroup" aria-label="비고 보기">
+            <button type="button" class="seg-btn" data-mode="edit" role="radio" aria-pressed="true">편집</button>
+            <button type="button" class="seg-btn" data-mode="view" role="radio" aria-pressed="false">미리보기</button>
+          </div>
+        </div>
+        <textarea id="i-note" placeholder="**굵게** · *기울임* · ~~취소선~~ · `코드`&#10;# 제목&#10;- 목록 · 1. 번호 목록 · - [ ] 할 일 · - [x] 한 일&#10;> 인용 · [링크](https://…) · | 표 |"></textarea>
+        <div class="md-body note-view" id="i-note-view" hidden></div>
+      </div>
     </section>
 
     <!-- 매핑 — 항등(같은 이벤트로 합치기)·조합(이 이벤트를 이루는 것)·모자(부모·자식 포함)·선행. 보드를 넘나든다.

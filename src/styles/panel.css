@@ -28,6 +28,12 @@ body.panel-open{--panel-w:var(--panel-size)}
 .fld textarea{height:auto;min-height:var(--u10);padding:var(--u2) var(--u2-5);resize:vertical;line-height:20px}
 /* 비고 — 넉넉한 기본 높이(사용자 지정 565px). 모서리를 끌어 줄이고 늘릴 수 있다 */
 .fld textarea#i-note{height:565px}
+/* 비고 — 라벨 옆에 편집/미리보기. 미리보기는 편집 칸과 같은 높이 */
+.note-head{display:flex;align-items:flex-end;justify-content:space-between;gap:var(--u2)}
+.note-head label{flex:1;min-width:0}
+.note-head .seg-btn{height:var(--u6);font-size:12px}
+.note-view{height:565px;overflow:auto;padding:var(--u2) var(--u3);border:1px solid var(--border-default);
+  border-radius:var(--r-control);background:var(--bg-panel);user-select:text;cursor:auto}
 /* 제목 textarea — 한 줄 높이에서 시작해 내용만큼 자란다 (Shift+Enter로 줄바꿈) */
 .fld textarea#i-title{min-height:var(--u8);overflow:hidden}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:var(--u2)}
@@ -331,3 +337,28 @@ body.panel-open{--panel-w:var(--panel-size)}
 .help-body th{font-weight:600;color:var(--text-secondary);background:var(--bg-hover)}
 .help-body td:first-child{white-space:nowrap;font-weight:500}
 .help-body blockquote{margin:0 0 var(--u2);padding:var(--u2) var(--u3);border-left:3px solid var(--border-default);color:var(--text-secondary)}
+
+/* 마크다운 본문 — 비고 미리보기(.note-view)와 카드 위 비고(.card-note)가 함께 쓴다 */
+.md-body>:first-child{margin-top:0}
+.md-body>:last-child{margin-bottom:0}
+.md-body p,.md-body ul,.md-body ol,.md-body blockquote,.md-body pre,.md-body table{margin:0 0 var(--u2)}
+.md-body h4,.md-body h5,.md-body h6{margin:var(--u2) 0 var(--u1);font-weight:600;line-height:1.4;color:var(--text-primary)}
+.md-body h4{font-size:1.2em}
+.md-body h5{font-size:1.08em}
+.md-body h6{font-size:1em}
+.md-body ul,.md-body ol{padding-left:var(--u5)}
+.md-body li{margin:2px 0}
+.md-body li.md-task{list-style:none;margin-left:calc(var(--u4) * -1)}
+.md-body li.md-task.done{color:var(--text-tertiary);text-decoration:line-through}
+.md-body .md-box{display:inline-block;width:1.3em;text-decoration:none}
+.md-body strong{font-weight:600;color:var(--text-primary)}
+.md-body code{font-family:ui-monospace,Consolas,monospace;font-size:.92em;padding:1px var(--u1);
+  border-radius:var(--u1);background:var(--bg-hover)}
+.md-body pre{padding:var(--u2);border-radius:var(--u1);background:var(--bg-hover);overflow:auto}
+.md-body pre code{padding:0;background:none}
+.md-body blockquote{padding:0 var(--u2);border-left:3px solid var(--border-default);color:var(--text-secondary)}
+.md-body a{color:var(--text-primary);text-decoration:underline;cursor:pointer}
+.md-body hr{border:0;border-top:1px solid var(--border-subtle);margin:var(--u2) 0}
+.md-body table{border-collapse:collapse;font-size:.95em}
+.md-body th,.md-body td{border-bottom:1px solid var(--border-subtle);padding:var(--u1) var(--u2);text-align:left;vertical-align:top}
+.md-body th{font-weight:600;color:var(--text-secondary)}
