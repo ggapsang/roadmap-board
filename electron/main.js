@@ -1237,6 +1237,21 @@ async function runSmoke(target) {
     })()`), 20000, 'month-resize');
     console.log('[smoke] month-resize ' + JSON.stringify(monthResize));
 
+    // 칸 높이 손잡이는 칸 안 아래 8px — 어디를 눌러도(화면 맨 위 요소로) 그 칸 자신의 손잡이가 잡힌다.
+    // 반쯤 밖으로 내밀면 다음 칸이 덮어 2~3px만 잡혔고, 경계선을 잡으면 윗칸이 줄어 헷갈렸다.
+    monthResize.handleHit = await target.webContents.executeJavaScript(`(async () => {
+      const cells = [...document.querySelectorAll('#gutM b')];
+      const out = [];
+      for (const c of cells) {
+        c.scrollIntoView({ block: 'center' }); await new Promise((res) => setTimeout(res, 30));
+        const cb = c.getBoundingClientRect();
+        if (cb.height < 12) continue;                         // 접힌 칸은 손잡이도 칸 높이만큼만
+        const h = c.querySelector('.band-resize');
+        out.push([1, 4, 7].every((d) => document.elementFromPoint(cb.left + cb.width / 2, cb.bottom - d) === h));
+      }
+      return { n: out.length, all: out.every(Boolean) };
+    })()`);
+
     // 분기-월에서 칸 높이 — 한 분기는 기본 3행뿐이라 3배 한도면 좁다. 끄는 만큼 늘어나야 한다.
     monthResize.quarter = await withTimeout(target.webContents.executeJavaScript(`(async () => {
       const r = window.__roadmap;
@@ -2601,6 +2616,7 @@ async function runSmoke(target) {
     && spanForce?.spanUnderForce === true && spanForce?.hasWidthGrip === true
     && trim?.trimmed === true && trim?.shrank === true
     && monthResize?.made === true && monthResize?.scale < 1 && monthResize?.shrank === true
+    && monthResize?.handleHit?.n > 3 && monthResize?.handleHit?.all === true
     && monthResize?.quarter?.mode === 'quarter-month' && monthResize?.quarter?.scale > 3
     && monthResize?.quarter?.kept === monthResize?.quarter?.scale && monthResize?.quarter?.h1 > monthResize?.quarter?.h0 * 3
     && ctxDelete?.hadMenu === true && ctxDelete?.hadBtn === true && ctxDelete?.trimmed === true && ctxDelete?.menuClosed === true
@@ -2634,7 +2650,22 @@ async function runRepro(target) {
     try {
       await new Promise((r) => setTimeout(r, 700));
       const body = fs.readFileSync(path.resolve(probe), 'utf8');
-      const out = await target.webContents.executeJavaScript(`(async () => { ${body}\n})()`);
+      let out = await target.webContents.executeJavaScript(`(async () => { ${body}\n})()`);
+      // 스크립트가 { mouse: [[종류, x, y], ...] }를 돌려주면 진짜 마우스 입력으로 재생한다(합성 이벤트와 달리
+      // 화면에서 맨 위 요소가 받는다 — 가려진 손잡이 같은 것을 잡아낸다). 끝나면 window.__probeAfter()의 결과를 붙인다.
+      if (Array.isArray(out?.mouse)) {
+        let down = false;                                  // 누른 채 움직이면 끌기 — 이동에도 버튼 상태를 싣는다
+        for (const [type, x, y] of out.mouse) {
+          if (type === 'wait') { await new Promise((r) => setTimeout(r, x)); continue; }
+          if (type === 'mouseDown') down = true;
+          target.webContents.sendInputEvent({ type, x: Math.round(x), y: Math.round(y), button: 'left', clickCount: 1,
+            modifiers: down && type === 'mouseMove' ? ['leftButtonDown'] : [] });
+          if (type === 'mouseUp') down = false;
+          await new Promise((r) => setTimeout(r, 30));
+        }
+        await new Promise((r) => setTimeout(r, 300));
+        out = { ...out, mouse: undefined, after: await target.webContents.executeJavaScript('(async () => window.__probeAfter?.())()') };
+      }
       console.log('[probe] ' + JSON.stringify(out, null, 1));
       const shot = argAt('--probe-shot');
       if (shot) { fs.writeFileSync(path.resolve(shot), (await target.webContents.capturePage()).toPNG()); console.log('[probe] 캡처 ' + shot); }

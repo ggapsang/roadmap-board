@@ -271,9 +271,13 @@ body.reordering-col{cursor:grabbing!important;user-select:none}
 
 /* 묶은 구간 높이 조절 — 아래 가장자리를 끌어 접는다 */
 .gut-m b.merged{position:absolute}
-.band-resize{position:absolute;left:0;right:0;bottom:-3px;height:var(--u1-5);cursor:ns-resize;
-  display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .12s ease}
+.band-resize{position:absolute;left:0;right:0;bottom:0;height:var(--u2);cursor:ns-resize;
+  display:flex;align-items:flex-end;justify-content:center;padding-bottom:1px;opacity:0;transition:opacity .12s ease}
+/* 손잡이는 칸 **안** 아래쪽 8px — 반쯤 밖으로 내밀면 다음 칸이 덮어 잡히는 곳이 2~3px뿐이었다.
+   경계선은 위아래 두 칸이 나눠 가지므로, 손잡이에 올리면 그 손잡이가 조절하는 칸(자기 칸)을 칠해 헷갈리지 않게 한다
+   (9월 위 경계를 끌면 8월이 줄던 혼동). */
 .gut-m b:hover .band-resize,.band-resize.dragging{opacity:1}
+.gut-m b:has(> .band-resize:hover){background:var(--bg-hover)}
 .band-resize::after{content:"";height:2px;width:60%;border-radius:2px;background:var(--accent)}
 @media (prefers-reduced-motion:reduce){.band-resize{transition:none}}
 

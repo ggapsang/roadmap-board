@@ -132,7 +132,7 @@ export function renderAxis({ lines, gutM, gutW, grid, origin, endDate, totalDays
         band.sub ? el('em', { text: band.sub }) : null,
       ]),
       // 아래 가장자리 손잡이 — 묶은 구간이든 낱개 칸이든 세로 높이를 조절한다
-      el('div.band-resize', { title: '끌어서 높이 조절 · 더블클릭하면 원래대로' }),
+      el('div.band-resize', { title: `${band.label} 높이 — 끌어서 조절 · 더블클릭하면 원래대로` }),
     ]);
     gutM.append(cell);
   }
