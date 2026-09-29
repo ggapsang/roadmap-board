@@ -10,6 +10,10 @@
  * "형제 묶음"으로 바뀔 뿐 알고리즘은 하나다.
  *
  * 마일스톤은 레인 계산에서 제외하고 폭 기준 오버레이로 그린다.
+ *
+ * 겹침은 **화면에서 차지하는 세로 범위**로 판단할 수 있다(extentOf). 카드는 최소 높이가 있어, 날짜로는 안 겹쳐도
+ * 접힌 구간·짧은 일정에서는 화면에서 겹쳐 뒤 카드가 앞 카드의 제목을 덮는다. 제목은 가려지면 안 되므로(2026-09-29
+ * 사용자 결정) 보드는 픽셀 범위를 넘겨 그런 카드끼리 레인을 나누게 한다. 안 넘기면 날짜(위치)로 판단한다.
  */
 import { LAYOUT } from '../config/index.js';
 
@@ -23,16 +27,18 @@ import { LAYOUT } from '../config/index.js';
  *
  * @returns {number} 최대 레인 수
  */
-function assignLanes(siblings, timeline, placement, { includeMilestones = false, keyOf = (it) => it.id } = {}) {
+function assignLanes(siblings, timeline, placement, { includeMilestones = false, keyOf = (it) => it.id, extentOf = null } = {}) {
   // 최상위에서 레인 계산에서 빼는 건 '점' 마일스톤(s===e)뿐이다. 기간을 가진
   // 마일스톤(전시회 등)은 막대처럼 자리를 차지하므로 형제와 레인을 나눈다 —
   // 안 그러면 트랙 폭을 가로질러 그 기간의 막대들을 덮는다.
   // 위치는 timeline이 읽는다 — 날짜 있는 보드는 일 인덱스, 날짜 없는 보드는 칸 인덱스.
+  // 범위는 [s, e) — 끝은 포함하지 않는다. 날짜 위치면 끝 다음 칸(e+1)이 끝이다.
+  const span = extentOf ?? ((i) => { const p = timeline.pos(i); return p ? { s: p.s, e: p.e + 1 } : null; });
   const bars = siblings
     .filter((i) => includeMilestones || !timeline.isPoint(i))
-    .map((i) => ({ item: i, p: timeline.pos(i) }))
-    .filter((b) => b.p)
-    .map((b) => ({ item: b.item, s: b.p.s, e: b.p.e }))
+    .map((i) => ({ item: i, x: span(i) }))
+    .filter((b) => b.x)
+    .map((b) => ({ item: b.item, s: b.x.s, e: b.x.e }))
     .sort((a, b) => a.s - b.s || a.e - b.e);
 
   let maxLanes = 1;
@@ -43,7 +49,7 @@ function assignLanes(siblings, timeline, placement, { includeMilestones = false,
     if (!cluster.length) return;
     const laneEnds = [];               // laneEnds[k] = k번 레인의 마지막 종료 인덱스
     for (const b of cluster) {
-      let lane = laneEnds.findIndex((end) => end < b.s);
+      let lane = laneEnds.findIndex((end) => end <= b.s);
       if (lane < 0) lane = laneEnds.length;
       laneEnds[lane] = b.e;
       placement.set(keyOf(b.item), { lane, lanes: 1 });
@@ -57,7 +63,7 @@ function assignLanes(siblings, timeline, placement, { includeMilestones = false,
 
   for (const b of bars) {
     // 시작이 현재 클러스터의 최대 종료보다 뒤면 겹치지 않는다 → 클러스터를 끊는다
-    if (cluster.length && b.s > clusterEnd) flush();
+    if (cluster.length && b.s >= clusterEnd) flush();
     cluster.push(b);
     clusterEnd = Math.max(clusterEnd, b.e);
   }
@@ -71,9 +77,11 @@ function assignLanes(siblings, timeline, placement, { includeMilestones = false,
  * @param {object[]} items
  * @param {object} timeline 위치 읽기 (core/timeline.js — pos·isPoint)
  * @param {(item) => boolean} isVisible
+ * @param {string|null} rootId 펼쳐 들어간 이벤트(그 자식이 최상위)
+ * @param {(item) => ({s:number, e:number}|null)} [extentOf] 화면 세로 범위 [s, e) — 주면 이것으로 겹침을 판단
  * @returns {{placement: Map, trackLanes: Map, childrenOf: Map, depthOf: Map}}
  */
-export function computeLayout(tracks, items, timeline, isVisible = () => true, rootId = null) {
+export function computeLayout(tracks, items, timeline, isVisible = () => true, rootId = null, extentOf = null) {
   const placement = new Map();
   const trackLanes = new Map();
 
@@ -106,13 +114,13 @@ export function computeLayout(tracks, items, timeline, isVisible = () => true, r
   const roots = childrenOf.get(rootId) ?? [];
   for (const track of tracks) {
     const own = roots.filter((i) => runHomeIds(i).has(track.id) && isVisible(i));
-    trackLanes.set(track.id, assignLanes(own, timeline, placement, { keyOf: (it) => `${it.id}@${track.id}` }));
+    trackLanes.set(track.id, assignLanes(own, timeline, placement, { keyOf: (it) => `${it.id}@${track.id}`, extentOf }));
   }
 
   // 상위 일정 안에서 자식들끼리 다시 나눈다
   for (const [parentId, kids] of childrenOf) {
     if (parentId === null) continue;
-    assignLanes(kids.filter(isVisible), timeline, placement, { includeMilestones: true });
+    assignLanes(kids.filter(isVisible), timeline, placement, { includeMilestones: true, extentOf });
   }
 
   // 렌더 순서를 정하기 위한 깊이

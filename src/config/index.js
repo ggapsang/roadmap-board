@@ -165,6 +165,10 @@ export const LAYOUT = {
    * 높이 기준이라 확대하면(일당 픽셀↑) 같은 일수도 충분히 높아져 자동 해제된다.
    */
   compactCardHeight: 40,
+  /** 점 마일스톤 표식 높이(px) — CSS .ev.ms.point의 height(--u6)와 같게. 레인 겹침 판단용 */
+  pointCardHeight: 24,
+  /** 제목 글자를 줄일 수 있는 하한(px). 이보다 작으면 읽히지 않는다 — 대신 다른 정보를 먼저 숨긴다 */
+  minTitleFont: 9,
   // 새 일정 기본 길이는 눈금 모드가 정한다(SCALE_MODES.newUnit).
 };
 

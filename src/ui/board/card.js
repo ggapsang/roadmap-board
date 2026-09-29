@@ -202,26 +202,41 @@ export function renderCard(item, ctx) {
 }
 
 /**
- * 제목이 카드를 넘치면 폰트(와 줄높이)를 줄여 잘리지 않게 한다.
- * 렌더가 끝나 카드가 DOM에 붙은 뒤(크기 확정) 호출해야 한다.
- * 세로(감싸는 제목)·가로(한 줄 제목) 넘침 둘 다 본다. 패널이 열려 컬럼이 좁아진
- * 상태에서도 제목이 짤리지 않도록 최소 6px까지 줄인다.
+ * 카드 안에 제목이 다 보이게 한다 — 제목은 어떤 경우에도 잘리지 않고, 다른 정보는 숨겨도 된다(2026-09-29 사용자 결정).
+ * 카드가 붙어 크기가 확정된 뒤 부른다. 넘치면 차례로:
+ *   1) 비고(카드 위 비고) → 2) 메타(기간·담당·태스크 칩) → 3) 진척 막대를 숨기고
+ *   4) 제목 글자를 줄이되 LAYOUT.minTitleFont 아래로는 안 줄인다(그보다 작으면 읽히지 않는다)
+ *   5) 그래도 안 들어가면 카드를 제목이 들어갈 만큼 늘린다 — 겹칠 수 있어도 제목이 없어지는 것보다 낫다.
+ * 제목은 CSS에서 flex로 줄어들지 않는다(.ev>.t flex-shrink:0) — 줄어들면 높이 0이 되어 메타만 남는다.
  */
 export function fitTitle(node) {
   const t = node.querySelector(':scope > .t');
   if (!t) return;
-  // 제목 자신의 넘침(고정 칸 안 클립)과 카드 전체 넘침(한 줄 배치에서 세로) 둘 다 본다.
-  const overflow = () =>
-    t.scrollHeight > t.clientHeight + 1 || t.scrollWidth > t.clientWidth + 1
-    || node.scrollHeight > node.clientHeight + 1;
+  const titleOver = () => t.scrollHeight > t.clientHeight + 1 || t.scrollWidth > t.clientWidth + 1;
+  const overflow = () => titleOver() || node.scrollHeight > node.clientHeight + 1;
   if (!overflow()) return;
+
+  for (const sel of [':scope > .card-note', ':scope > .meta', ':scope > .pg']) {
+    const x = node.querySelector(sel);
+    if (!x || x.hidden) continue;
+    x.hidden = true;
+    if (!overflow()) return;
+  }
+
   let size = parseFloat(getComputedStyle(t).fontSize);
-  const MIN = 6;
   let guard = 0;
-  while (guard++ < 24 && size > MIN && overflow()) {
-    size = Math.max(MIN, size - 1);
+  while (guard++ < 24 && size > LAYOUT.minTitleFont && overflow()) {
+    size = Math.max(LAYOUT.minTitleFont, size - 1);
     t.style.fontSize = `${size}px`;
     t.style.lineHeight = size <= 11 ? '1.15' : '1.3';
   }
+  if (!overflow()) return;
+
+  // 마지막 수단 — 한 줄로 눕힌 카드(짧은 카드·점 마일스톤)는 줄바꿈을 허용하고, 카드 높이를 제목에 맞춘다
+  t.style.whiteSpace = 'normal';
+  t.style.textOverflow = 'clip';
+  const pad = node.offsetHeight - node.clientHeight + parseFloat(getComputedStyle(node).paddingTop) + parseFloat(getComputedStyle(node).paddingBottom);
+  const need = Math.ceil(t.scrollHeight + pad);
+  if (need > node.offsetHeight) { node.style.height = `${need}px`; node.classList.add('grown'); }
 }
 

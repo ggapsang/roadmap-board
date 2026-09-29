@@ -16,7 +16,7 @@ import { TimeScale, SlotScale } from '../../core/timescale.js';
 import { DateTimeline, SlotTimeline } from '../../core/timeline.js';
 import { computeLayout, gridTemplate } from '../../core/layout.js';
 import { newId } from '../../core/schema.js';
-import { DEFAULT_STATUS, DEFAULT_TYPE, UNIT_DAYS } from '../../config/index.js';
+import { DEFAULT_STATUS, DEFAULT_TYPE, UNIT_DAYS, LAYOUT } from '../../config/index.js';
 import { el } from '../dom.js';
 import { openCtxMenu } from '../ctxmenu.js';
 import { toast } from '../toast.js';
@@ -356,8 +356,22 @@ export class Board {
     this._scope = this.#focusScope();
     const visible = (i) => this.view.isVisible(i) && (this._scope === null || this._scope.has(i.id));
     this._layout = computeLayout(
-      this.store.tracks, this.store.items, this.timeline, visible, this.focus,
+      this.store.tracks, this.store.items, this.timeline, visible, this.focus, (i) => this.#pixelExtent(i),
     );
+  }
+
+  /**
+   * 카드가 화면에서 차지하는 세로 범위 [s, e) px — card.js의 높이 규칙과 같다(최소 높이·카드 간격·크기 강제).
+   * 레인을 이것으로 나눠, 날짜로는 안 겹쳐도 화면에서 겹치는 카드(접힌 구간·짧은 일정)가 서로 제목을 덮지 않게 한다.
+   */
+  #pixelExtent(item) {
+    const tl = this.timeline, sc = this.scale;
+    const p = tl.pos(item);
+    if (!p) return null;
+    const top = sc.y(p.s);
+    if (tl.isPoint(item)) return { s: top, e: top + LAYOUT.pointCardHeight };
+    const raw = item.place?.hd != null ? sc.extent(p.s, item.place.hd) : sc.heightOf(item);
+    return { s: top, e: top + Math.max(LAYOUT.minCardHeight, raw - LAYOUT.cardGap) };
   }
 
   #renderHead() {

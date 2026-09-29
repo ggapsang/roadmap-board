@@ -106,6 +106,10 @@ body.panel-open .cal{min-width:0}
   white-space:nowrap}
 .ev.short>.meta .tasks-chip{display:none}
 .ev .meta.hidden{display:none}
+/* 제목은 줄어들지 않는다 — 좁아지면 메타·비고가 먼저 숨는다(card.js fitTitle). 줄어들면 높이 0이 되어 제목만 사라진다 */
+.ev>.t{flex-shrink:0}
+/* 제목이 들어가도록 늘린 카드(마지막 수단) — 아래 카드 위로 올라와도 제목이 보이게 */
+.ev.grown:not(.container){z-index:7}
 
 /* 별칭(포털) 카드 — 다른 보드를 대신한다. 약한 파선으로 "무언가를 가리킨다"를 표시하고,
    오른쪽 위 ⧉ 표식을 눌러 그 보드로 들어간다(accent는 이동 신호라 허용). */
