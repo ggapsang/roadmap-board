@@ -507,6 +507,7 @@ export class Board {
 
     // 카드가 붙은 뒤에야 offsetLeft/offsetTop이 확정된다
     drawArrows(this.arrowLayer, this.grid, this.store.items, this.store.relations, this.store.meta.display);
+    this.#linkHighlight(this._hoverId ?? null);
   }
 
   /** 각 트랙 컬럼의 실제 너비(px) */
@@ -567,11 +568,40 @@ export class Board {
 
   redrawArrows() {
     drawArrows(this.arrowLayer, this.grid, this.store.items, this.store.relations, this.store.meta.display);
+    this.#linkHighlight(this._hoverId ?? null);
+  }
+
+  /**
+   * 이어진 카드 강조 — 카드에 커서를 올리면 그 카드에 닿는 화살표(선행)를 채워 칠하고, 화살표 양끝 카드의 테두리를
+   * 밝힌다. 화살표가 없는 카드는 아무것도 하지 않는다. 화면 표시일 뿐(문서·되돌리기와 무관).
+   * 다시 그려도(renderCards·redrawArrows) 커서가 올라가 있던 카드 기준으로 다시 건다.
+   */
+  #linkHighlight(id) {
+    this._hoverId = id;
+    for (const n of this.arrowLayer.querySelectorAll('.arrow.hl')) n.classList.remove('hl');
+    for (const n of this.grid.querySelectorAll('.ev.linked')) n.classList.remove('linked');
+    if (!id) return;
+    const paths = [...this.arrowLayer.querySelectorAll('.arrow')].filter((p) => p.dataset.from === id || p.dataset.to === id);
+    if (!paths.length) return;
+    const ids = new Set([id]);
+    for (const p of paths) {
+      ids.add(p.dataset.from); ids.add(p.dataset.to);
+      p.classList.add('hl');
+      p.parentNode.append(p);                        // 다른 화살표 위로 — 겹친 곳에서도 이어진 선이 보이게
+    }
+    for (const n of this.grid.querySelectorAll('.ev')) if (ids.has(n.dataset.id)) n.classList.add('linked');
   }
 
   // ── 입력 ────────────────────────────────────────────────
 
   #attachEvents() {
+    // 이어진 카드 강조 — 가장 안쪽 카드 기준(하위 카드에 올리면 그 하위 카드)
+    this.grid.addEventListener('pointerover', (ev) => {
+      const id = ev.target.closest?.('.ev')?.dataset.id ?? null;
+      if (id !== (this._hoverId ?? null)) this.#linkHighlight(id);
+    });
+    this.grid.addEventListener('pointerleave', () => this.#linkHighlight(null));
+
     this.grid.addEventListener('click', (ev) => {
       // 텍스트 선택 모드에서는 패널을 열지 않는다.
       // 열면 재렌더가 일어나 카드가 새로 그려지고 긁어 둔 선택이 날아간다.

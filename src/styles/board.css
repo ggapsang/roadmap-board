@@ -70,6 +70,8 @@ body.panel-open .cal{min-width:0}
 .arrow{fill:var(--arrow-fill);stroke:var(--arrow-edge);stroke-width:1.25;
   stroke-linejoin:round;pointer-events:auto}
 .arrow:hover{fill:var(--accent-soft);stroke:var(--accent)}
+/* 카드에 커서를 올리면 그 카드에 닿는 화살표를 채워 칠한다(Board#linkHighlight) */
+.arrow.hl{fill:var(--accent);stroke:var(--accent)}
 
 /* ── 일정 카드 ────────────────────────────────────
    "테두리 박스"가 아니라 "정보가 놓인 표면"이다 (가이드 §4 / §9).
@@ -141,6 +143,9 @@ body.panel-open .cal{min-width:0}
 .select-text .ev>.grip-span{display:none}
 @media (prefers-reduced-motion:reduce){.ev>.grip-span{transition:none}}
 /* 선택 — Border만 Primary로. 배경을 칠하지 않는다 */
+/* 화살표로 이어진 카드(커서를 올린 카드와 그 양끝) — 테두리만 밝힌다. 선택(.sel, 면까지 칠함)과 헷갈리지 않게 약한 고리.
+   z-index를 주지 않는다(규약 10 — 컨테이너가 쌓임 맥락이 되면 안의 카드가 갇힌다). 선택이 뒤에서 이긴다. */
+.ev.linked{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
 .ev.sel{background:var(--surface-sel);border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);z-index:16}
 .ev.dim{opacity:.28}
 .ev.hit{box-shadow:0 0 0 2px var(--warning-500)}

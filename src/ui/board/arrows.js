@@ -84,6 +84,8 @@ export function drawArrows(layer, grid, items, relations, display) {
     const path = document.createElementNS(NS, 'path');
     path.setAttribute('d', d);
     path.setAttribute('class', 'arrow');
+    path.dataset.from = rel.from;       // 카드에 올렸을 때 이어진 화살표를 찾는다(Board#linkHighlight)
+    path.dataset.to = rel.to;
     path.append(makeTitle(rel.from, rel.to, items));
     group.append(path);
   }
