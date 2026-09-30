@@ -42,6 +42,19 @@ async function boot() {
   // 문서는 프로젝트를 열 때 채워진다. 그 전까지는 빈 껍데기.
   const store = new Store({ adapter, doc: emptyDoc() });
   store.on('error', (message) => toast(message, 'warn'));
+  // 화면 배율(Ctrl+휠) — 창 전체를 브라우저처럼 키우고 줄인다. 메인이 바꾸고 여기선 알리기만 한다.
+  window.roadmapDB?.onViewZoom?.((f) => toast(`화면 ${Math.round(f * 100)}% — Ctrl+휠로 조절 · 보기 메뉴에서 원래 크기`));
+  // Ctrl+휠 위 = 확대, 아래 = 축소. 휠을 스스로 쓰는 곳(그래프 확대)은 기본 동작을 막으니 건너뛴다.
+  // 트랙패드는 잘게 여러 번 오므로 한 번 움직이면 잠시 쉰다(한 번 굴림 = 한 단계).
+  let zoomAt = 0;
+  window.addEventListener('wheel', (e) => {
+    if (!e.ctrlKey || e.defaultPrevented || !window.roadmapDB?.zoomStep) return;
+    e.preventDefault();
+    const now = performance.now();
+    if (now - zoomAt < 120 || !e.deltaY) return;
+    zoomAt = now;
+    window.roadmapDB.zoomStep(e.deltaY < 0 ? 1 : -1);
+  }, { passive: false });
 
   // 보드 탭 — 여러 보드를 오간다. launcher·itemPanel·toolbar가 참조하므로 먼저 선언만.
   let tabs;

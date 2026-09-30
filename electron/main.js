@@ -109,6 +109,33 @@ function registerProtocol() {
   });
 }
 
+/**
+ * 화면 배율 — 웹 브라우저처럼 Ctrl+휠로 창 전체를 키우고 줄인다(글자·카드·도구 모음 모두, 좌표계는 그대로라
+ * 끌기·화살표 계산이 흔들리지 않는다). 단계는 Chrome과 같게. 배율은 이 PC의 설정으로 userData/view.json에 둔다
+ * (문서가 아니다 — 보드를 나눠도 따라가지 않는다). 카드 글자 크기(Ctrl +/-, 문서 표시 설정)와는 별개다.
+ */
+const ZOOM_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+const viewPrefFile = () => path.join(app.getPath('userData'), 'view.json');
+function loadViewPref() {
+  try { return JSON.parse(fs.readFileSync(viewPrefFile(), 'utf8')) ?? {}; } catch { return {}; }
+}
+function saveViewPref(patch) {
+  if (SMOKE || REPRO) return;                        // 검사는 사용자 설정을 건드리지 않는다
+  try { fs.writeFileSync(viewPrefFile(), JSON.stringify({ ...loadViewPref(), ...patch })); } catch { /* 이번 실행엔 적용 */ }
+}
+/** dir: +1 확대 · -1 축소 · 0 원래대로 */
+function stepZoom(target, dir) {
+  const wc = target.webContents;
+  const cur = wc.getZoomFactor();
+  let next = 1;
+  if (dir > 0) next = ZOOM_STEPS.find((z) => z > cur + 0.001) ?? ZOOM_STEPS[ZOOM_STEPS.length - 1];
+  else if (dir < 0) next = [...ZOOM_STEPS].reverse().find((z) => z < cur - 0.001) ?? ZOOM_STEPS[0];
+  wc.setZoomFactor(next);
+  saveViewPref({ zoom: next });
+  wc.send('view:zoom', next);                        // 렌더러가 '화면 110%'를 잠깐 보여 준다
+  return next;
+}
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1440,
@@ -132,6 +159,13 @@ function createWindow() {
   // Page.captureScreenshot(PNG 내보내기)이 응답하지 않는다.
   win.once('ready-to-show', () => { if (SMOKE) win.showInactive(); else win.show(); });
   win.loadURL('app://board/index.html');
+  // Ctrl+휠은 렌더러가 받아 'view:zoom'으로 부른다(src/main.js). 렌더러가 기본 동작을 막으므로 이 이벤트는 대개 안 오지만,
+  // 오면(렌더러가 못 받은 경우) 같은 단계로 처리한다.
+  win.webContents.on('zoom-changed', (_e, direction) => stepZoom(win, direction === 'in' ? 1 : -1));
+  win.webContents.on('did-finish-load', () => {
+    const z = SMOKE || REPRO ? 1 : Number(loadViewPref().zoom);
+    if (Number.isFinite(z) && z > 0) win.webContents.setZoomFactor(z);
+  });
   if (SMOKE) {
     // 렌더러 콘솔을 그대로 끌어온다 — 부팅 실패 원인이 여기 찍힌다
     win.webContents.on('console-message', (e) => {
@@ -2462,6 +2496,30 @@ async function runSmoke(target) {
     console.log('[smoke] graph ' + JSON.stringify(graphCheck));
   }
 
+  // 화면 배율 — 브라우저처럼 Ctrl+휠 위 = 확대, 아래 = 축소(Chrome 단계). 끝나면 100%로 되돌린다.
+  let zoomCheck = null;
+  if (wrote) {
+    try {
+      const wc = target.webContents;
+      const wheel = async (dy) => {
+        const [w, h] = target.getContentSize();
+        wc.sendInputEvent({ type: 'mouseWheel', x: Math.round(w / 2), y: Math.round(h / 2), deltaX: 0, deltaY: dy, canScroll: true, modifiers: ['control'] });
+        await new Promise((res) => setTimeout(res, 250));
+        return Math.round(wc.getZoomFactor() * 100);
+      };
+      wc.setZoomFactor(1);
+      await wc.executeJavaScript('window.__toasts = []; new MutationObserver(() => { const t = document.getElementById("toast")?.textContent; if (t) window.__toasts.push(t); }).observe(document.body, { subtree: true, childList: true, characterData: true }); true');
+      const up = await wheel(120);                        // 휠 위(양수 deltaY가 위 — Electron 입력 이벤트 규약)
+      const down1 = await wheel(-120);
+      const down2 = await wheel(-120);
+      const toast = await wc.executeJavaScript('window.__toasts.join(" / ")');
+      const pageScrolled = await wc.executeJavaScript('document.getElementById("scroll").scrollTop');
+      wc.setZoomFactor(1);
+      zoomCheck = { up, down1, down2, toast: toast.slice(0, 120), pageScrolled };
+    } catch (err) { zoomCheck = { error: String(err) }; }
+    console.log('[smoke] zoom ' + JSON.stringify(zoomCheck));
+  }
+
   // 스타일·매핑 탭 모습 — --shot일 때만 (라이트·다크). 카드 몇 장에 채우기를 입혀 본다.
   if (wrote && shotDir()) {
     const show = (tab, theme) => target.webContents.executeJavaScript(`(async () => {
@@ -2558,6 +2616,7 @@ async function runSmoke(target) {
     && graphCheck?.ui?.edgeLabelsIdle === 0 && graphCheck?.ui?.arrows === true && graphCheck?.ui?.hoverLabels > 0 && graphCheck?.ui?.hoverKeptLayout === true
     && graphCheck?.ui?.pinned === true && graphCheck?.ui?.released === true && graphCheck?.ui?.sameReopen === true && graphCheck?.ui?.closed === true
     && graphCheck?.ui?.c8unchanged === true
+    && (!wrote || (zoomCheck?.up === 110 && zoomCheck?.down1 === 100 && zoomCheck?.down2 === 90 && /화면 110%/.test(zoomCheck?.toast ?? '')))
     && graphCheck?.c10?.inside === 40 && JSON.stringify(graphCheck?.c10?.outside) === JSON.stringify(['B2t0', 'B2t2c0'])
     && graphCheck?.c10?.noB2 === true && graphCheck?.c10?.sizeKept === true && graphCheck?.c10?.linksTouchInside === true && graphCheck?.c10?.missing === true
     && graphCheck?.ui?.scoped?.tabs === 2 && /^그래프 · /.test(graphCheck?.ui?.scoped?.tabName ?? '') && graphCheck?.ui?.scoped?.count === true
@@ -2906,9 +2965,10 @@ function buildMenu() {
       label: '보기',
       submenu: [
         { role: 'reload', label: '새로고침' },
-        { role: 'resetZoom', label: '확대 초기화' },
-        { role: 'zoomIn', label: '확대' },
-        { role: 'zoomOut', label: '축소' },
+        // 화면 배율 — Ctrl+휠과 같은 단계·같은 저장. 단축키(Ctrl +/-/0)는 카드 글자 크기가 쓰므로 달지 않는다.
+        { label: '화면 원래 크기 (100%)', click: () => win && stepZoom(win, 0) },
+        { label: '화면 확대 (Ctrl+휠 위)', click: () => win && stepZoom(win, 1) },
+        { label: '화면 축소 (Ctrl+휠 아래)', click: () => win && stepZoom(win, -1) },
         { type: 'separator' },
         { role: 'togglefullscreen', label: '전체 화면' },
         { role: 'toggleDevTools', label: '개발자 도구' },
@@ -2959,6 +3019,7 @@ function registerIpc() {
   // 이벤트 몇 개의 본질 · 조상(조합 대상에서 빼야 순환이 안 생긴다)
   ipcMain.handle('event:get', guard((_e, ids) => repo.eventsById(ids)));
   // 그래프 뷰 — 이벤트·포함·관계 전체(읽기 전용)
+  ipcMain.handle('view:zoom', guard((_e, dir) => (win ? stepZoom(win, Math.sign(Number(dir) || 0)) : 1)));
   ipcMain.handle('graph:data', guard((_e, boardId) => repo.graphData(boardId ?? null)));
   ipcMain.handle('event:ancestors', guard((_e, id) => repo.ancestorsOf(id)));
   // 휴지통 — 부모를 모두 잃은 이벤트 (docs/SAVE.md §7)

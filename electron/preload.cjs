@@ -26,6 +26,9 @@ contextBridge.exposeInMainWorld('roadmapDB', {
   eventsById: (ids) => call('event:get', ids),
   // 그래프 뷰 — 이벤트·포함·관계 전체(읽기 전용)
   graphData: (boardId) => call('graph:data', boardId ?? null),
+  // 화면 배율이 바뀌었다(Ctrl+휠·보기 메뉴) — 잠깐 알려 준다
+  onViewZoom: (cb) => ipcRenderer.on('view:zoom', (_e, factor) => cb(factor)),
+  zoomStep: (dir) => call('view:zoom', dir),         // +1 확대 · -1 축소 · 0 원래대로
   eventAncestors: (id) => call('event:ancestors', id),
   // 휴지통 — 부모를 모두 잃은 이벤트. 영구 삭제·비우기
   listTrash: () => call('trash:list'),
