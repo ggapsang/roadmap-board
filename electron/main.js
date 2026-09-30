@@ -2131,66 +2131,96 @@ async function runSmoke(target) {
     console.log('[smoke] title-safe ' + JSON.stringify(titleSafe));
   }
 
-  // 비고 마크다운 — 원문은 그대로 저장, 미리보기·카드 위에서 그린다. HTML은 글자로(주입 안 됨).
-  // 편집 도우미: Enter로 목록 이어 쓰기(빈 항목이면 끝), Ctrl+B 굵게. 포커스를 잃으면 저장된다.
+  // 비고 — 옵시디언식 라이브 미리보기(CodeMirror). 원문은 마크다운 그대로 저장, 커서가 있는 줄만 원문이 보이고 나머지는 서식.
+  // 할 일 상자를 누르면 원문 [ ]↔[x], Enter로 목록 이어 쓰기, Ctrl+B 굵게. 편집 중 Ctrl+Z는 **편집기 글자만** 되돌리고
+  // 보드(카드) 되돌리기로 번지지 않는다. 편집 중 Backspace가 카드를 지우지 않는다. 다른 카드를 열면 되돌리기 기록이 새로.
   let noteMd = null;
   if (wrote) {
     noteMd = await target.webContents.executeJavaScript(`(async () => {
       const run = (async () => {
         const r = window.__roadmap;
         const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
-        const it = r.store.items.find((x) => !x.parent && x.ty !== 'ms' && !r.store.items.some((k) => k.parent === x.id));
+        const cards = r.store.items.filter((x) => !x.parent && x.ty !== 'ms' && !r.store.items.some((k) => k.parent === x.id));
+        const it = cards[0], other = cards[1];
         const id = it.id;
-        const before = { note: it.note, show: it.place.showNote };
+        const before = { note: it.note, show: it.place.showNote, ti: it.ti };
+        // 보드 되돌리기 기록을 하나 만들어 둔다 — 비고 편집 중 Ctrl+Z가 이걸 되돌리면 안 된다
+        r.store.commit('제목', () => { r.store.item(id).ti = before.ti + '·'; });
         document.querySelector('.col [data-id="' + id + '"]').click(); await sleep(250);
         document.querySelector('#pItem .ptab[data-tab="attr"]').click(); await sleep(80);
-        const ta = document.getElementById('i-note');
-        const md = '# 제목\\n**굵게** *기울임* ~~취소~~ \`코드\`\\n- 하나\\n- 둘\\n\\n1. 첫째\\n2. 둘째\\n\\n- [x] 한 일\\n- [ ] 할 일\\n\\n> 인용\\n\\n[링크](https://example.com) [나쁜](javascript:alert(1))\\n\\n<img src=x onerror="window.__xss=1">';
-        ta.focus(); ta.value = md; ta.dispatchEvent(new Event('change')); await sleep(150);
-        const saved = r.store.item(id).note === md;
-        // 미리보기
-        document.querySelector('#i-note-mode .seg-btn[data-mode="view"]').click(); await sleep(80);
-        const v = document.getElementById('i-note-view');
-        const view = {
-          shown: !v.hidden && ta.hidden,
-          h: !!v.querySelector('h4'), strong: !!v.querySelector('strong'), em: !!v.querySelector('em'), del: !!v.querySelector('del'), code: !!v.querySelector('code'),
-          ul: v.querySelectorAll('ul:not(:has(.md-task)) > li').length, ol: v.querySelectorAll('ol > li').length,
-          tasks: [...v.querySelectorAll('li.md-task')].map((l) => l.classList.contains('done')),
-          quote: !!v.querySelector('blockquote'),
-          links: [...v.querySelectorAll('a')].map((a) => a.getAttribute('href')),
-          noImg: !v.querySelector('img') && window.__xss !== 1 && v.textContent.includes('<img'),
+        const ed = r.itemPanel.noteEditor, v = ed.view;
+        const md = '# 제목\\n**굵게** *기울임* ~~취소~~ \`코드\`\\n- 하나\\n1. 첫째\\n- [x] 한 일\\n- [ ] 할 일\\n> 인용\\n[링크](https://example.com)\\n<img src=x onerror="window.__xss=1">';
+        v.focus();
+        v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: md }, selection: { anchor: 0 } });   // 커서는 1줄(제목)
+        await sleep(80);
+        const c = v.contentDOM;
+        const lineText = (k) => c.querySelectorAll('.cm-line')[k]?.textContent ?? '';
+        const live = {
+          h1Raw: lineText(0).startsWith('# '),                        // 커서 줄 — 원문
+          strongRendered: !!c.querySelector('.cm-md-strong') && !lineText(1).includes('**'),   // 다른 줄 — 기호 숨김
+          em: !!c.querySelector('.cm-md-em'), strike: !!c.querySelector('.cm-md-strike'), code: !!c.querySelector('.cm-md-code'),
+          bullet: !!c.querySelector('.cm-md-bullet'),
+          boxes: [...c.querySelectorAll('input.cm-md-task')].map((b) => b.checked),
+          quote: !!c.querySelector('.cm-md-quote'),
+          link: c.querySelector('.cm-md-link')?.dataset.url ?? null, linkHidden: !lineText(7).includes('](') ,
+          noImg: !c.querySelector('img:not(.cm-widgetBuffer)') && window.__xss !== 1 && c.textContent.includes('<img'),   // cm-widgetBuffer는 CodeMirror 자체 요소
         };
-        document.querySelector('#i-note-mode .seg-btn[data-mode="edit"]').click(); await sleep(50);
-        const editBack = !ta.hidden && v.hidden;
-        // 목록 이어 쓰기 — '- 셋' 뒤 Enter → '- ', 빈 항목에서 Enter → 표식 지움. 번호는 하나씩 는다.
-        const key = (k, o = {}) => ta.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...o }));
-        ta.focus(); ta.value = '- 셋'; ta.setSelectionRange(4, 4); key('Enter');
-        const cont = ta.value === '- 셋\\n- ';
-        key('Enter');
-        const ended = ta.value === '- 셋\\n';
-        ta.value = '3. 다음'; ta.setSelectionRange(5, 5); key('Enter');
-        const num = ta.value === '3. 다음\\n4. ';
-        ta.value = '- [x] 끝냄'; ta.setSelectionRange(8, 8); key('Enter');
-        const task = ta.value === '- [x] 끝냄\\n- [ ] ';
-        // Ctrl+B — 고른 글자를 굵게
-        ta.value = '중요 표시'; ta.setSelectionRange(0, 2); key('b', { ctrlKey: true });
-        const bold = ta.value === '**중요** 표시';
-        // 도우미로 바꾼 뒤 포커스를 잃으면 저장된다(change)
-        // 스모크 창은 포커스가 없어(뒤에 떠 있다) blur()가 이벤트를 내지 않는다 — 사용자가 다른 곳을 누른 것과 같은 blur를 보낸다
-        ta.dispatchEvent(new FocusEvent('blur')); await sleep(150);
-        const blurSaved = r.store.item(id).note === '**중요** 표시';
-        // 카드 위 — 비고 표시를 켜면 마크다운으로
+        // 커서를 굵게 줄로 옮기면 그 줄이 원문으로
+        v.dispatch({ selection: { anchor: v.state.doc.line(2).from + 1 } }); await sleep(50);
+        live.rawOnCursor = lineText(1).includes('**') && lineText(0) === '제목';
+        // 할 일 상자 누르기 — 원문 [ ] → [x]
+        v.dispatch({ selection: { anchor: 0 } }); await sleep(50);
+        const box = [...c.querySelectorAll('input.cm-md-task')].find((b) => !b.checked);
+        box.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+        await sleep(50);
+        const toggled = ed.value.includes('- [x] 할 일');
+        // Enter로 이어 쓰기 — '- 하나' 끝에서 Enter → '- '
+        const l3 = v.state.doc.line(3);
+        v.dispatch({ selection: { anchor: l3.to } });
+        c.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+        await sleep(50);
+        const cont = v.state.doc.line(4).text === '- ';
+        // Ctrl+B — 고른 글자 굵게
+        v.dispatch({ changes: { from: v.state.doc.line(4).to, insert: '중요' }, selection: { anchor: v.state.doc.line(4).to, head: v.state.doc.line(4).to + 2 } });
+        c.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', ctrlKey: true, bubbles: true, cancelable: true }));
+        await sleep(50);
+        const bold = v.state.doc.line(4).text === '- **중요**';
+        // Ctrl+Z — 편집기 글자만 되돌린다(굵게가 풀린다), 보드 되돌리기(제목)는 그대로
+        const titleBefore = r.store.item(id).ti;
+        c.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true, cancelable: true }));
+        await sleep(80);
+        const undoLocal = !v.state.doc.toString().includes('**중요**') && r.store.item(id).ti === titleBefore;   // 편집기는 가까운 변경을 묶어 되돌린다
+        // 편집 중 Backspace — 카드가 지워지지 않는다
+        const n0 = r.store.items.length;
+        c.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, cancelable: true }));
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, cancelable: true }));
+        await sleep(80);
+        const cardKept = r.store.items.length === n0 && !!r.store.item(id);
+        // 편집기에서 나가면 저장(원문 마크다운)
+        const text = ed.value;
+        v.contentDOM.blur(); v.dom.dispatchEvent(new FocusEvent('blur')); c.dispatchEvent(new FocusEvent('blur'));
+        await sleep(150);
+        const saved = r.store.item(id).note === text;
+        const allRendered = !c.textContent.includes('**') || !v.hasFocus;
+        // 다른 카드를 열면 되돌리기 기록이 새로 — Ctrl+Z로 앞 카드 비고가 나오지 않는다
+        document.querySelector('.col [data-id="' + other.id + '"]').click(); await sleep(250);
+        const otherNote = r.store.item(other.id).note ?? '';
+        v.focus();
+        c.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true, cancelable: true }));
+        await sleep(80);
+        const freshHistory = ed.value === otherNote;
+        // 카드 위 — 비고 표시를 켜면 마크다운으로 그린다
         r.store.commit('비고', () => { r.store.item(id).note = md; r.store.item(id).place.showNote = true; });
         r.board.render(); await sleep(150);
         const cn = document.querySelector('.col [data-id="' + id + '"] .card-note');
         const card = { strong: !!cn?.querySelector('strong'), li: cn?.querySelectorAll('li').length ?? 0, noImg: !cn?.querySelector('img') };
-        r.store.commit('원복', () => { r.store.item(id).note = before.note; r.store.item(id).place.showNote = before.show; });
+        r.store.commit('원복', () => { const x = r.store.item(id); x.note = before.note; x.place.showNote = before.show; x.ti = before.ti; });
         document.querySelector('#pItem [data-close]').click();
         await sleep(100);
-        return { saved, view, editBack, cont, ended, num, task, bold, blurSaved, card };
+        return { live, toggled, cont, bold, undoLocal, cardKept, saved, allRendered, freshHistory, card };
       })();
       const guard = new Promise((res) => setTimeout(() => res({ error: 'timeout' }), 12000));
-      return Promise.race([run.catch((e) => ({ error: String(e) })), guard]);
+      return Promise.race([run.catch((e) => ({ error: String(e && e.stack || e) })), guard]);
     })()`);
     console.log('[smoke] note-md ' + JSON.stringify(noteMd));
   }
@@ -2291,7 +2321,7 @@ async function runSmoke(target) {
         await sleep(250);
         document.querySelector('#pItem .ptab[data-tab="attr"]').click();
         await sleep(60);
-        const noteH = Math.round(document.getElementById('i-note').getBoundingClientRect().height);
+        const noteH = Math.round(document.getElementById('i-note-editor').getBoundingClientRect().height);
         const bar = document.querySelector('#pItem .ptabs');
         const styleTab = bar.querySelector('.ptab[data-tab="disp"]');
         await drag(styleTab, bar.querySelector('.ptab').getBoundingClientRect().left + 2);
@@ -2632,12 +2662,13 @@ async function runSmoke(target) {
     && trashUi?.asked === true && trashUi?.gone === true && trashUi?.purged === true && trashUi?.closed === true
     && styleUi?.tabName === '스타일' && styleUi?.filled === true && styleUi?.painted === true && styleUi?.msFilled === true && styleUi?.childFilled === true && styleUi?.dbFill === 'blue'
     && titleSafe?.foldedBad?.length === 0 && titleSafe?.openBad?.length === 0 && titleSafe?.lanes1 > titleSafe?.lanes0
-    && noteMd?.saved === true && noteMd?.view?.shown === true && noteMd?.view?.h === true && noteMd?.view?.strong === true
-    && noteMd?.view?.em === true && noteMd?.view?.del === true && noteMd?.view?.code === true
-    && noteMd?.view?.ul === 2 && noteMd?.view?.ol === 2 && JSON.stringify(noteMd?.view?.tasks) === '[true,false]'
-    && noteMd?.view?.quote === true && JSON.stringify(noteMd?.view?.links) === '["https://example.com"]' && noteMd?.view?.noImg === true
-    && noteMd?.editBack === true && noteMd?.cont === true && noteMd?.ended === true && noteMd?.num === true && noteMd?.task === true
-    && noteMd?.bold === true && noteMd?.blurSaved === true && noteMd?.card?.strong === true && noteMd?.card?.li >= 4 && noteMd?.card?.noImg === true
+    && noteMd?.live?.h1Raw === true && noteMd?.live?.strongRendered === true && noteMd?.live?.em === true && noteMd?.live?.strike === true
+    && noteMd?.live?.code === true && noteMd?.live?.bullet === true && JSON.stringify(noteMd?.live?.boxes) === '[true,false]'
+    && noteMd?.live?.quote === true && noteMd?.live?.link === 'https://example.com' && noteMd?.live?.linkHidden === true
+    && noteMd?.live?.noImg === true && noteMd?.live?.rawOnCursor === true
+    && noteMd?.toggled === true && noteMd?.cont === true && noteMd?.bold === true && noteMd?.undoLocal === true
+    && noteMd?.cardKept === true && noteMd?.saved === true && noteMd?.freshHistory === true
+    && noteMd?.card?.strong === true && noteMd?.card?.li >= 4 && noteMd?.card?.noImg === true
     && styleUi?.hiddenByDefault === true && styleUi?.noteShown === true && styleUi?.noteHidden === true
     && JSON.stringify(styleUi?.titles) === JSON.stringify(['항등설정', '조합설정', '모자관계설정', '선행관계설정'])
     && (styleUi?.btns ?? []).length === 4 && styleUi.btns.every((t) => t === '편집')

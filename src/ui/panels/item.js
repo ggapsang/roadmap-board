@@ -16,7 +16,7 @@ import { askConfirm, askChoice, askTree, askTreeTabs } from '../dialog.js';
 import { openCombinePicker, pickEventForMerge, composedOf } from '../combine.js';
 import { toast } from '../toast.js';
 import { attachTabReorder } from '../reorder.js';
-import { renderMarkdown } from '../markdown.js';
+import { createNoteEditor } from '../noteEditor.js';
 
 /** 편집 패널 탭 순서 — 사용자가 끌어 바꾼 순서를 이 PC에 영구 보관한다(문서가 아니라 사용자 설정). */
 const TAB_ORDER_KEY = 'wolfpack:item-tab-order';
@@ -199,57 +199,18 @@ export class ItemPanel {
     $('i-dup').addEventListener('click', () => this.duplicate());
   }
 
-  // ── 비고 (마크다운) ─────────────────────────────────────
+  // ── 비고 (마크다운, 라이브 미리보기) ─────────────────────
 
   /**
-   * 비고는 마크다운 원문 그대로 item.note에 둔다. 편집 = 원문 textarea, 미리보기 = 그린 모습(ui/markdown.js).
-   * 편집을 돕는 키: Enter는 목록·번호·체크 줄을 이어 주고(빈 항목에서 Enter면 목록을 끝낸다), Ctrl+B는 굵게.
+   * 비고는 마크다운 원문 그대로 item.note에 둔다. 편집기(ui/noteEditor.js)는 옵시디언식 — 커서가 있는 줄만 원문, 나머지는 서식.
+   * 숨긴 textarea(#i-note)가 원문을 들고 있어 apply()가 다른 칸과 같은 길로 저장한다. 저장은 편집기에서 나갈 때(blur).
    */
   #bindNote() {
-    for (const b of $('i-note-mode').querySelectorAll('.seg-btn')) {
-      b.addEventListener('click', () => this.#setNoteMode(b.dataset.mode));
-    }
     const ta = $(F.note);
-    // 도우미(Enter 이어 쓰기·Ctrl+B)가 고친 글자는 브라우저가 'change'로 치지 않는다 — 포커스를 잃을 때
-    // 저장된 비고와 다르면 직접 적용한다.
-    ta.addEventListener('blur', () => { if (this.item && ta.value !== (this.item.note ?? '')) this.apply(); });
-    ta.addEventListener('keydown', (e) => {
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'b') {
-        e.preventDefault(); e.stopPropagation();
-        const { selectionStart: a, selectionEnd: z, value: v } = ta;
-        const sel = v.slice(a, z);
-        ta.setRangeText(`**${sel}**`, a, z, 'end');
-        if (!sel) ta.setSelectionRange(a + 2, a + 2);
-        return;
-      }
-      if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.altKey || e.isComposing) return;
-      const { selectionStart: at, selectionEnd: to, value: v } = ta;
-      if (at !== to) return;
-      const lineStart = v.lastIndexOf('\n', at - 1) + 1;
-      const line = v.slice(lineStart, at);
-      const m = /^(\s*)([-*+]\s+\[[ xX]\]\s+|[-*+]\s+|(\d+)([.)])\s+)(.*)$/.exec(line);
-      if (!m) return;
-      e.preventDefault();
-      if (!m[5].trim()) {                                  // 빈 항목 — 목록을 끝낸다(표식을 지운다)
-        ta.setRangeText('', lineStart, at, 'end');
-        return;
-      }
-      const next = m[3] ? `${Number(m[3]) + 1}${m[4]} ` : /\[[ xX]\]/.test(m[2]) ? m[2].replace(/\[[xX]\]/, '[ ]') : m[2];
-      ta.setRangeText(`\n${m[1]}${next}`, at, at, 'end');
+    this.noteEditor = createNoteEditor($('i-note-editor'), {
+      onChange: (text) => { ta.value = text; },
+      onBlur: () => { if (this.item && ta.value !== (this.item.note ?? '')) this.apply(); },
     });
-  }
-
-  #setNoteMode(mode) {
-    this._noteMode = mode === 'view' ? 'view' : 'edit';
-    const view = this._noteMode === 'view';
-    for (const b of $('i-note-mode').querySelectorAll('.seg-btn')) b.setAttribute('aria-pressed', String(b.dataset.mode === this._noteMode));
-    $(F.note).hidden = view;
-    const box = $('i-note-view');
-    box.hidden = !view;
-    if (view) {
-      const md = $(F.note).value;
-      box.replaceChildren(...(md.trim() ? renderMarkdown(md) : [el('p.muted', { text: '비고가 비어 있습니다.' })]));
-    }
   }
 
   /** 저장된 탭 순서를 적용한다. 모르는 탭은 버리고, 저장 뒤 새로 생긴 탭은 제자리(뒤)에 둔다. */
@@ -297,7 +258,11 @@ export class ItemPanel {
     $(F.slotLen).value = item.place?.slot ? String(item.place.slot.len) : '1';
     $(F.org).value = item.og;
     $(F.note).value = item.note ?? '';
-    this.#setNoteMode(this._noteMode ?? 'edit');         // 편집/미리보기는 카드를 바꿔도 유지
+    // 다른 카드를 열면 되돌리기 기록도 새로 — 이 카드 비고에서 Ctrl+Z로 다른 카드 비고가 나오지 않게.
+    // 같은 카드를 쓰는 중(포커스)에 저장·새로 그리기로 다시 열리면 건드리지 않는다(커서·기록 유지).
+    const ed = this.noteEditor;
+    if (ed && !(ed.view.hasFocus && this._noteFor === item.id)) ed.setValue(item.note ?? '', { resetHistory: this._noteFor !== item.id });
+    this._noteFor = item.id;
     $('i-title-drop').hidden = true;
 
     this.#renderStatusButtons();   // 보드별 상태 이름 반영

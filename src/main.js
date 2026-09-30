@@ -236,7 +236,11 @@ async function boot() {
       return;
     }
     if (tabs.graphActive) return;        // 그래프 탭 — 보드 단축키(되돌리기·삭제 등)는 뒤의 보드에 가지 않게
-    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName ?? '');
+    // 글을 쓰는 중 — 입력 칸·비고 편집기(contenteditable). 여기서는 되돌리기(Ctrl+Z/Y)가 그 칸의 글자만 되돌리고,
+    // 보드(카드) 되돌리기·카드 삭제(Delete/Backspace)·선택 모드(Ctrl+I)로 번지지 않는다.
+    const ae = document.activeElement;
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(ae?.tagName ?? '') || !!ae?.isContentEditable;
+    if (typing && (e.ctrlKey || e.metaKey) && ['z', 'y', 'i', 'b'].includes(e.key.toLowerCase())) return;
 
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
       e.preventDefault();
@@ -388,7 +392,7 @@ async function boot() {
   }
 
   // 개발자 도구에서 바로 만질 수 있게
-  Object.assign(globalThis, { __roadmap: { store, view, board, adapter, launcher, tabs, openProject, graphView } });
+  Object.assign(globalThis, { __roadmap: { store, view, board, adapter, launcher, tabs, openProject, graphView, itemPanel } });
 }
 
 /** 프로젝트를 열기 전의 빈 문서 */

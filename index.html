@@ -4,11 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta http-equiv="Content-Security-Policy"
-      content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; script-src 'self' 'sha256-pN+uRemO275q1Uio82PrUJrKSuJoFKoovG7x8UMNRWk='">
+      content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; script-src 'self' 'sha256-3+oWwULpbgt3ksol5GjarfcNCaRiHBVpGOaZ2897UOY='">
 <title>WOLFPACK</title>
-<!-- 그래프 뷰의 d3-force(ESM)가 서로를 이름으로 부른다('d3-quadtree' 등). 번들러가 없어 import map으로 잇는다.
+<!-- 그래프 뷰의 d3-force·비고 편집기의 CodeMirror(ESM)가 서로를 이름으로 부른다('d3-quadtree', '@codemirror/state' 등).
+     번들러가 없어 import map으로 잇는다.
      CSP는 이 한 덩어리만 해시로 허용한다 — 내용을 바꾸면 위 script-src의 sha256도 다시 계산해야 한다. -->
-<script type="importmap">{"imports":{"d3-force":"./node_modules/d3-force/src/index.js","d3-quadtree":"./node_modules/d3-quadtree/src/index.js","d3-dispatch":"./node_modules/d3-dispatch/src/index.js","d3-timer":"./node_modules/d3-timer/src/index.js"}}</script>
+<script type="importmap">{"imports":{"d3-force":"./node_modules/d3-force/src/index.js","d3-quadtree":"./node_modules/d3-quadtree/src/index.js","d3-dispatch":"./node_modules/d3-dispatch/src/index.js","d3-timer":"./node_modules/d3-timer/src/index.js","@codemirror/state":"./node_modules/@codemirror/state/dist/index.js","@codemirror/view":"./node_modules/@codemirror/view/dist/index.js","@codemirror/language":"./node_modules/@codemirror/language/dist/index.js","@codemirror/commands":"./node_modules/@codemirror/commands/dist/index.js","@codemirror/lang-markdown":"./node_modules/@codemirror/lang-markdown/dist/index.js","@codemirror/autocomplete":"./node_modules/@codemirror/autocomplete/dist/index.js","@codemirror/lang-html":"./node_modules/@codemirror/lang-html/dist/index.js","@codemirror/lang-css":"./node_modules/@codemirror/lang-css/dist/index.js","@codemirror/lang-javascript":"./node_modules/@codemirror/lang-javascript/dist/index.js","@lezer/markdown":"./node_modules/@lezer/markdown/dist/index.js","@lezer/highlight":"./node_modules/@lezer/highlight/dist/index.js","@lezer/common":"./node_modules/@lezer/common/dist/index.js","@lezer/lr":"./node_modules/@lezer/lr/dist/index.js","@lezer/html":"./node_modules/@lezer/html/dist/index.js","@lezer/css":"./node_modules/@lezer/css/dist/index.js","@lezer/javascript":"./node_modules/@lezer/javascript/dist/index.js","@marijn/find-cluster-break":"./node_modules/@marijn/find-cluster-break/src/index.js","style-mod":"./node_modules/style-mod/src/style-mod.js","w3c-keyname":"./node_modules/w3c-keyname/index.js","crelt":"./node_modules/crelt/index.js"}}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -139,15 +140,9 @@
         <div class="seg wrap" id="i-span"></div>
       </div>
       <div class="fld note-fld">
-        <div class="note-head">
-          <label for="i-note">비고 <span class="muted desc">마크다운으로 씁니다 · 카드에 보일지는 스타일 탭에서 정합니다(기본: 숨김)</span></label>
-          <div class="seg" id="i-note-mode" role="radiogroup" aria-label="비고 보기">
-            <button type="button" class="seg-btn" data-mode="edit" role="radio" aria-pressed="true">편집</button>
-            <button type="button" class="seg-btn" data-mode="view" role="radio" aria-pressed="false">미리보기</button>
-          </div>
-        </div>
-        <textarea id="i-note" placeholder="**굵게** · *기울임* · ~~취소선~~ · `코드`&#10;# 제목&#10;- 목록 · 1. 번호 목록 · - [ ] 할 일 · - [x] 한 일&#10;> 인용 · [링크](https://…) · | 표 |"></textarea>
-        <div class="md-body note-view" id="i-note-view" hidden></div>
+        <label for="i-note-editor">비고 <span class="muted desc">마크다운 — 쓰는 대로 서식이 보입니다(커서가 있는 줄만 원문) · 카드에 보일지는 스타일 탭에서(기본: 숨김)</span></label>
+        <textarea id="i-note" hidden aria-hidden="true" tabindex="-1"></textarea>
+        <div class="note-editor" id="i-note-editor"></div>
       </div>
     </section>
 

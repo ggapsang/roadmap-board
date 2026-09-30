@@ -28,12 +28,32 @@ body.panel-open{--panel-w:var(--panel-size)}
 .fld textarea{height:auto;min-height:var(--u10);padding:var(--u2) var(--u2-5);resize:vertical;line-height:20px}
 /* 비고 — 넉넉한 기본 높이(사용자 지정 565px). 모서리를 끌어 줄이고 늘릴 수 있다 */
 .fld textarea#i-note{height:565px}
-/* 비고 — 라벨 옆에 편집/미리보기. 미리보기는 편집 칸과 같은 높이 */
-.note-head{display:flex;align-items:flex-end;justify-content:space-between;gap:var(--u2)}
-.note-head label{flex:1;min-width:0}
-.note-head .seg-btn{height:var(--u6);font-size:12px}
-.note-view{height:565px;overflow:auto;padding:var(--u2) var(--u3);border:1px solid var(--border-default);
-  border-radius:var(--r-control);background:var(--bg-panel);user-select:text;cursor:auto}
+/* 비고 편집기 — 옵시디언식 라이브 미리보기(ui/noteEditor.js). 커서가 있는 줄만 원문, 나머지는 서식 */
+.note-editor{height:565px;border:1px solid var(--border-default);border-radius:var(--r-control);background:var(--bg-panel);
+  cursor:text;overflow:hidden}
+.note-editor:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.note-editor .cm-editor{height:100%;font-size:13px;color:var(--text-primary)}
+.note-editor .cm-editor.cm-focused{outline:none}
+.note-editor .cm-scroller{font-family:inherit;line-height:1.6;padding:var(--u2) 0}
+.note-editor .cm-content{padding:0 var(--u3);caret-color:var(--text-primary)}
+.note-editor .cm-line{padding:0}
+.note-editor .cm-placeholder{color:var(--text-tertiary)}
+.note-editor .cm-selectionBackground,.note-editor .cm-focused .cm-selectionBackground{background:var(--accent-soft) !important}
+.note-editor .cm-cursor{border-left-color:var(--text-primary)}
+.note-editor .cm-md-h1{font-size:1.35em;font-weight:700}
+.note-editor .cm-md-h2{font-size:1.2em;font-weight:700}
+.note-editor .cm-md-h3{font-size:1.08em;font-weight:600}
+.note-editor .cm-md-strong{font-weight:700}
+.note-editor .cm-md-em{font-style:italic}
+.note-editor .cm-md-strike{text-decoration:line-through;color:var(--text-tertiary)}
+.note-editor .cm-md-code{font-family:ui-monospace,Consolas,monospace;font-size:.92em;background:var(--bg-hover);border-radius:var(--u1);padding:0 2px}
+.note-editor .cm-md-link{text-decoration:underline;cursor:pointer}
+.note-editor .cm-md-bullet{display:inline-block;width:1em;color:var(--text-secondary)}
+.note-editor .cm-md-task{margin:0 var(--u1-5) 0 0;vertical-align:-2px;cursor:pointer;accent-color:var(--text-primary)}
+.note-editor .cm-md-done{color:var(--text-tertiary);text-decoration:line-through}
+.note-editor .cm-md-quote{border-left:3px solid var(--border-default);padding-left:var(--u2) !important;color:var(--text-secondary)}
+.note-editor .cm-md-codeblock,.note-editor .cm-md-table{font-family:ui-monospace,Consolas,monospace;font-size:.9em;background:var(--bg-hover)}
+.note-editor .cm-md-hr{display:inline-block;width:100%;border-top:1px solid var(--border-subtle);vertical-align:middle}
 /* 제목 textarea — 한 줄 높이에서 시작해 내용만큼 자란다 (Shift+Enter로 줄바꿈) */
 .fld textarea#i-title{min-height:var(--u8);overflow:hidden}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:var(--u2)}

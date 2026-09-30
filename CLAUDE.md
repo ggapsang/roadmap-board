@@ -68,6 +68,8 @@ src/               렌더러 (프레임워크 없음, ES 모듈)
     combine.js         조합(구성)·합치기(동일) 고르기 트리
     reorder.js         가로 탭 끌어 순서 바꾸기(보드 탭줄·편집 패널 탭) — 컨테이너·window에 리스너(규약 14)
     graph.js           그래프 뷰 화면 — 읽기 전용, refs/WOLFPACK_그래프뷰_개발요청서.md 금지 목록(G-01~G-28) · 보드와 무관한 독립 탭(tabs.js kind 'graph')
+    noteEditor.js      비고 편집기 — CodeMirror 6 + 옵시디언식 라이브 미리보기(커서 줄만 원문). 저장은 마크다운 원문
+    markdown.js        마크다운 → DOM(카드 위 비고) — textContent만, 링크는 http·https·mailto만
     help.js            도움말 팝업 — docs/HELP.md를 읽어 그린다(작은 마크다운 변환, textContent만). F1·첫 화면 ?
     board/             축 · 헤더 · 카드 · 화살표 · 드래그
     panels/            일정 편집(속성·매핑·스타일·상세) · 보드 설정(트랙·조직·상태·표시) · 데이터
@@ -172,7 +174,8 @@ src/               렌더러 (프레임워크 없음, ES 모듈)
    아무것도 쓰지 않는다. 좌표·하위 수는 파생값 — 이벤트·배치에 저장 금지. 역할 이름(보드·트랙·카드·태스크)으로
    분기 금지(스모크가 코드를 검사한다). 방향 중력·색·라벨 설정은 `config GRAPH` 한 곳에서. 포함 세 종류(구성
    포함)는 모두 포함 계열이다. d3-force는 `index.html`의 import map으로 잇는데, CSP가 그 한 덩어리만 sha256으로
-   허용하므로 **import map을 고치면 CSP 해시도 다시 계산**한다.
+   허용하므로 **import map을 고치면 CSP 해시도 다시 계산**한다. (비고 편집기의 CodeMirror 패키지들도 같은 import map에 있다 —
+   패키지를 올리거나 더하면 그 패키지가 부르는 이름도 import map에 넣는다.)
    **범위**: 첫 화면 = 전체, 보드 = 그 보드 루트가 품은 것(포함 세 종류를 끝까지) + 한 걸음(`scopeGraph`, 바깥은
    `outside`). 역할이 아니라 출발 이벤트 하나로 자른다. 크기·순환은 전체에서 센 값을 쓴다(잘라서 다시 세지 않는다).
    그래프 탭은 범위마다 하나(`tab.scope`, boardId는 늘 null).
@@ -199,6 +202,9 @@ src/               렌더러 (프레임워크 없음, ES 모듈)
    보드 px 그대로지만 `clientX/Y`·`getBoundingClientRect()`는 화면 px(×배율)다. **마우스 좌표로 보드 px를 구하는 곳은
    `board.zoom`(드래그·칸 편집은 `getZoom()`)으로 나눈다** — 새 끌기·만들기 코드를 넣을 때 빠뜨리면 확대했을 때만 어긋난다.
    비율(같은 쪽 값끼리 나눈 것)은 그대로 써도 된다. 창 전체 배율(webContents zoom)은 쓰지 않는다 — 늘 100%.
+25. **글을 쓰는 중엔 보드 단축키가 비켜 준다.** 입력 칸·textarea·contenteditable(비고 편집기)에 포커스가 있으면 전역 단축키
+   (`src/main.js` keydown)는 Ctrl+Z/Y/I/B와 Delete/Backspace를 가로채지 않는다 — 그 칸의 글자 되돌리기·지우기가 먼저다.
+   포커스 판정은 태그 이름만 보지 말고 `isContentEditable`도 본다(비고 편집기에서 Backspace가 카드를 지우던 위험).
 
 ## 데이터
 
