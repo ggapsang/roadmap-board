@@ -121,6 +121,10 @@
           <div class="title-drop" id="i-title-drop" hidden></div>
         </div>
       </div>
+      <div class="fld">
+        <label for="i-alias">별칭 <span class="muted desc">이 보드에서만 보이는 이름 · 비우면 제목이 보입니다(제목은 이 이벤트를 쓰는 모든 보드가 함께 씁니다)</span></label>
+        <input id="i-alias" type="text" placeholder="(없음 — 제목이 보입니다)" autocomplete="off">
+      </div>
       <div class="fld"><label>상태</label><div class="pick" id="i-status"></div></div>
       <div class="two">
         <div class="fld"><label for="i-type">유형</label><select id="i-type"></select></div>
@@ -151,7 +155,8 @@
     <section class="ptab-panel" data-panel="rel" hidden>
       <div class="map-sect">
         <h3 class="map-title">항등설정</h3>
-        <p class="map-desc">다른 프로젝트의 이벤트와 하나로 합칩니다(합치기 작업) — 두 이벤트가 같은 것이 됩니다</p>
+        <p class="map-desc">다른 프로젝트의 이벤트와 하나로 합칩니다(합치기 작업) — 두 이벤트가 같은 것이 됩니다.
+          합친 이벤트는 아래에 다른 보드의 자리가 나오고, <b>항등 해제</b>로 이 보드만 다시 떼어 낼 수 있습니다</p>
         <div id="i-same"></div>
       </div>
       <div class="map-sect">

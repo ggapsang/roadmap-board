@@ -26,6 +26,9 @@ export class StorageAdapter {
   async listProjects() { return []; }
   async listEvents() { return []; }
   async eventCards() { return []; }
+  async eventPlaces() { return []; }
+  async splitEvent() { return { ok: false, rejected: '지원하지 않습니다.' }; }
+  async unsplitEvent() { return { ok: false }; }
   async eventsById() { return []; }
   /** 그래프 뷰 재료 {events, contain, rels} — 저장소에서 그대로. 지원 안 하면 null */
   async graphData() { return null; }
@@ -71,7 +74,10 @@ export class ElectronAdapter extends StorageAdapter {
 
   async listProjects() { return this.api.listProjects(); }
   async listEvents() { return this.api.listEvents ? this.api.listEvents() : []; }
-  async eventCards(id) { return this.api.eventCards ? this.api.eventCards(id) : []; }
+  async eventCards(id, opts) { return this.api.eventCards ? this.api.eventCards(id, opts) : []; }
+  async eventPlaces(id) { return this.api.eventPlaces ? this.api.eventPlaces(id) : []; }
+  async splitEvent(boardId, id) { return this.api.splitEvent ? this.api.splitEvent(boardId, id) : { ok: false, rejected: '지원하지 않습니다.' }; }
+  async unsplitEvent(snap) { return this.api.unsplitEvent ? this.api.unsplitEvent(snap) : { ok: false }; }
   async eventsById(ids) { return this.api.eventsById ? this.api.eventsById(ids) : []; }
   async graphData(boardId = null) { return this.api.graphData ? this.api.graphData(boardId) : null; }
   async eventAncestors(id) { return this.api.eventAncestors ? this.api.eventAncestors(id) : [id]; }

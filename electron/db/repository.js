@@ -221,10 +221,12 @@ export class BoardRepository {
       member.get(ev).ids.add(b.id);
       member.get(ev).names.add(b.name);
     };
+    const cardIds = new Set();
     for (const b of boardRows) {
       const v = this.#view(b.root_event_id, kids);
       for (const t of v.trackIds) { trackIds.add(t); note(t, b); }
-      for (const c of v.cards) note(c, b);
+      for (const c of v.cards) { cardIds.add(c); note(c, b); }
+      for (const t of v.tasks) note(t, b);
     }
 
     // 본질은 한 번에 모아 읽는다(이벤트마다 쿼리하지 않는다 — 카드 열 때마다 호출되므로 속도).
@@ -240,12 +242,14 @@ export class BoardRepository {
       const e = essById.get(ev);
       return e ? { ...e, boardNames: memNames(ev), boardIds: memIds(ev), kind: 'track' } : null;
     }).filter(Boolean);
+    // 카드인가 태스크인가는 **놓인 모습**(순서 있는/없는 포함)으로 가른다 — event.type('task')이 아니다(승격한 태스크는
+    // type이 'task'로 남아도 카드다). 어느 보드에서든 카드로 놓였으면 카드, 태스크로만 놓였으면 태스크.
     const cards = [];
     for (const ev of member.keys()) {
       if (rootIds.has(ev) || trackIds.has(ev)) continue;
       const e = essById.get(ev);
-      if (!e || e.ty === 'task') continue;   // 태스크로 만든 것은 후보에서 뺀다
-      cards.push({ ...e, boardNames: memNames(ev), boardIds: memIds(ev), kind: 'card' });
+      if (!e) continue;
+      cards.push({ ...e, boardNames: memNames(ev), boardIds: memIds(ev), kind: cardIds.has(ev) ? 'card' : 'task' });
     }
     return [...boards, ...tracks, ...cards];
   }
@@ -304,13 +308,17 @@ export class BoardRepository {
    * 펼쳐 보여 주거나, 고르기 트리에서 트랙 아래 카드를 펼칠 때 쓴다.
    * @returns {{id, title, status, depth}[]}
    */
-  eventCards(eventId) {
+  eventCards(eventId, { withTasks = false } = {}) {
     const kids = this.#childMap();
     const out = [];
     const seen = new Set();
     const walk = (id, depth) => {
       for (const c of (kids.get(id) ?? [])) {
-        if (c.ordered !== 1 || seen.has(c.child_id)) continue;
+        if (c.compose === 1 || seen.has(c.child_id)) continue;
+        if (c.ordered !== 1) {                                  // 순서 없는 포함 = 태스크 — 원할 때만, 그 안으로는 안 들어간다
+          if (withTasks && id !== eventId) { seen.add(c.child_id); out.push({ id: c.child_id, depth, task: true }); }
+          continue;
+        }
         seen.add(c.child_id);
         out.push({ id: c.child_id, depth });
         walk(c.child_id, depth + 1);
@@ -319,9 +327,9 @@ export class BoardRepository {
     walk(eventId, 0);
     if (!out.length) return [];
     const ess = this.#essence(out.map((o) => o.id));
-    return out
-      .map((o) => ({ id: o.id, depth: o.depth, title: ess.get(o.id)?.title ?? '', status: ess.get(o.id)?.st ?? 'plan', type: ess.get(o.id)?.ty ?? 'bar' }))
-      .filter((r) => r.type !== 'task');
+    // 카드인지는 순서 있는 포함으로 정했다 — event.type('task')로 거르지 않는다(승격한 태스크도 카드다)
+    return out.map((o) => ({ id: o.id, depth: o.depth, title: ess.get(o.id)?.title ?? '', status: ess.get(o.id)?.st ?? 'plan',
+      type: ess.get(o.id)?.ty ?? 'bar', kind: o.task ? 'task' : 'card' }));
   }
 
   /**
@@ -513,7 +521,11 @@ export class BoardRepository {
         else this.db.prepare('UPDATE rel SET from_id=?, to_id=? WHERE id=?').run(from, to, rr.id);
       }
       this.db.prepare('UPDATE board SET root_event_id=? WHERE root_event_id=?').run(keepId, dropId);
-      // 사라지는 이벤트 제거. 본질은 keepId 것을 남긴다(이미 keep에 있음).
+      // 사라지는 이벤트 제거. 본질은 keepId 것을 남긴다(이미 keep에 있음). 단 남는 쪽이 태스크로 만든 이벤트(type 'task')고
+      // 상대가 카드면 유형은 카드 것을 쓴다 — 'task'는 놓인 역할이지 기간/마일스톤 같은 본질 유형이 아니다.
+      if (keepEv.type === 'task' && dropEv.type && dropEv.type !== 'task') {
+        this.db.prepare('UPDATE event SET type=? WHERE id=?').run(dropEv.type, keepId);
+      }
       this.db.prepare('DELETE FROM event WHERE id=?').run(dropId);
       // 합친 결과 순환이면 거부(롤백). 바뀐 간선은 모두 keep을 지나므로 keep을 지나는 순환만 본다 —
       // 합치기와 상관없는 곳의 옛 순환이 모든 합치기를 막지 않게.
@@ -587,6 +599,161 @@ export class BoardRepository {
     const doc = this.load();
     if (doc) this.#base.set(id, this.#project(doc, this.#rootOf(id)));
     return doc;
+  }
+
+  /**
+   * 이 이벤트가 **어느 보드의 어디에** 놓였나 — 항등설정 아래 '다른 보드에도 있음' 목록.
+   * @returns {{boardId:number, boardName:string, role:'board'|'track'|'card'|'task', path:string[]}[]}
+   *   path: 그 보드에서 이 이벤트를 품은 쪽(트랙 이름 › 상위 카드 제목 …), 가까운 것이 마지막
+   */
+  eventPlaces(eventId) {
+    const boards = this.db.prepare('SELECT id, name, root_event_id FROM board WHERE root_event_id IS NOT NULL ORDER BY id').all();
+    const edges = this.#edges();
+    const kids = this.#childMap(edges);
+    const parentsOf = new Map();
+    for (const c of edges) {
+      if (c.compose === 1 && !boards.some((b) => b.root_event_id === c.parent_id)) continue;   // 조합 대상은 '놓임'이 아니다
+      if (!parentsOf.has(c.child_id)) parentsOf.set(c.child_id, []);
+      parentsOf.get(c.child_id).push(c.parent_id);
+    }
+    const out = [];
+    const titles = new Map();
+    const titleOf = (id) => {
+      if (!titles.has(id)) titles.set(id, this.db.prepare('SELECT title FROM event WHERE id=?').get(id)?.title ?? '');
+      return titles.get(id);
+    };
+    for (const b of boards) {
+      if (b.root_event_id === eventId) { out.push({ boardId: b.id, boardName: b.name, role: 'board', path: [] }); continue; }
+      const v = this.#view(b.root_event_id, kids);
+      const role = v.trackIds.has(eventId) ? 'track' : v.cards.has(eventId) ? 'card' : v.tasks.has(eventId) ? 'task' : null;
+      if (!role) continue;
+      const inView = (id) => id === b.root_event_id || v.trackIds.has(id) || v.cards.has(id);
+      // 이 보드 안의 부모 하나를 따라 트랙까지 올라가며 경로를 만든다(여러 곳이면 첫 곳)
+      const path = [];
+      let cur = eventId;
+      for (let guard = 0; guard < 32 && role !== 'track'; guard += 1) {
+        const p = (parentsOf.get(cur) ?? []).find(inView);
+        if (!p || p === b.root_event_id) break;
+        path.unshift(titleOf(p) || '(제목 없음)');
+        if (v.trackIds.has(p)) break;
+        cur = p;
+      }
+      out.push({ boardId: b.id, boardName: b.name, role, path });
+    }
+    return out;
+  }
+
+  /**
+   * 항등 해제(분리) — 여러 보드에 함께 놓인 이벤트를, 한 보드에서 **다른 이벤트로 떼어 낸다**(합치기의 반대 작업).
+   * 2026-10-01 사용자 결정:
+   *   - 이 보드(boardId)의 놓임이 새 이벤트가 된다(본질 복사). 다른 보드는 원래 이벤트를 그대로 쓴다.
+   *   - 안에 든 하위 카드·태스크도 **함께 복제**해 완전히 별개가 된다(조합 대상은 복제하지 않고 새 쪽도 품는다).
+   *   - 선행 등 관계는 **보이는 보드별로** 나눈다: 이 보드에서만 보이는 것은 새 쪽으로 옮기고, 다른 보드에서만 보이는 것은
+   *     원래 쪽에 두고, 둘 다에서 보이면 양쪽에 하나씩.
+   * '이 보드의 놓임' = 이 보드 화면의 부모(루트·트랙·카드)에서 이 이벤트로 오는 포함 간선. 그 밖의 부모가 없으면(다른 보드엔
+   * 상위 카드를 통해서만 보인다) 떼어 낼 것이 없다 — 상위 카드를 나누라고 알린다.
+   * @returns {{ok:true, newId:string, undo:object} | {ok:false, rejected:string}}
+   */
+  splitEvent(boardId, eventId) {
+    const root = this.#rootOf(boardId);
+    const boards = this.db.prepare('SELECT id, name, root_event_id FROM board WHERE root_event_id IS NOT NULL').all();
+    const edges = this.#edges();
+    const kids = this.#childMap(edges);
+    const views = new Map(boards.map((b) => [b.id, this.#view(b.root_event_id, kids)]));
+    const vB = views.get(boardId);
+    if (!vB || !(vB.cards.has(eventId) || vB.tasks.has(eventId))) return { ok: false, rejected: '이 보드의 카드·태스크가 아닙니다' };
+    const parentsB = new Set([root, ...vB.trackIds, ...vB.cards]);
+    const allUp = this.db.prepare('SELECT * FROM containment WHERE child_id = ?').all(eventId);
+    const mine = allUp.filter((c) => c.compose === 0 && parentsB.has(c.parent_id));
+    const rest = allUp.filter((c) => !mine.includes(c));
+    if (!mine.length) return { ok: false, rejected: '이 보드에 놓인 자리를 찾을 수 없습니다' };
+    if (!rest.length) {
+      return { ok: false, rejected: '다른 보드와 따로 놓인 이벤트가 아닙니다 — 다른 보드에는 상위 카드를 통해서만 보입니다(그 상위 카드를 나누세요)' };
+    }
+
+    // 떼어 낼 것 — 이 이벤트와 그 안(순서 있는·없는 포함, 조합 제외)을 끝까지
+    const copied = [eventId];
+    const seen = new Set(copied);
+    for (let i = 0; i < copied.length; i += 1) {
+      for (const c of (kids.get(copied[i]) ?? [])) {
+        if (c.compose === 1 || seen.has(c.child_id)) continue;
+        seen.add(c.child_id); copied.push(c.child_id);
+      }
+    }
+    const rand = () => Math.random().toString(36).slice(2, 8);
+    const map = new Map(copied.map((id) => [id, `e${Date.now().toString(36)}${rand()}`]));
+
+    // 보이는 곳 — 바꾸기 전의 보드별 화면 집합
+    const visIn = (v, id) => v.trackIds.has(id) || v.cards.has(id) || v.tasks.has(id);
+    const inB = (id) => visIn(vB, id);
+    const together = (a, b) => [...views].some(([bid, v]) => bid !== boardId && visIn(v, a) && visIn(v, b));
+
+    const snap = { boardId, eventId, newId: map.get(eventId), created: [...map.values()], movedEdges: mine, movedDisp: [], relsBefore: [] };
+    const getEvent = this.db.prepare('SELECT * FROM event WHERE id = ?');
+    const insEvent = this.db.prepare('INSERT INTO event (id,title,start_date,end_date,type,status,org,progress,note) VALUES (@id,@title,@start_date,@end_date,@type,@status,@org,@progress,@note)');
+    const insCont = this.db.prepare('INSERT OR IGNORE INTO containment (parent_id,child_id,ordered,compose,ord) VALUES (?,?,?,?,?)');
+    const delCont = this.db.prepare('DELETE FROM containment WHERE parent_id=? AND child_id=?');
+    const getDisp = this.db.prepare('SELECT * FROM disp WHERE parent_id=? AND child_id=?');
+    const delDisp = this.db.prepare('DELETE FROM disp WHERE parent_id=? AND child_id=?');
+    const insDisp = this.db.prepare('INSERT OR REPLACE INTO disp (parent_id,child_id,pos_x,pos_w,height_days,align,show_note,alias,lab,px_width,fill,slot_start,slot_len) VALUES (@parent_id,@child_id,@pos_x,@pos_w,@height_days,@align,@show_note,@alias,@lab,@px_width,@fill,@slot_start,@slot_len)');
+    const withDefaults = (d) => ({ fill: null, slot_start: null, slot_len: null, ...d });
+    let relN = 0;
+
+    const run = this.db.transaction(() => {
+      // 1) 새 이벤트들 — 본질 복사
+      for (const [oldId, newIdv] of map) insEvent.run({ ...getEvent.get(oldId), id: newIdv });
+      // 2) 이 보드의 놓임(부모 → 이벤트)을 새 이벤트로 옮긴다(배치 포함)
+      for (const c of mine) {
+        const d = getDisp.get(c.parent_id, eventId);
+        if (d) { snap.movedDisp.push(d); delDisp.run(c.parent_id, eventId); insDisp.run(withDefaults({ ...d, child_id: map.get(eventId) })); }
+        delCont.run(c.parent_id, eventId);
+        insCont.run(c.parent_id, map.get(eventId), c.ordered, c.compose, c.ord);
+      }
+      // 3) 안쪽 구조를 복제 — 복제한 것끼리의 포함, 조합 대상은 새 쪽도 품는다(대상은 복제하지 않는다)
+      for (const u of copied) {
+        for (const c of (kids.get(u) ?? [])) {
+          const child = c.compose === 1 ? c.child_id : map.get(c.child_id);
+          if (!child) continue;
+          insCont.run(map.get(u), child, c.ordered, c.compose, c.ord);
+          const d = getDisp.get(u, c.child_id);
+          if (d) insDisp.run(withDefaults({ ...d, parent_id: map.get(u), child_id: child }));
+        }
+      }
+      // 4) 관계 — 보이는 보드별로 나눈다
+      const rels = new Map();
+      for (const id of copied) for (const r of this.db.prepare('SELECT * FROM rel WHERE from_id=? OR to_id=?').all(id, id)) rels.set(r.id, r);
+      const upd = this.db.prepare('UPDATE rel SET from_id=?, to_id=? WHERE id=?');
+      const ins = this.db.prepare('INSERT INTO rel (id,type,from_id,to_id) VALUES (?,?,?,?)');
+      for (const r of rels.values()) {
+        const shownHere = inB(r.from_id) && inB(r.to_id);
+        if (!shownHere) continue;                                   // 이 보드에서 안 보인다 — 원래 쪽에 둔다
+        const nf = map.get(r.from_id) ?? r.from_id, nt = map.get(r.to_id) ?? r.to_id;
+        if (together(r.from_id, r.to_id)) {
+          ins.run(`${r.id}~${(relN += 1)}${rand()}`, r.type, nf, nt);      // 둘 다에서 보인다 — 새 쪽에도 하나
+        } else {
+          snap.relsBefore.push(r);
+          upd.run(nf, nt, r.id);                                        // 이 보드에서만 보인다 — 새 쪽으로 옮긴다
+        }
+      }
+    });
+    try { run(); } catch (e) { return { ok: false, rejected: String(e.message || e) }; }
+    return { ok: true, newId: map.get(eventId), undo: snap };
+  }
+
+  /** 항등 해제 되돌리기 — 만든 이벤트와 그 간선·배치·관계를 지우고, 옮긴 놓임·관계를 원래대로 */
+  unsplitEvent(snap) {
+    if (!snap?.created?.length) return { ok: false };
+    const run = this.db.transaction(() => {
+      this.#purge(snap.created);
+      const insCont = this.db.prepare('INSERT OR REPLACE INTO containment (parent_id,child_id,ordered,compose,ord) VALUES (?,?,?,?,?)');
+      for (const c of snap.movedEdges ?? []) insCont.run(c.parent_id, c.child_id, c.ordered, c.compose ?? 0, c.ord);
+      const insDisp = this.db.prepare('INSERT OR REPLACE INTO disp (parent_id,child_id,pos_x,pos_w,height_days,align,show_note,alias,lab,px_width,fill,slot_start,slot_len) VALUES (@parent_id,@child_id,@pos_x,@pos_w,@height_days,@align,@show_note,@alias,@lab,@px_width,@fill,@slot_start,@slot_len)');
+      for (const d of snap.movedDisp ?? []) insDisp.run({ fill: null, slot_start: null, slot_len: null, ...d });
+      const insRel = this.db.prepare('INSERT OR REPLACE INTO rel (id,type,from_id,to_id) VALUES (?,?,?,?)');
+      for (const r of snap.relsBefore ?? []) insRel.run(r.id, r.type, r.from_id, r.to_id);
+    });
+    try { run(); } catch (e) { return { ok: false, rejected: String(e.message || e) }; }
+    return { ok: true };
   }
 
   #rootOf(id) {

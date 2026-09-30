@@ -128,10 +128,10 @@ export function renderCard(item, ctx) {
     }
     node.append(
       el('span.dia'),
-      el('span.t', { text: item.ti }),
+      el('span.t', { text: item.alias || item.ti }),
       el('span.meta', { text: where }),
     );
-    node.title = `${item.ti} · ${whereFull} · ${item.og}`;
+    node.title = `${item.alias ? `${item.alias} (별칭 · 제목: ${item.ti})` : item.ti} · ${whereFull} · ${item.og}`;
     // 최상위 점 마일스톤만 트랙 걸침 손잡이. 상위에 든 것은 폭 손잡이. 사본(echo)은 손잡이 없음.
     if (!echo) addHorizontalGrips(node, { span: !parent });
     return node;
@@ -177,7 +177,8 @@ export function renderCard(item, ctx) {
   // 보통 카드는 낮으면 메타를 통째로 숨기고, 보류는 항상 숨긴다.
   if ((height < LAYOUT.metaHideHeight && !isShort) || item.st === 'hold') meta.classList.add('hidden');
 
-  const label = item.ti;
+  // 별칭 — 이 보드에서만 보이는 이름. 있으면 그것을, 툴팁엔 원래 제목도
+  const label = item.alias || item.ti;
   node.append(el('div.t', { text: label }), meta);
 
   if (item.place?.showNote && item.note) {
@@ -197,7 +198,7 @@ export function renderCard(item, ctx) {
     const widthGrips = forced || !!parent;
     addHorizontalGrips(node, { span: !widthGrips });
   }
-  node.title = `${label}\n${whereFull} · ${item.og}${item.pg ? ' · ' + item.pg + '%' : ''}`;
+  node.title = `${item.alias ? `${item.alias}\n(별칭 · 제목: ${item.ti})` : label}\n${whereFull} · ${item.og}${item.pg ? ' · ' + item.pg + '%' : ''}`;
   return node;
 }
 

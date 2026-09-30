@@ -15,6 +15,7 @@ import { $, el, clear, icon, ICONS } from '../dom.js';
 import { askConfirm, askChoice, askTree, askTreeTabs } from '../dialog.js';
 import { openCombinePicker, pickEventForMerge, composedOf } from '../combine.js';
 import { toast } from '../toast.js';
+import { openCtxMenu } from '../ctxmenu.js';
 import { attachTabReorder } from '../reorder.js';
 import { createNoteEditor } from '../noteEditor.js';
 
@@ -24,7 +25,7 @@ const TAB_ORDER_KEY = 'wolfpack:item-tab-order';
 /** 값이 바로 문서로 반영되는 단순 입력들 (트랙·관계·별칭·진척은 매핑 탭 UI가 맡는다) */
 const F = {
   title: 'i-title', type: 'i-type', start: 'i-start',
-  end: 'i-end', org: 'i-org', note: 'i-note', slot: 'i-slot', slotLen: 'i-slotlen',
+  end: 'i-end', org: 'i-org', note: 'i-note', slot: 'i-slot', slotLen: 'i-slotlen', alias: 'i-alias',
 };
 
 const ALIGN_ICON = { top: ICONS.alignTop, middle: ICONS.alignMiddle, bottom: ICONS.alignBottom };
@@ -257,6 +258,7 @@ export class ItemPanel {
     $(F.slot).value = item.place?.slot ? String(item.place.slot.s + 1) : '1';
     $(F.slotLen).value = item.place?.slot ? String(item.place.slot.len) : '1';
     $(F.org).value = item.og;
+    $(F.alias).value = item.alias ?? '';
     $(F.note).value = item.note ?? '';
     // 다른 카드를 열면 되돌리기 기록도 새로 — 이 카드 비고에서 Ctrl+Z로 다른 카드 비고가 나오지 않게.
     // 같은 카드를 쓰는 중(포커스)에 저장·새로 그리기로 다시 열리면 건드리지 않는다(커서·기록 유지).
@@ -471,16 +473,108 @@ export class ItemPanel {
       type: 'button', text: '편집', title: '항등설정 — 같은 이벤트로 합칠 대상 고르기',
       on: { click: () => this.#openMergePicker() },
     }));
+    // 이 이벤트가 다른 보드 어디에 있는지(합쳐졌거나 여러 보드에 놓인 경우) + 항등 해제
+    const places = el('div.same-places');
+    box.append(places);
+    this.#renderPlaces(item.id, item.alias || item.ti, places);
     // 제목 검색 드롭다운(합치기 후보) 재료 — 자기 자신 제외한 모든 보드 이벤트.
     this._sameOptions = new Map((this._allEvents ?? []).filter((e) => e.id !== item.id).map((e) => [e.id, e]));
+  }
+
+  /** 이 보드 말고 이 이벤트가 놓인 곳 — [{boardId, boardName, role, path}] */
+  async #otherPlaces(eventId) {
+    let places = [];
+    try { places = (await this.adapter?.eventPlaces?.(eventId)) ?? []; } catch { places = []; }
+    return places.filter((p) => p.boardId !== this.adapter?.projectId);
+  }
+
+  static ROLE = { board: '보드', track: '트랙', card: '카드', task: '태스크' };
+
+  /** 항등설정 아래 — 다른 보드의 자리 목록(누르면 그 보드로) + 항등 해제 버튼 */
+  async #renderPlaces(eventId, title, box) {
+    const others = await this.#otherPlaces(eventId);
+    if (this.item?.id !== eventId || !box.isConnected) return;        // 그사이 다른 카드를 열었다
+    box.replaceChildren();
+    if (!others.length) { box.append(el('div.empty', { text: '다른 보드에는 없습니다.' })); return; }
+    box.append(el('div.pc-head', { text: `다른 보드에도 있습니다 (${others.length})` }));
+    for (const p of others) {
+      box.append(el('button.same-place', {
+        type: 'button', title: `${p.boardName} 보드로 이동`,
+        on: { click: () => this.openProject?.(p.boardId) },
+      }, [
+        el('span.same-place-board', { text: p.boardName || '(보드)' }),
+        el('em.muted', { text: `${ItemPanel.ROLE[p.role] ?? p.role}${p.path.length ? ' · ' + p.path.join(' › ') : ''}` }),
+      ]));
+    }
+    box.append(el('button.btn.outline.sm.same-split', {
+      type: 'button', text: '항등 해제 — 이 보드만 따로',
+      title: '이 보드의 카드를 다른 이벤트로 떼어 냅니다(안에 든 것도 복제, 화살표는 보이는 보드별로)',
+      on: { click: () => this.#splitHere(eventId, title) },
+    }));
+  }
+
+  /**
+   * 항등 해제 — 여러 보드에 함께 놓인 이벤트를 이 보드에서만 다른 이벤트로 떼어 낸다(합치기의 반대 작업).
+   * 안에 든 하위 카드·태스크도 복제되고, 관계는 보이는 보드별로 나뉜다(repository.splitEvent). 되돌리기 제공.
+   */
+  async #splitHere(eventId, title) {
+    if (!eventId || this.store.readonly) return;
+    const ok = await askConfirm({
+      title: '항등 해제 — 이 보드만 따로',
+      message: `'${title || '(제목 없음)'}'을(를) 이 보드에서만 다른 이벤트로 떼어 냅니다. 안에 든 하위 카드·태스크도 함께 복제되고, `
+        + '선행 화살표는 이 보드에서만 보이던 것은 떼어 낸 쪽으로, 다른 보드에서 보이던 것은 원래 쪽에 남습니다. 다른 보드는 원래 이벤트를 그대로 씁니다.',
+      confirmLabel: '떼어 내기',
+    });
+    if (!ok) return;
+    let res;
+    try { res = await this.adapter?.splitEvent?.(this.adapter.projectId, eventId); }
+    catch (e) { toast('항등 해제 실패: ' + String(e.message || e), 'warn'); return; }
+    if (!res || res.ok !== true) { toast(res?.rejected ? '떼어 낼 수 없음: ' + res.rejected : '항등 해제 실패', 'warn'); return; }
+    this._lastSplitUndo = res.undo;
+    this.panels.close();
+    await this.reloadBoard?.();
+    toast('이 보드의 것을 다른 이벤트로 떼어 냈습니다', '', { label: '되돌리기', on: () => this.#undoSplit() });
+  }
+
+  async #undoSplit() {
+    const snap = this._lastSplitUndo;
+    if (!snap) return;
+    this._lastSplitUndo = null;
+    let res;
+    try { res = await this.adapter?.unsplitEvent?.(snap); }
+    catch (e) { toast('되돌리기 실패: ' + String(e.message || e), 'warn'); return; }
+    if (!res || res.ok !== true) { toast('되돌리기 실패', 'warn'); return; }
+    await this.reloadBoard?.();
+    toast('항등 해제를 되돌렸습니다');
+  }
+
+  /** 태스크 줄의 항등 메뉴 — 합치기 · 다른 보드 자리 · 항등 해제 (태스크도 이벤트다) */
+  async #taskSameMenu(task, anchor) {
+    const others = await this.#otherPlaces(task.id);
+    const r = anchor.getBoundingClientRect();
+    const opts = [{ label: '항등설정 — 같은 이벤트로 합치기…', action: () => this.#mergeFrom(task.id, task.text) }];
+    if (others.length) {
+      opts.push({ label: `다른 보드에도 있습니다 (${others.length})`, disabled: true });
+      for (const p of others) {
+        opts.push({ label: `　${p.boardName} · ${ItemPanel.ROLE[p.role] ?? p.role}${p.path.length ? ' · ' + p.path.join(' › ') : ''}`, action: () => this.openProject?.(p.boardId) });
+      }
+      opts.push({ label: '항등 해제 — 이 보드만 따로', action: () => this.#splitHere(task.id, task.text) });
+    }
+    openCtxMenu(r.left, r.bottom + 4, opts);
+  }
+
+  /** 아무 이벤트(카드·태스크)에서 합치기 고르기 → 본질 선택 → 합치기 */
+  async #mergeFrom(selfId, selfTitle) {
+    if (!selfId || this.store.readonly) return;
+    const targetId = await pickEventForMerge(this.adapter, selfId);
+    if (targetId) await this.#confirmMerge(targetId, selfId, selfTitle);
   }
 
   /** 동일 팝업 → 대상 하나 고르면 본질 선택 후 합친다. */
   async #openMergePicker() {
     const item = this.item;
     if (!item || this.store.readonly) return;
-    const targetId = await pickEventForMerge(this.adapter, item.id);
-    if (targetId) await this.#confirmMerge(targetId);
+    await this.#mergeFrom(item.id, item.ti);
   }
 
   /**
@@ -521,11 +615,10 @@ export class ItemPanel {
    * (안 고른 이름은 사라짐 — 별칭 보존은 후속), repository가 관계를 합치고 순환이면 거부한다.
    * 합친 뒤 현재 보드를 다시 읽어 반영한다. 되돌리기 스냅샷은 보관한다.
    */
-  async #confirmMerge(targetId) {
-    const item = this.item;
-    if (!item || targetId === item.id || this.store.readonly) return;
+  async #confirmMerge(targetId, selfId = this.item?.id, selfTitle = this.item?.ti) {
+    if (!selfId || targetId === selfId || this.store.readonly) return;
     const ev = (this._sameOptions?.get(targetId)) || (this._allEvents ?? []).find((e) => e.id === targetId);
-    const mine = item.ti || '(제목 없음)';
+    const mine = selfTitle || '(제목 없음)';
     const theirs = ev?.title || '(제목 없음)';
     const choice = await askChoice({
       title: '항등설정 — 같은 이벤트로 합치기',
@@ -536,8 +629,8 @@ export class ItemPanel {
       ],
     });
     if (!choice) return;
-    const keepId = choice === 'mine' ? item.id : targetId;
-    const dropId = choice === 'mine' ? targetId : item.id;
+    const keepId = choice === 'mine' ? selfId : targetId;
+    const dropId = choice === 'mine' ? targetId : selfId;
     let res;
     try { res = await this.adapter?.mergeEvents?.(keepId, dropId); }
     catch (e) { toast('합치기 실패: ' + String(e.message || e), 'warn'); return; }
@@ -784,7 +877,12 @@ export class ItemPanel {
           },
         },
       }, [icon(ICONS.close)]);
-      const row = el('label.task', {}, [cb, text, up, rm]);
+      // 항등 — 태스크도 이벤트라 다른 보드 이벤트와 합치거나(항등설정), 합친 것을 이 보드만 떼어 낼 수 있다
+      const same = el('button.task-del.task-same', {
+        type: 'button', text: '≡', title: '항등설정 · 다른 보드 자리 · 항등 해제',
+        on: { click: (e) => { e.preventDefault(); this.#taskSameMenu(t, e.currentTarget); } },
+      });
+      const row = el('label.task', {}, [cb, text, same, up, rm]);
       if (t.done) row.classList.add('done');
       box.append(row);
     }
@@ -981,6 +1079,8 @@ export class ItemPanel {
       }
       item.og = $(F.org).value;
       item.note = $(F.note).value;
+      // 별칭 — 이 보드에서만 보이는 이름(배치 값). 비우면 없음(제목이 보인다)
+      item.alias = $(F.alias).value.trim() || null;
     });
 
     $(F.end).value = item.e ?? '';

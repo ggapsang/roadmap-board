@@ -1766,6 +1766,90 @@ async function runSmoke(target) {
   }
 
   // 탭 캐시 — 다른 보드의 저장이 이 보드 화면을 바꾸면 그 탭은 '낡음'이 되어 돌아갈 때 다시 읽는다.
+  // 항등 — 다른 보드 자리 목록 · 항등 해제(이 보드만 떼어 내기: 안쪽 복제·관계는 보이는 보드별) · 되돌리기 · 태스크도 후보 · 별칭
+  let sameSplit = null;
+  if (wrote) {
+    sameSplit = await target.webContents.executeJavaScript(`(async () => {
+      const run = (async () => {
+        const r = window.__roadmap;
+        const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+        const b1 = r.adapter.projectId;
+        // 안에 하위 카드가 있고 선행 화살표도 있는 카드
+        const deps = r.store.relations.filter((x) => x.type === 'dep');
+        const host = r.store.items.find((i) => r.store.items.some((k) => k.parent === i.id) && deps.some((d) => d.from === i.id || d.to === i.id))
+          ?? r.store.items.find((i) => r.store.items.some((k) => k.parent === i.id));
+        const K1 = host.id, title = host.ti;
+        const kids1 = r.store.items.filter((k) => k.parent === K1).map((k) => k.id).sort();
+        const b2 = await r.adapter.duplicateProject(b1, '분리 테스트');
+        await r.tabs.openBoard(b2); await sleep(300);
+        const K2 = r.store.items.find((i) => i.ti === title && !i.parent)?.id ?? r.store.items.find((i) => i.ti === title).id;
+        const depsB2Before = r.store.relations.filter((x) => x.type === 'dep' && (x.from === K2 || x.to === K2)).length;
+        await r.tabs.openBoard(b1); await sleep(250);
+        const mres = await r.adapter.mergeEvents(K1, K2);                           // K1을 남긴다 — 두 보드가 같은 이벤트
+        const merged = mres?.ok === true;
+        r.tabs.markAllStale(); await r.tabs.reloadActive(); await sleep(250);
+        const placesBefore = (await r.adapter.eventPlaces(K1)).map((p) => p.boardId);
+        // 편집 창 — 항등설정 아래 다른 보드 자리 + 항등 해제 버튼
+        document.querySelector('#grid .ev[data-id="' + K1 + '"]').click(); await sleep(250);
+        document.querySelector('#pItem .ptab[data-tab="rel"]').click();
+        for (let i = 0; i < 20 && !document.querySelector('#i-same .same-place'); i += 1) await sleep(100);
+        const ui = { place: document.querySelector('#i-same .same-place-board')?.textContent ?? '', split: !!document.querySelector('#i-same .same-split') };
+        document.querySelector('#pItem [data-close]').click();
+        // 태스크도 항등설정 후보 — 합치기 트리(카드 아래 태스크까지)·이벤트 목록
+        const evs = await r.adapter.listEvents();
+        const taskKind = evs.some((e) => e.kind === 'task');
+        let treeTasks = 0;
+        for (const tr of evs.filter((e) => e.kind === 'track')) treeTasks += (await r.adapter.eventCards(tr.id, { withTasks: true })).filter((c) => c.kind === 'task').length;
+        // b2에서 항등 해제
+        await r.tabs.openBoard(b2); await sleep(300);
+        const b2kids0 = r.store.items.filter((k) => k.parent === K1).length;
+        const res = await r.adapter.splitEvent(b2, K1);
+        r.tabs.markAllStale(); await r.tabs.reloadActive(); await sleep(300);
+        const nw = res?.newId;
+        const b2items = r.store.items;
+        const b2kids = b2items.filter((k) => k.parent === nw);
+        const split = {
+          ok: res?.ok === true, newOnB2: !!b2items.find((i) => i.id === nw && i.ti === title), oldGoneB2: !b2items.some((i) => i.id === K1),
+          kidsCopied: b2kids.length === b2kids0 && b2kids.every((k) => !kids1.includes(k.id)),
+          depsKept: r.store.relations.filter((x) => x.type === 'dep' && (x.from === nw || x.to === nw)).length === depsB2Before,
+          placesAfter: (await r.adapter.eventPlaces(K1)).map((p) => p.boardId), newPlaces: (await r.adapter.eventPlaces(nw)).map((p) => p.boardId),
+        };
+        await r.tabs.openBoard(b1); await sleep(300);
+        split.b1Same = r.store.items.some((i) => i.id === K1) && kids1.every((k) => r.store.items.some((i) => i.id === k && i.parent === K1));
+        // 되돌리기
+        const un = await r.adapter.unsplitEvent(res.undo);
+        split.undo = un?.ok === true && (await r.adapter.eventPlaces(K1)).some((p) => p.boardId === b2) && !(await r.adapter.eventPlaces(nw)).length;
+        // 별칭 — 이 보드에서만 보이는 이름. 카드에 별칭, 툴팁에 원래 제목
+        r.tabs.markAllStale(); await r.tabs.reloadActive(); await sleep(250);
+        const it = r.store.items.find((i) => !i.parent && i.ty !== 'ms' && !r.store.items.some((k) => k.parent === i.id));
+        document.querySelector('#grid .ev[data-id="' + it.id + '"]').click(); await sleep(250);
+        document.querySelector('#pItem .ptab[data-tab="attr"]').click(); await sleep(60);
+        const al = document.getElementById('i-alias');
+        al.value = '별칭 테스트'; al.dispatchEvent(new Event('change')); await sleep(250);
+        const cardEl = document.querySelector('#grid .ev[data-id="' + it.id + '"]');
+        const alias = { stored: r.store.item(it.id).alias === '별칭 테스트', shown: cardEl?.querySelector('.t')?.textContent === '별칭 테스트',
+          tip: (cardEl?.title ?? '').includes(it.ti), essenceKept: r.store.item(it.id).ti === it.ti };
+        al.value = ''; al.dispatchEvent(new Event('change')); await sleep(200);
+        alias.cleared = r.store.item(it.id).alias == null;
+        document.querySelector('#pItem [data-close]').click();
+        // 원래대로 — 합치기도 되돌려 이 보드에 b2의 하위 카드가 남지 않게(뒤 단계가 이 보드를 쓴다)
+        const unm = await r.adapter.unmergeEvents(mres.undo);
+        r.tabs.boardClosed(b2);
+        await r.adapter.deleteProject(b2);
+        r.tabs.markAllStale(); await r.tabs.reloadActive(); await sleep(250);
+        const restored = unm?.ok === true && r.store.items.filter((k) => k.parent === K1).map((k) => k.id).sort().join() === kids1.join();
+        return { merged, placesBefore, b2, ui, taskKind, treeTasks, split, alias, aliasId: it.id, restored };
+      })();
+      const guard = new Promise((res) => setTimeout(() => res({ error: 'timeout' }), 30000));
+      return Promise.race([run.catch((e) => ({ error: String(e && e.stack || e) })), guard]);
+    })()`);
+    try {
+      const d = db.prepare('SELECT alias FROM disp WHERE child_id = ?').all(sameSplit?.aliasId ?? '');
+      sameSplit.aliasDbCleared = d.every((x) => x.alias == null);
+    } catch (err) { sameSplit = { ...(sameSplit ?? {}), dbError: String(err) }; }
+    console.log('[smoke] same-split ' + JSON.stringify(sameSplit));
+  }
+
   // 날짜 없는 보드 (docs/SCALE.md §2) — 처음부터 눈금 없이 만든다. 일정은 날짜 없이 칸만 갖고(DB NULL),
   // 눈금 설정(일괄)으로 칸마다 날짜를 얻는다.
   if (wrote) {
@@ -2688,6 +2772,13 @@ async function runSmoke(target) {
     && saveModel?.del?.preShared === true && saveModel?.del?.xKept === true && saveModel?.del?.kids >= 2 && saveModel?.del?.bOnlyGone === true
     && saveModel?.tr?.oldInTrash === true && saveModel?.tr?.freshGone === true && saveModel?.tr?.structure === true
     && saveModel?.tr?.purged === true && saveModel?.tr?.emptied === true
+    && sameSplit?.merged === true && sameSplit?.placesBefore?.includes(sameSplit?.b2) && sameSplit?.ui?.place === '분리 테스트' && sameSplit?.ui?.split === true
+    && sameSplit?.taskKind === true && sameSplit?.treeTasks > 0
+    && sameSplit?.split?.ok === true && sameSplit?.split?.newOnB2 === true && sameSplit?.split?.oldGoneB2 === true && sameSplit?.split?.kidsCopied === true
+    && sameSplit?.split?.depsKept === true && !sameSplit?.split?.placesAfter?.includes(sameSplit?.b2) && sameSplit?.split?.newPlaces?.includes(sameSplit?.b2)
+    && sameSplit?.split?.b1Same === true && sameSplit?.split?.undo === true
+    && sameSplit?.alias?.stored === true && sameSplit?.alias?.shown === true && sameSplit?.alias?.tip === true && sameSplit?.alias?.essenceKept === true
+    && sameSplit?.alias?.cleared === true && sameSplit?.aliasDbCleared === true && sameSplit?.restored === true
     && staleTab?.merged === true && staleTab?.marked === true && staleTab?.fresh === true && staleTab?.cleared === true
     && trashUi?.leftBoard === true && trashUi?.btnShown === true && trashUi?.listed === true
     && JSON.stringify(launcherGraph?.order) === JSON.stringify(['l-help', 'l-graph', 'l-theme', 'l-trash', 'l-close'])
@@ -3132,7 +3223,10 @@ function registerIpc() {
   // 활성 보드만 바꾼다(문서는 안 읽음). 탭 캐시에서 즉시 전환할 때 저장 대상을 맞춘다.
   ipcMain.handle('project:select', guard((_e, id) => { repo.open(id); repo.touchOpened(id); return true; }));
   // 한 이벤트가 품은 카드들 — '상세' 탭에서 조합한 이벤트의 안쪽 일정을 펼칠 때.
-  ipcMain.handle('event:cards', guard((_e, id) => repo.eventCards(id)));
+  ipcMain.handle('event:cards', guard((_e, id, opts) => repo.eventCards(id, opts ?? {})));
+  ipcMain.handle('event:places', guard((_e, id) => repo.eventPlaces(id)));
+  ipcMain.handle('event:split', guard((_e, boardId, id) => repo.splitEvent(boardId, id)));
+  ipcMain.handle('event:unsplit', guard((_e, snap) => repo.unsplitEvent(snap)));
   // 이벤트 몇 개의 본질 · 조상(조합 대상에서 빼야 순환이 안 생긴다)
   ipcMain.handle('event:get', guard((_e, ids) => repo.eventsById(ids)));
   // 그래프 뷰 — 이벤트·포함·관계 전체(읽기 전용)

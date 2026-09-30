@@ -17,11 +17,12 @@ export function composedOf(store, eventId) {
   return set;
 }
 
-/** eventCards의 평탄한 depth 목록을 중첩 노드로 만든다. */
+/** eventCards의 평탄한 depth 목록을 중첩 노드로 만든다. 태스크(kind 'task')는 그 카드 아래 잎으로. */
 function nestByDepth(flat, blocked) {
   const roots = []; const stack = [];
   for (const c of (flat ?? [])) {
-    const node = { id: c.id, label: c.title || '(카드)', sub: '카드', checkable: !blocked.has(c.id), children: [] };
+    const isTask = c.kind === 'task';
+    const node = { id: c.id, label: c.title || (isTask ? '(태스크)' : '(카드)'), sub: isTask ? '태스크' : '카드', checkable: !blocked.has(c.id), children: [] };
     const depth = c.depth || 0;
     while (stack.length && stack[stack.length - 1].depth >= depth) stack.pop();
     if (stack.length) stack[stack.length - 1].node.children.push(node); else roots.push(node);
@@ -35,7 +36,7 @@ function nestByDepth(flat, blocked) {
  * 현재 보드에도 놓인 이벤트(합치기로 공유된 것)는 트리에서 뺀다 — 이미 이 보드의 그래프 안이다.
  * blocked는 보이되 고를 수 없다.
  */
-async function buildEventTree(adapter, { blocked = new Set() } = {}) {
+async function buildEventTree(adapter, { blocked = new Set(), withTasks = false } = {}) {
   let events = [];
   try { events = (await adapter?.listEvents?.()) ?? []; } catch { events = []; }
   const curBoard = String(adapter?.projectId ?? '');
@@ -48,7 +49,7 @@ async function buildEventTree(adapter, { blocked = new Set() } = {}) {
     const trackNodes = [];
     for (const tr of events.filter((e) => e.kind === 'track' && onBoard(e, bid) && !here.has(e.id))) {
       let cards = [];
-      try { cards = (await adapter?.eventCards?.(tr.id)) ?? []; } catch { cards = []; }
+      try { cards = (await adapter?.eventCards?.(tr.id, { withTasks })) ?? []; } catch { cards = []; }
       trackNodes.push({ id: tr.id, label: tr.title || '(트랙)', sub: '트랙', checkable: !blocked.has(tr.id), children: nestByDepth(cards.filter((c) => !here.has(c.id)), blocked) });
     }
     nodes.push({ id: b.id, label: b.title || '(프로젝트)', sub: '프로젝트', checkable: false, children: trackNodes });
@@ -95,10 +96,11 @@ export async function openCombinePicker(store, adapter, eventId) {
  * @returns {Promise<string|null>} 고른 이벤트 id, 취소하면 null
  */
 export async function pickEventForMerge(adapter, selfId) {
-  const nodes = await buildEventTree(adapter, { blocked: new Set([selfId]) });
+  // 항등설정은 태스크도 된다 — 카드 아래 태스크까지 펼친다(태스크도 이벤트다)
+  const nodes = await buildEventTree(adapter, { blocked: new Set([selfId]), withTasks: true });
   const result = await askTree({
     title: '항등설정 — 같은 이벤트로 합치기',
-    message: '이 이벤트와 하나로 합칠 다른 프로젝트의 이벤트를 하나 고르세요. 합치면 본질을 어느 쪽으로 남길지 다시 묻습니다.',
+    message: '이 이벤트와 하나로 합칠 다른 프로젝트의 이벤트(트랙·카드·태스크)를 하나 고르세요. 합치면 본질을 어느 쪽으로 남길지 다시 묻습니다.',
     nodes, select: 'single',
   });
   return typeof result === 'string' ? result : null;

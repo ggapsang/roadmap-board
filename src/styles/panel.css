@@ -382,3 +382,14 @@ body.panel-open{--panel-w:var(--panel-size)}
 .md-body table{border-collapse:collapse;font-size:.95em}
 .md-body th,.md-body td{border-bottom:1px solid var(--border-subtle);padding:var(--u1) var(--u2);text-align:left;vertical-align:top}
 .md-body th{font-weight:600;color:var(--text-secondary)}
+
+/* 항등설정 아래 — 다른 보드의 자리(누르면 그 보드로) · 항등 해제 */
+.same-places{display:flex;flex-direction:column;gap:2px;margin-top:var(--u2)}
+.same-places .empty{font-size:12px;line-height:18px;color:var(--text-tertiary)}
+.same-places .pc-head{font-size:11px;line-height:16px;font-weight:600;color:var(--text-secondary);margin-top:var(--u1)}
+.same-place{display:flex;flex-direction:column;align-items:flex-start;gap:0;width:100%;text-align:left;padding:var(--u1) var(--u2);
+  border:0;border-radius:var(--u1);background:none;cursor:pointer;font:inherit;color:var(--text-primary)}
+.same-place:hover{background:var(--bg-hover)}
+.same-place-board{font-size:13px;font-weight:500}
+.same-place em{font-size:11px;font-style:normal}
+.same-split{margin-top:var(--u2);align-self:flex-start}

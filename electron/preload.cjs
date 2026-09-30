@@ -22,7 +22,12 @@ contextBridge.exposeInMainWorld('roadmapDB', {
   // 모든 보드를 통틀어 이벤트 목록 — '동일 카드(같은 이벤트)' 연결 후보
   listEvents: () => call('event:list'),
   // 한 이벤트가 품은 카드들 — 상세 탭에서 조합한 이벤트의 안쪽 일정
-  eventCards: (id) => call('event:cards', id),
+  eventCards: (id, opts) => call('event:cards', id, opts ?? {}),
+  // 이 이벤트가 놓인 보드·자리 — 항등설정 아래 '다른 보드에도 있음'
+  eventPlaces: (id) => call('event:places', id),
+  // 항등 해제 — 이 보드의 놓임을 새 이벤트로 떼어 낸다(안쪽은 복제, 관계는 보이는 보드별로) · 되돌리기
+  splitEvent: (boardId, id) => call('event:split', boardId, id),
+  unsplitEvent: (snap) => call('event:unsplit', snap),
   eventsById: (ids) => call('event:get', ids),
   // 그래프 뷰 — 이벤트·포함·관계 전체(읽기 전용)
   graphData: (boardId) => call('graph:data', boardId ?? null),
