@@ -572,8 +572,10 @@ export class Board {
   }
 
   /**
-   * 이어진 카드 강조 — 카드에 커서를 올리면 그 카드에 닿는 화살표(선행)를 채워 칠하고, 화살표 양끝 카드의 테두리를
-   * 밝힌다. 화살표가 없는 카드는 아무것도 하지 않는다. 화면 표시일 뿐(문서·되돌리기와 무관).
+   * 이어진 카드 강조 — 카드에 커서를 올리면 그 카드의 **계보**를 따라간다(2026-09-30 사용자 결정): 선행 화살표를 거슬러
+   * 앞선 일을 끝까지(선행의 선행…), 따라서 뒤따르는 일을 끝까지(후행의 후행…). 옆으로 새지 않는다 — 앞선 일의 다른 후행
+   * (사촌)이나 뒤따르는 일의 다른 선행은 넣지 않는다. 지나간 화살표를 채워 칠하고(.hl) 계보의 카드 테두리를 밝힌다(.linked).
+   * 화살표가 없는 카드는 아무것도 하지 않는다. 화면 표시일 뿐(문서·되돌리기와 무관). 이 보드에 그려진 화살표만 따른다.
    * 다시 그려도(renderCards·redrawArrows) 커서가 올라가 있던 카드 기준으로 다시 건다.
    */
   #linkHighlight(id) {
@@ -581,14 +583,34 @@ export class Board {
     for (const n of this.arrowLayer.querySelectorAll('.arrow.hl')) n.classList.remove('hl');
     for (const n of this.grid.querySelectorAll('.ev.linked')) n.classList.remove('linked');
     if (!id) return;
-    const paths = [...this.arrowLayer.querySelectorAll('.arrow')].filter((p) => p.dataset.from === id || p.dataset.to === id);
-    if (!paths.length) return;
-    const ids = new Set([id]);
+    const paths = [...this.arrowLayer.querySelectorAll('.arrow')];
+    const into = new Map(), out = new Map();                  // 카드 → 들어오는/나가는 화살표
     for (const p of paths) {
-      ids.add(p.dataset.from); ids.add(p.dataset.to);
-      p.classList.add('hl');
-      p.parentNode.append(p);                        // 다른 화살표 위로 — 겹친 곳에서도 이어진 선이 보이게
+      if (!into.has(p.dataset.to)) into.set(p.dataset.to, []);
+      into.get(p.dataset.to).push(p);
+      if (!out.has(p.dataset.from)) out.set(p.dataset.from, []);
+      out.get(p.dataset.from).push(p);
     }
+    const ids = new Set([id]);
+    const lit = new Set();
+    // 한 방향으로만 끝까지 — 위로는 들어오는 화살표만, 아래로는 나가는 화살표만 따른다(사촌으로 새지 않는다)
+    const walk = (start, edges, next) => {
+      const seen = new Set([start]);
+      const stack = [start];
+      while (stack.length) {
+        const cur = stack.pop();
+        for (const p of edges.get(cur) ?? []) {
+          lit.add(p);
+          const k = next(p);
+          ids.add(k);
+          if (!seen.has(k)) { seen.add(k); stack.push(k); }
+        }
+      }
+    };
+    walk(id, into, (p) => p.dataset.from);                     // 앞선 일들
+    walk(id, out, (p) => p.dataset.to);                        // 뒤따르는 일들
+    if (!lit.size) return;
+    for (const p of lit) { p.classList.add('hl'); p.parentNode.append(p); }   // 다른 화살표 위로
     for (const n of this.grid.querySelectorAll('.ev')) if (ids.has(n.dataset.id)) n.classList.add('linked');
   }
 

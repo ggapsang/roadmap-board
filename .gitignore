@@ -9,3 +9,6 @@ Thumbs.db
 # 스모크 캡처 · 내보낸 이미지
 /shots/
 /*.png
+
+# 예시 DB 이력 — 로컬 전용 git(원격 없음, 절대 푸시하지 않는다). scripts/make-example-db.mjs가 뜰 때마다 여기에 커밋한다
+/.example-db.git/
