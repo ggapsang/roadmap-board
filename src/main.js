@@ -42,19 +42,6 @@ async function boot() {
   // 문서는 프로젝트를 열 때 채워진다. 그 전까지는 빈 껍데기.
   const store = new Store({ adapter, doc: emptyDoc() });
   store.on('error', (message) => toast(message, 'warn'));
-  // 화면 배율(Ctrl+휠) — 창 전체를 브라우저처럼 키우고 줄인다. 메인이 바꾸고 여기선 알리기만 한다.
-  window.roadmapDB?.onViewZoom?.((f) => toast(`화면 ${Math.round(f * 100)}% — Ctrl+휠로 조절 · 보기 메뉴에서 원래 크기`));
-  // Ctrl+휠 위 = 확대, 아래 = 축소. 휠을 스스로 쓰는 곳(그래프 확대)은 기본 동작을 막으니 건너뛴다.
-  // 트랙패드는 잘게 여러 번 오므로 한 번 움직이면 잠시 쉰다(한 번 굴림 = 한 단계).
-  let zoomAt = 0;
-  window.addEventListener('wheel', (e) => {
-    if (!e.ctrlKey || e.defaultPrevented || !window.roadmapDB?.zoomStep) return;
-    e.preventDefault();
-    const now = performance.now();
-    if (now - zoomAt < 120 || !e.deltaY) return;
-    zoomAt = now;
-    window.roadmapDB.zoomStep(e.deltaY < 0 ? 1 : -1);
-  }, { passive: false });
 
   // 보드 탭 — 여러 보드를 오간다. launcher·itemPanel·toolbar가 참조하므로 먼저 선언만.
   let tabs;
@@ -137,8 +124,8 @@ async function boot() {
       openTracks: () => configPanel.open(view.selectedTrack),
       openData: () => dataPanel.open(),
       nudgeFont: (d) => nudgeFont(d),
-      exportPng: () => { panels.close(); return exportPng(adapter, store); },
-      exportPdf: () => { panels.close(); return exportPdf(adapter, store); },
+      exportPng: () => { panels.close(); return atFullSize(() => exportPng(adapter, store)); },
+      exportPdf: () => { panels.close(); return atFullSize(() => exportPdf(adapter, store)); },
       openProjects: () => { panels.close(); tabs.newLauncherTab(); },
       toggleTextSelect: () => {
         view.textSelect = !view.textSelect;
@@ -298,6 +285,62 @@ async function boot() {
     toast(`글자 크기 ${Math.round(next * 100)}%`);
   }
   const nudgeFont = (delta) => setFont((store.meta.display?.fontScale ?? 1) + delta);
+
+  // ── 보드 확대·축소 (Ctrl+휠) ─────────────────────────────
+  // 웹 브라우저처럼 Ctrl+휠 위 = 확대, 아래 = 축소 — 단 **보드만**(트랙 머리·카드·날짜 칸). 도구 모음·패널은 그대로.
+  // .cal에 CSS zoom을 건다. 그 안의 좌표는 보드 px 그대로라, 마우스 좌표(화면 px)를 보드 px로 바꾸는 곳만
+  // view.boardZoom으로 나눈다(Board·drag·bands). 커서 아래 지점이 제자리에 남도록 스크롤을 맞춘다.
+  // 배율은 화면 상태(문서 아님)이고 이 PC에 기억한다.
+  const ZOOM_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+  const ZOOM_KEY = 'wolfpack:board-zoom';
+  function setBoardZoom(next, anchor = null, { quiet = false } = {}) {
+    const z0 = view.boardZoom || 1;
+    next = Math.min(ZOOM_STEPS[ZOOM_STEPS.length - 1], Math.max(ZOOM_STEPS[0], Number(next) || 1));
+    const cal = document.querySelector('.cal');
+    const sc = $('scroll');
+    const r = sc.getBoundingClientRect();
+    const ax = anchor ? anchor.x - r.left : sc.clientWidth / 2;
+    const ay = anchor ? anchor.y - r.top : sc.clientHeight / 2;
+    const bx = (sc.scrollLeft + ax) / z0, by = (sc.scrollTop + ay) / z0;
+    view.boardZoom = next;
+    cal.style.zoom = next === 1 ? '' : String(next);
+    board.rebuild();                                  // 칸 폭(fr)이 다시 흐른다 — 걸침 카드 px·화살표를 다시 잰다
+    sc.scrollLeft = bx * next - ax;
+    sc.scrollTop = by * next - ay;
+    try { localStorage.setItem(ZOOM_KEY, String(next)); } catch { /* 이번 실행엔 적용 */ }
+    if (!quiet) toast(`보드 ${Math.round(next * 100)}% — Ctrl+휠로 조절 · 보기 › 보드 원래 크기`);
+  }
+  /** 보드 배율과 무관하게 100%로 그려 놓고 fn(내보내기)을 돌린 뒤 보던 배율로 되돌린다 — 걸침 카드 px를 다시 잰다 */
+  async function atFullSize(fn) {
+    const z = view.boardZoom || 1;
+    if (z === 1) return fn();
+    setBoardZoom(1, null, { quiet: true });
+    try { return await fn(); } finally { setBoardZoom(z, null, { quiet: true }); }
+  }
+  const stepBoardZoom = (dir, anchor) => {
+    const cur = view.boardZoom || 1;
+    const next = dir > 0 ? (ZOOM_STEPS.find((z) => z > cur + 0.001) ?? cur)
+      : dir < 0 ? ([...ZOOM_STEPS].reverse().find((z) => z < cur - 0.001) ?? cur) : 1;
+    if (next !== cur) setBoardZoom(next, anchor);
+  };
+  // 트랙패드는 잘게 여러 번 오므로 한 번 움직이면 잠시 쉰다(한 번 굴림 = 한 단계). 휠을 스스로 쓰는 곳(그래프 확대)은
+  // 기본 동작을 막으니 건너뛰고, 보드가 안 보일 때(첫 화면·그래프 탭)는 아무것도 안 한다 — 창 배율로 새지 않게 막기만.
+  let zoomAt = 0;
+  window.addEventListener('wheel', (e) => {
+    if (!e.ctrlKey || e.defaultPrevented) return;
+    e.preventDefault();
+    if (launcher.visible || tabs?.graphActive) return;
+    const now = performance.now();
+    if (now - zoomAt < 120 || !e.deltaY) return;
+    zoomAt = now;
+    stepBoardZoom(e.deltaY < 0 ? 1 : -1, { x: e.clientX, y: e.clientY });
+  }, { passive: false });
+  window.roadmapDB?.onBoardZoom?.((dir) => { if (!launcher.visible && !tabs?.graphActive) stepBoardZoom(dir); });
+  {
+    let saved = 1;
+    try { saved = Number(localStorage.getItem(ZOOM_KEY)) || 1; } catch { saved = 1; }
+    if (saved !== 1) { view.boardZoom = saved; document.querySelector('.cal').style.zoom = String(saved); }
+  }
 
   // 걸치는 카드는 실제 컬럼 너비로 px를 잡으므로 창 크기가 바뀌면 다시 그려야 한다
   let resizeTimer = null;

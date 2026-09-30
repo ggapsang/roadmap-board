@@ -17,7 +17,7 @@
 import { UNIT_DAYS } from '../../config/index.js';
 
 export function attachDrag(grid, {
-  store, view, getScale, getTimeline, onDragEnd,
+  store, view, getScale, getTimeline, getZoom = () => 1, onDragEnd,
 }) {
   let drag = null;
 
@@ -83,7 +83,8 @@ export function attachDrag(grid, {
     // 접힌 구간에서는 1px이 하루보다 길다. 눈금을 거쳐 위치로 환산한 뒤 정밀도 단위 개수(n)로.
     const scale = getScale();
     const tl = drag.tl;
-    const raw = scale.dayAt(scale.y(drag.startDay) + (ev.clientY - drag.y)) - drag.startDay;
+    // 마우스 이동은 화면 px — 보드 배율(Ctrl+휠)로 나눠 보드 px로
+    const raw = scale.dayAt(scale.y(drag.startDay) + (ev.clientY - drag.y) / getZoom()) - drag.startDay;
     const n = Math.round(raw / (UNIT_DAYS[tl.step] ?? 1));
     const dDays = n;                  // 0이 아니면 움직였다
     const pointerTrack = trackIndexAt(ev.clientX);

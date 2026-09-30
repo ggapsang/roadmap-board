@@ -16,6 +16,9 @@ async function withExpandedBoard(fn) {
 
   const cal = document.querySelector('.cal');
   const savedWidth = cal.style.width;
+  // 보드 배율(Ctrl+휠)은 화면 보기일 뿐 — 내보내기는 늘 100%로 찍는다(아래 좌표 계산도 100% 기준)
+  const savedZoom = cal.style.zoom;
+  cal.style.zoom = '';
 
   body.classList.add('exporting');
   // 레이아웃이 확정될 때까지 두 프레임 기다린다
@@ -55,6 +58,7 @@ async function withExpandedBoard(fn) {
     });
   } finally {
     cal.style.width = savedWidth;
+    cal.style.zoom = savedZoom;
     body.classList.remove('exporting');
     await new Promise((r) => requestAnimationFrame(r));
     scroll.scrollTop = saved.scrollTop;

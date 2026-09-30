@@ -195,6 +195,10 @@ src/               렌더러 (프레임워크 없음, ES 모듈)
    비고 → 메타(기간·담당) → 진척 막대 순으로 숨기고, 그다음 글자를 `LAYOUT.minTitleFont`까지만 줄이고, 그래도
    안 되면 카드를 늘린다. 제목(`.ev>.t`)은 flex로 줄어들지 않는다 — 줄면 높이 0이 되어 메타만 남는다.
    카드 높이 규칙(최소 높이·간격·크기 강제)을 바꾸면 `pixelExtent`도 같이 바꾼다.
+24. **보드 확대(Ctrl+휠)는 `.cal`의 CSS zoom이다 (`view.boardZoom`, src/main.js `setBoardZoom`).** 그 안의 `offset*`·`style`은
+   보드 px 그대로지만 `clientX/Y`·`getBoundingClientRect()`는 화면 px(×배율)다. **마우스 좌표로 보드 px를 구하는 곳은
+   `board.zoom`(드래그·칸 편집은 `getZoom()`)으로 나눈다** — 새 끌기·만들기 코드를 넣을 때 빠뜨리면 확대했을 때만 어긋난다.
+   비율(같은 쪽 값끼리 나눈 것)은 그대로 써도 된다. 창 전체 배율(webContents zoom)은 쓰지 않는다 — 늘 100%.
 
 ## 데이터
 

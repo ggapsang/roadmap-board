@@ -49,10 +49,12 @@ export class Board {
       getOrigin: () => this.origin,
       getScale: () => this.scale,
       getTimeline: () => this.timeline,
+      getZoom: () => this.zoom,
       onChange: () => this.rebuild(),
     });
     attachDrag(grid, {
       store, view,
+      getZoom: () => this.zoom,
       getScale: () => this.scale,
       getTimeline: () => this.timeline,
       onDragEnd: (id) => this.handlers.openItem(id),
@@ -74,12 +76,12 @@ export class Board {
       if (this.store.readonly) return;
 
       const column = this.columns.get(trackId);
-      const startWidth = column ? column.getBoundingClientRect().width : 200;
+      const startWidth = column ? column.offsetWidth : 200;       // 보드 px (확대와 무관)
       const startX = ev.clientX;
       let began = false;
 
       const move = (e) => {
-        const next = Math.min(1200, Math.max(120, Math.round(startWidth + (e.clientX - startX))));
+        const next = Math.min(1200, Math.max(120, Math.round(startWidth + (e.clientX - startX) / this.zoom)));
         if (!began) { this.store.begin('트랙 너비'); began = true; }
         this.store.commit('트랙 너비', (doc) => {
           const track = doc.tracks.find((t) => t.id === trackId);
@@ -133,7 +135,7 @@ export class Board {
         const rects = headers.map((h) => h.getBoundingClientRect());
         const headLeft = this.head.getBoundingClientRect().left;
         const x = targetIndex >= rects.length ? rects[rects.length - 1].right : rects[targetIndex].left;
-        indicator.style.left = `${x - headLeft}px`;
+        indicator.style.left = `${(x - headLeft) / this.zoom}px`;   // 헤더 안(확대된 곳)의 px
       };
 
       const move = (e) => {
@@ -213,6 +215,9 @@ export class Board {
     }
     return dayIndex(this.endDate, this.origin);
   }
+
+  /** 보드 배율(Ctrl+휠, .cal의 CSS zoom). 마우스 좌표 차이(화면 px) ÷ zoom = 보드 px */
+  get zoom() { return this.view.boardZoom || 1; }
 
   /** 날짜 있는 보드인가 (docs/SCALE.md §2) */
   get dated() { return this.store.meta.display?.dated !== false; }
@@ -610,7 +615,7 @@ export class Board {
         opts.push({ label: '이벤트 복사', action: () => this.#copyEvent(id) });
       }
       if (col) {
-        const at = this.timeline.snap(Math.max(0, Math.floor(this.scale.dayAt(ev.clientY - col.getBoundingClientRect().top))));
+        const at = this.timeline.snap(Math.max(0, Math.floor(this.scale.dayAt((ev.clientY - col.getBoundingClientRect().top) / this.zoom))));
         opts.push({ label: '여기에 붙여넣기', disabled: !this._clip, action: () => this.#pasteEvent(col.dataset.t, at) });
       }
       if (opts.length) openCtxMenu(ev.clientX, ev.clientY, opts);
@@ -689,7 +694,7 @@ export class Board {
 
     // 포인터가 든 행 — 반올림하면 한 행이 하루인 주-일 보기에서 아래 절반이 다음 날이 된다
     const dayAt = (col, clientY) =>
-      Math.max(0, Math.floor(this.scale.dayAt(clientY - col.getBoundingClientRect().top)));
+      Math.max(0, Math.floor(this.scale.dayAt((clientY - col.getBoundingClientRect().top) / this.zoom)));
 
     /** 끈 범위 [a, b] — 시작은 정밀도 단위의 처음으로, 끝은 그 단위의 끝으로 */
     const range = () => {
@@ -775,7 +780,8 @@ export class Board {
   /** 오늘 위치로 스크롤 */
   scrollToToday(scroller) {
     if (!this.dated) { scroller.scrollTop = 0; return; }
+    // 스크롤은 화면 px — 보드 px에 배율을 곱한다
     const i = Math.round((new Date().setHours(0, 0, 0, 0) - this.origin) / 86400000);
-    scroller.scrollTop = Math.max(0, (this.scale?.y(i) ?? 0) - 80);
+    scroller.scrollTop = Math.max(0, (this.scale?.y(i) ?? 0) * this.zoom - 80);
   }
 }

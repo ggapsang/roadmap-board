@@ -15,7 +15,7 @@ import { askText } from '../dialog.js';
 import { openCtxMenu } from '../ctxmenu.js';
 import { toast } from '../toast.js';
 
-export function attachBandEditing(gutM, { store, getOrigin, getScale, getTimeline, onChange }) {
+export function attachBandEditing(gutM, { store, getOrigin, getScale, getTimeline, getZoom = () => 1, onChange }) {
   let drag = null;
   let resizing = null;
 
@@ -69,7 +69,7 @@ export function attachBandEditing(gutM, { store, getOrigin, getScale, getTimelin
 
   gutM.addEventListener('pointermove', (ev) => {
     if (resizing) {
-      const delta = ev.clientY - resizing.y;
+      const delta = (ev.clientY - resizing.y) / getZoom();     // 화면 px → 보드 px
       if (!resizing.began) {
         if (Math.abs(delta) < 4) return;    // 클릭 수준이면 아직 아무것도 만들지 않는다
         store.begin('구간 높이');

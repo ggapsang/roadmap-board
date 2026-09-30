@@ -14,6 +14,8 @@ export class ViewState extends Emitter {
     this.orgFilter = new Set();          // 비어 있으면 전체 표시
     this.query = '';
     this.weekHeight = defaultZoom;
+    /** 보드 배율(Ctrl+휠) — 보드 영역(.cal)의 CSS zoom. 마우스 좌표(화면 px) ÷ 이것 = 보드 px */
+    this.boardZoom = 1;
     this.selectedItem = null;
     this.selectedTrack = null;
     /** 카드 글자를 긁어 복사할 수 있는 모드. 켜면 드래그 이동이 멈춘다. */
