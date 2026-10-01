@@ -2338,7 +2338,9 @@ async function runSmoke(target) {
         r.store.commit('비고', () => { r.store.item(id).note = md; r.store.item(id).place.showNote = true; });
         r.board.render(); await sleep(150);
         const cn = document.querySelector('.col [data-id="' + id + '"] .card-note');
-        const card = { strong: !!cn?.querySelector('strong'), li: cn?.querySelectorAll('li').length ?? 0, noImg: !cn?.querySelector('img') };
+        const card = { strong: !!cn?.querySelector('strong'), li: cn?.querySelectorAll('li').length ?? 0, noImg: !cn?.querySelector('img'),
+          // 카드가 가운데 정렬이어도 비고는 왼쪽·카드 폭을 다 쓴다(좁아 제목 우선으로 숨겨졌어도 스타일은 같다)
+          left: !!cn && getComputedStyle(cn).textAlign === 'left' && getComputedStyle(cn).alignSelf === 'stretch' };   // 카드가 가운데 정렬이어도 비고는 왼쪽
         r.store.commit('원복', () => { const x = r.store.item(id); x.note = before.note; x.place.showNote = before.show; x.ti = before.ti; });
         document.querySelector('#pItem [data-close]').click();
         await sleep(100);
@@ -2800,7 +2802,7 @@ async function runSmoke(target) {
     && noteMd?.live?.noImg === true && noteMd?.live?.rawOnCursor === true
     && noteMd?.toggled === true && noteMd?.cont === true && noteMd?.bold === true && noteMd?.undoLocal === true
     && noteMd?.cardKept === true && noteMd?.saved === true && noteMd?.freshHistory === true
-    && noteMd?.card?.strong === true && noteMd?.card?.li >= 4 && noteMd?.card?.noImg === true
+    && noteMd?.card?.strong === true && noteMd?.card?.li >= 4 && noteMd?.card?.noImg === true && noteMd?.card?.left === true
     && styleUi?.hiddenByDefault === true && styleUi?.noteShown === true && styleUi?.noteHidden === true
     && JSON.stringify(styleUi?.titles) === JSON.stringify(['항등설정', '조합설정', '모자관계설정', '선행관계설정'])
     && (styleUi?.btns ?? []).length === 4 && styleUi.btns.every((t) => t === '편집')

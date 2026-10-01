@@ -158,7 +158,8 @@ body.panel-open .cal{min-width:0}
   pointer-events:none;z-index:15}
 
 /* 비고를 카드에 함께 보여 줄 때 */
-.ev .card-note{margin-top:var(--u1);font-size:calc(11px * var(--fs,1));line-height:16px;
+/* 비고는 카드가 가운데 정렬(.ev.big·컨테이너)이어도 왼쪽 정렬 — 목록·문단은 왼쪽에서 읽힌다. 폭은 카드 안쪽을 다 쓴다 */
+.ev .card-note{text-align:left;align-self:stretch;margin-top:var(--u1);font-size:calc(11px * var(--fs,1));line-height:16px;
   color:var(--text-secondary);word-break:keep-all;overflow:hidden}
 /* 카드 위 마크다운 — 좁은 칸이라 문단·목록 간격을 줄인다 */
 .ev .card-note.md-body p,.ev .card-note.md-body ul,.ev .card-note.md-body ol,
