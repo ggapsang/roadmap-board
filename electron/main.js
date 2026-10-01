@@ -513,10 +513,26 @@ async function runSmoke(target) {
       await sleep(300);
       r.tabs.markAllStale(); await r.tabs.reloadActive(); await sleep(250);
       const persisted = r.store.meta.arrows?.[id]?.b?.side === 'left' && r.store.meta.arrows?.[id]?.a?.side === 'right';
+      // 보드 확대·축소로 크기만 바뀌면 꺾임 모양(나가는 방향 순서)이 그대로 — 고친 것·자동 모두
+      const sig = () => {
+        const out = {};
+        for (const [rid, g] of r.board.arrowLayer._geom ?? []) {
+          const p = g.points, dirs = [];
+          for (let i = 1; i < p.length; i += 1) { const dx = p[i].x - p[i - 1].x, dy = p[i].y - p[i - 1].y; dirs.push(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'R' : 'L') : (dy > 0 ? 'D' : 'U')); }
+          out[rid] = dirs.join('');
+        }
+        return out;
+      };
+      const cal = document.querySelector('.cal'), z0 = r.view.boardZoom ?? 1;
+      const zoomTo = async (z) => { r.view.boardZoom = z; cal.style.zoom = z === 1 ? '' : String(z); r.board.rebuild(); await sleep(120); };
+      const s0 = sig(), moved = [];
+      for (const z of [0.8, 1.25]) { await zoomTo(z); const s = sig(); for (const k of Object.keys(s0)) if (s[k] !== s0[k]) moved.push(z + ':' + k); }
+      await zoomTo(z0);
+      const zoomStable = Object.keys(s0).length > 0 && moved.length === 0 && sig()[id] === s0[id];
       // 우클릭 '자동 경로로 되돌리기'
       r.board.resetArrow(id); await sleep(80);
       const reset = !r.store.meta.arrows?.[id] && !document.querySelector('.arrows .arrow.custom[data-rel="' + id + '"]');
-      return { handles, noChangeYet, endOk, redrawn, stillEditing, undone, midOk, ended, persisted, reset };
+      return { handles, noChangeYet, endOk, redrawn, stillEditing, undone, midOk, ended, persisted, zoomStable, moved, reset };
     })();
     const guard = new Promise((res) => setTimeout(() => res({ error: 'timeout' }), 12000));
     return Promise.race([run.catch((e) => ({ error: String(e && e.stack || e) })), guard]);
@@ -2898,7 +2914,7 @@ async function runSmoke(target) {
     && relCheck?.allDep === true && relCheck?.added === true && relCheck?.removed === true
     && arrowEdit?.handles === 2 && arrowEdit?.noChangeYet === true && arrowEdit?.endOk === true && arrowEdit?.redrawn === true
     && arrowEdit?.stillEditing === true && arrowEdit?.undone === true && arrowEdit?.midOk === true && arrowEdit?.ended === true
-    && arrowEdit?.persisted === true && arrowEdit?.reset === true
+    && arrowEdit?.persisted === true && arrowEdit?.zoomStable === true && arrowEdit?.reset === true
     && linkHl?.arrows > 0 && linkHl?.ok === true && linkHl?.kept === true && linkHl?.cleared === true && linkHl?.filled === true
     && scaleCheck?.options === 4 && scaleCheck?.defaultMode === 'month-week'
     && scaleCheck?.weekDay?.outer === true && scaleCheck?.weekDay?.ppd === true && scaleCheck?.weekDay?.newLen === 1 && scaleCheck?.weekDay?.step === 'day'

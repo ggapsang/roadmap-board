@@ -7,7 +7,7 @@
  * 파워포인트 화살표 도형처럼 보이도록 선이 아니라 다각형으로 그린다.
  * 굵기와 머리 크기는 문서의 표시 설정(meta.display)에서 온다.
  */
-import { blockArrowPath, routeBetween, anchorPoint, elbowRoute } from '../../core/arrow-geometry.js';
+import { blockArrowPath, routeBetweenKeyed, anchorPoint, elbowRoute } from '../../core/arrow-geometry.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 
@@ -24,9 +24,13 @@ export function createArrowLayer() {
  * @param {object[]} items
  * @param {{arrowWidth:number, arrowHead:number}} display
  * @param {Object<string,{a,b,m}>} [arrows] 사용자가 고친 화살표 모양(doc.meta.arrows) — 관계 id → 꺾은선 연결선
- * 그린 화살표의 기하는 layer._geom(관계 id → {from,to,points,box:{from,to},edit})에 남긴다 — 편집 손잡이가 쓴다.
+ * @param {Map} [forms] 관계 id → 처음 고른 경로 모양 — 화면 크기만 바뀐 그리기(확대·축소·행 높이·창 크기)에서 이어 쓴다. 문서나
+ *   보이는 범위가 바뀌면 부르는 쪽이 비운다(그때만 새로 고른다). 자동 경로는 고른 후보의 이름(key — 어느 변 어느 지점, 어느
+ *   카드 옆으로 꺾는가), 고친 화살표는 고른 꼴(f)을 기억한다. 크기가 바뀌어도 같은 꺾임으로 그려져 갑자기 튀지 않는다.
+ * 그린 화살표의 기하는 layer._geom(관계 id → {from,to,points,box,form,route,A,B,custom})에 남긴다 — 편집 손잡이가 쓴다.
+ *   form·route·A·B는 고친 화살표에만 있다.
  */
-export function drawArrows(layer, grid, items, relations, display, arrows = {}) {
+export function drawArrows(layer, grid, items, relations, display, arrows = {}, forms = null) {
   const group = layer.querySelector('g');
   if (!group) return;
   group.replaceChildren();
@@ -65,7 +69,7 @@ export function drawArrows(layer, grid, items, relations, display, arrows = {}) 
       x += node.offsetLeft;
       y += node.offsetTop;
     }
-    titleObstacles.push({ x, y, w: t.offsetWidth, h: t.offsetHeight });
+    titleObstacles.push({ id: `title:${cont.dataset.id}`, x, y, w: t.offsetWidth, h: t.offsetHeight });
   }
 
   // 화살표는 '선행(dep)' 관계만 그린다 (from=선행 → to=후행).
@@ -78,24 +82,33 @@ export function drawArrows(layer, grid, items, relations, display, arrows = {}) 
     const obstacles = [...titleObstacles];
     for (const [id, rect] of box) {
       if (id === rel.from || id === rel.to || container.has(id)) continue;
-      obstacles.push(rect);
+      obstacles.push({ id, ...rect });
     }
 
-    // 사용자가 고친 모양이 있으면 그것(양 끝 = 카드 테두리 위 점, 가운데 구간 위치), 없으면 자동 경로
+    // 사용자가 고친 모양(doc.meta.arrows — 카드 테두리 위 양 끝, 가운데 위치, 꼴)이 있으면 그것, 없으면 자동 경로.
+    // 둘 다 처음 고른 꼴을 forms에 두고 이어 쓴다 — 확대·축소에도 같은 꺾임.
     const o = arrows?.[rel.id];
-    let points, edit = null;
+    const kept = forms?.get(rel.id);
+    let points, g;
     if (o) {
-      const A = anchorPoint(from, o.a), B = anchorPoint(to, o.b);
-      const r = elbowRoute(A, B, o.m, [from, to]);
-      points = r.points;
-      edit = { A, B, axis: r.axis, mid: r.mid, adj: r.adj };
+      const form = { ...o };
+      if (!form.f && kept?.f) form.f = kept.f;           // 꼴을 기억하지 않은 옛 값은 처음 고른 꼴을 이어 쓴다
+      const A = anchorPoint(from, form.a), B = anchorPoint(to, form.b);
+      const route = elbowRoute(A, B, form.m, [from, to], form.f ?? null);
+      form.f = route.form;
+      forms?.set(rel.id, { f: form.f });
+      points = route.points;
+      g = { form, route, A, B };
     } else {
       const sameTrack = trackOf.get(rel.from) === trackOf.get(rel.to);
-      points = routeBetween(from, to, sameTrack, bite, obstacles);
+      const r = routeBetweenKeyed(from, to, sameTrack, bite, obstacles, kept?.key ?? null);
+      forms?.set(rel.id, { key: r.key });
+      points = r.points;
+      g = {};
     }
     const d = blockArrowPath(points, width, head);
     if (!d) continue;
-    geom.set(rel.id, { from: rel.from, to: rel.to, points, box: { from, to }, edit, custom: !!o });
+    geom.set(rel.id, { from: rel.from, to: rel.to, points, box: { from, to }, ...g, custom: !!o });
 
     const path = document.createElementNS(NS, 'path');
     path.setAttribute('d', d);

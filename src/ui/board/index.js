@@ -507,7 +507,7 @@ export class Board {
     for (const node of cardEls.values()) fitTitle(node);
 
     // 카드가 붙은 뒤에야 offsetLeft/offsetTop이 확정된다
-    drawArrows(this.arrowLayer, this.grid, this.store.items, this.store.relations, this.store.meta.display, this.store.meta.arrows ?? {});
+    drawArrows(this.arrowLayer, this.grid, this.store.items, this.store.relations, this.store.meta.display, this.store.meta.arrows ?? {}, this.#arrowForms());
     this.#linkHighlight(this._hoverId ?? null);
     this.#drawArrowHandles();
   }
@@ -569,7 +569,7 @@ export class Board {
   }
 
   redrawArrows() {
-    drawArrows(this.arrowLayer, this.grid, this.store.items, this.store.relations, this.store.meta.display, this.store.meta.arrows ?? {});
+    drawArrows(this.arrowLayer, this.grid, this.store.items, this.store.relations, this.store.meta.display, this.store.meta.arrows ?? {}, this.#arrowForms());
     this.#linkHighlight(this._hoverId ?? null);
     this.#drawArrowHandles();
   }
@@ -623,12 +623,22 @@ export class Board {
   // 움직여도 모양이 따라간다. 보드 표시 값(doc.meta.arrows, 되돌리기 가능). Esc·빈 곳 클릭으로 끝, 우클릭 '자동 경로로'.
   // 끌기 리스너는 window에(규약 14 — 손잡이는 다시 그릴 때마다 새로 만든다). 마우스 좌표 ÷ 보드 배율(규약 24).
 
-  /** 이 관계의 지금 모양 — 고친 값이 있으면 그것, 없으면 자동 경로에서 옮긴 값 */
+  /**
+   * 화살표 상대 모양 보관 — 문서가 바뀌거나(store.rev) 보이는 범위가 바뀌면(펼침·필터) 비우고 새로 고른다. 확대·축소·행 높이·
+   * 창 크기·패널 열기처럼 **크기만** 바뀐 그리기에서는 그대로 이어 써서 꺾임이 튀지 않게 한다.
+   */
+  #arrowForms() {
+    const v = this.view;
+    const key = [this.store.rev, this.focus ?? '', [...v.statusFilter].sort().join(','), [...v.orgFilter].sort().join(',')].join('|');
+    if (this._formsKey !== key) { this._formsKey = key; this._forms = new Map(); }
+    return this._forms;
+  }
+
+  /** 이 관계의 지금 모양 — 고친 값이 있으면 그려진 그대로(꼴 포함), 없으면 자동 경로를 고칠 수 있는 꼴로 옮긴 값 */
   #arrowShape(relId) {
     const g = this.arrowLayer._geom?.get(relId);
     if (!g) return null;
-    const saved = this.store.meta.arrows?.[relId];
-    return saved ? structuredClone(saved) : overrideFromRoute(g.points, g.box.from, g.box.to);
+    return g.form ? structuredClone(g.form) : overrideFromRoute(g.points, g.box.from, g.box.to);
   }
 
   editArrow(relId) {
@@ -666,9 +676,13 @@ export class Board {
     if (!id) return;
     const g = this.arrowLayer._geom?.get(id);
     if (!g) { this._arrowEdit = null; this._arrowEditOff?.(); this._arrowEditOff = null; return; }   // 관계·카드가 사라졌다
-    const shape = this.#arrowShape(id);
-    const A = anchorPoint(g.box.from, shape.a), B = anchorPoint(g.box.to, shape.b);
-    const r = elbowRoute(A, B, shape.m, [g.box.from, g.box.to]);
+    // 손잡이는 그려진 경로 그대로에서(꼴·가운데 위치). 아직 고치지 않은 자동 경로는 고칠 수 있는 꼴로 옮겨서
+    let A = g.A, B = g.B, r = g.route;
+    if (!g.form) {
+      const shape = this.#arrowShape(id);
+      A = anchorPoint(g.box.from, shape.a); B = anchorPoint(g.box.to, shape.b);
+      r = elbowRoute(A, B, shape.m, [g.box.from, g.box.to], shape.f);
+    }
     this.arrowLayer.querySelector(`.arrow[data-rel="${CSS.escape(id)}"]`)?.classList.add('editing');
     const layer = el('div.arrow-handles', { attrs: { 'aria-hidden': 'true' } });
     const handle = (cls, p, part, title) => {
@@ -697,16 +711,19 @@ export class Board {
       const next = this.#arrowShape(id);
       if (!next) return;
       const boxes = [g.box.from, g.box.to];
-      if (part === 'a') next.a = anchorFromPoint(g.box.from, p);
-      else if (part === 'b') next.b = anchorFromPoint(g.box.to, p);
-      else {
-        const r = elbowRoute(anchorPoint(g.box.from, next.a), anchorPoint(g.box.to, next.b), next.m, boxes);
+      if (part === 'a' || part === 'b') {
+        // 끝을 옮기면 꼴도 새로 고른다(옮긴 자리에 맞는 첫 꼴) — 그 꼴을 기억해 확대·축소에도 지킨다
+        if (part === 'a') next.a = anchorFromPoint(g.box.from, p); else next.b = anchorFromPoint(g.box.to, p);
+        next.f = elbowRoute(anchorPoint(g.box.from, next.a), anchorPoint(g.box.to, next.b), next.m, boxes).form;
+      } else {
+        // 가운데는 지금 꼴 그대로 위치만
+        const r = elbowRoute(anchorPoint(g.box.from, next.a), anchorPoint(g.box.to, next.b), next.m, boxes, next.f);
         const adj = r.adj;
         if (!adj || Math.abs(adj.to - adj.from) < 0.5) return;
         next.m = Math.round((((adj.axis === 'x' ? p.x : p.y) - adj.from) / (adj.to - adj.from)) * 1000) / 1000;
+        // 연결선으로 맞지 않는 모양(카드를 가로지르거나 머리가 바깥을 향함)이 되는 자리로는 옮기지 않는다
+        if (!elbowRoute(anchorPoint(g.box.from, next.a), anchorPoint(g.box.to, next.b), next.m, boxes, next.f).valid) return;
       }
-      // 연결선으로 맞지 않는 모양(카드를 가로지르거나 머리가 바깥을 향함)이 되는 자리로는 옮기지 않는다
-      if (part === 'm' && !elbowRoute(anchorPoint(g.box.from, next.a), anchorPoint(g.box.to, next.b), next.m, boxes).valid) return;
       if (!began) { this.store.begin('화살표 모양'); began = true; }
       this.store.commit('화살표 모양', (doc) => { doc.meta.arrows = { ...(doc.meta.arrows ?? {}), [id]: next }; });
     };

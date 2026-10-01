@@ -167,6 +167,17 @@ const between = (v, lo, hi) => v > Math.min(lo, hi) && v < Math.max(lo, hi);
  * @param {{x,y,w,h}[]} obstacles 피해야 할 다른 카드들
  */
 export function routeBetween(from, to, sameTrack, bite = 0, obstacles = []) {
+  return routeBetweenKeyed(from, to, sameTrack, bite, obstacles).points;
+}
+
+/**
+ * routeBetween + 고른 후보의 이름(key). 이름은 픽셀이 아니라 **어느 후보인가**다 — 세로/가로, 카드 변 위 어느 지점(가운데·
+ * 양 가장자리 쪽), 어느 장애물(id) 옆으로 꺾는가. prefer에 지난번 이름을 주면, 그 후보가 여전히 있고 더 가려지지 않는 한
+ * 그것을 쓴다 — 확대·축소·행 높이·창 크기로 **크기만** 바뀔 때 점수 차가 근소하게 뒤집혀 꺾임 모양이 튀지 않게.
+ * 장애물에 id가 있으면 이름에 쓰고, 없으면 순번을 쓴다.
+ * @returns {{points, key:string|null}}
+ */
+export function routeBetweenKeyed(from, to, sameTrack, bite = 0, obstacles = [], prefer = null) {
   const biteV = (box) => Math.min(Math.max(bite, 0), box.h * 0.4);
   const biteH = (box) => Math.min(Math.max(bite, 0), box.w * 0.4);
 
@@ -177,6 +188,10 @@ export function routeBetween(from, to, sameTrack, bite = 0, obstacles = []) {
   };
 
   const candidates = [];
+  const oid = (box, i) => box.id ?? `#${i}`;
+  // prefer 끝의 '='는 '그때 곧은 선이었다'
+  const preferKey = prefer?.endsWith('=') ? prefer.slice(0, -1) : prefer;
+  const straightKept = (key) => prefer === `${key}=`;
   const downward = to.y >= from.y + from.h - 1;
 
   // ── 세로 경로 (위 -> 아래) ───────────────────────────────
@@ -184,17 +199,23 @@ export function routeBetween(from, to, sameTrack, bite = 0, obstacles = []) {
     const y1 = from.y + from.h - biteV(from);
     const y2 = to.y + biteV(to);
     const mid = (from.y + from.h + to.y) / 2;
-    for (const sx of spread(from.x, from.w)) {
-      for (const tx of spread(to.x, to.w)) {
-        if (Math.abs(sx - tx) < 1) {
-          candidates.push([{ x: sx, y: y1 }, { x: tx, y: y2 }]);
-        } else {
-          candidates.push([
-            { x: sx, y: y1 }, { x: sx, y: mid }, { x: tx, y: mid }, { x: tx, y: y2 },
-          ]);
+    spread(from.x, from.w).forEach((sx, si) => {
+      spread(to.x, to.w).forEach((tx, ti) => {
+        const key = `v${si}${ti}`;
+        if (straightKept(key)) {
+          // 지난번엔 곧은 선이었다 — 두 카드가 가로로 겹치는 데가 있으면 그 안에서 곧게(크기만 바뀌어 생긴 어긋남으로 계단이 되지 않게)
+          const x = keepLine(sx, from.x, from.w, to.x, to.w);
+          if (x != null) { candidates.push({ key, path: [{ x, y: y1 }, { x, y: y2 }] }); return; }
         }
-      }
-    }
+        if (Math.abs(sx - tx) < 1) {
+          candidates.push({ key, path: [{ x: sx, y: y1 }, { x: tx, y: y2 }] });
+        } else {
+          candidates.push({ key, path: [
+            { x: sx, y: y1 }, { x: sx, y: mid }, { x: tx, y: mid }, { x: tx, y: y2 },
+          ] });
+        }
+      });
+    });
   }
 
   // ── 가로 경로 (옆면 -> 옆면) ─────────────────────────────
@@ -205,48 +226,54 @@ export function routeBetween(from, to, sameTrack, bite = 0, obstacles = []) {
   const sideIn = goRight ? to.x : to.x + to.w;
 
   // 세로로 꺾을 x 후보: 두 카드 사이의 빈 곳 + 장애물 가장자리 바깥
-  const turnXs = new Set([(sideOut + sideIn) / 2]);
-  for (const box of obstacles) {
-    if (between(box.x - 6, sideOut, sideIn)) turnXs.add(box.x - 6);
-    if (between(box.x + box.w + 6, sideOut, sideIn)) turnXs.add(box.x + box.w + 6);
-  }
+  const turnXs = new Map([[(sideOut + sideIn) / 2, 'm']]);
+  obstacles.forEach((box, i) => {
+    if (between(box.x - 6, sideOut, sideIn) && !turnXs.has(box.x - 6)) turnXs.set(box.x - 6, `${oid(box, i)}<`);
+    if (between(box.x + box.w + 6, sideOut, sideIn) && !turnXs.has(box.x + box.w + 6)) turnXs.set(box.x + box.w + 6, `${oid(box, i)}>`);
+  });
 
-  for (const sy of spread(from.y, from.h)) {
-    for (const ty of spread(to.y, to.h)) {
+  spread(from.y, from.h).forEach((sy, si) => {
+    spread(to.y, to.h).forEach((ty, ti) => {
+      if (straightKept(`h${si}${ti}`)) {
+        const y = keepLine(sy, from.y, from.h, to.y, to.h);
+        if (y != null) { candidates.push({ key: `h${si}${ti}`, path: [{ x: sx, y }, { x: tx, y }] }); return; }
+      }
       if (Math.abs(sy - ty) < 1) {
-        candidates.push([{ x: sx, y: sy }, { x: tx, y: ty }]);
-        continue;
+        candidates.push({ key: `h${si}${ti}`, path: [{ x: sx, y: sy }, { x: tx, y: ty }] });
+        return;
       }
-      for (const cx of turnXs) {
-        candidates.push([
+      for (const [cx, ck] of turnXs) {
+        candidates.push({ key: `h${si}${ti}:${ck}`, path: [
           { x: sx, y: sy }, { x: cx, y: sy }, { x: cx, y: ty }, { x: tx, y: ty },
-        ]);
+        ] });
       }
-    }
-  }
+    });
+  });
 
   // 가로로 꺾을 y 후보 — 카드 사이 빈 줄로 지나간다
-  const turnYs = new Set();
-  for (const box of obstacles) {
-    turnYs.add(box.y - 7);
-    turnYs.add(box.y + box.h + 7);
-  }
-  for (const cy of turnYs) {
+  const turnYs = new Map();
+  obstacles.forEach((box, i) => {
+    if (!turnYs.has(box.y - 7)) turnYs.set(box.y - 7, `${oid(box, i)}^`);
+    if (!turnYs.has(box.y + box.h + 7)) turnYs.set(box.y + box.h + 7, `${oid(box, i)}_`);
+  });
+  for (const [cy, ck] of turnYs) {
     if (!between(cy, from.y, to.y + to.h) && !between(cy, to.y, from.y + from.h)) continue;
-    candidates.push([
+    candidates.push({ key: `y:${ck}`, path: [
       { x: from.x + from.w / 2, y: from.y + from.h - biteV(from) },
       { x: from.x + from.w / 2, y: cy },
       { x: to.x + to.w / 2, y: cy },
       { x: to.x + to.w / 2, y: to.y + biteV(to) },
-    ]);
+    ] });
   }
 
   let best = null;
   let bestScore = null;
-  for (const path of candidates) {
-    const points = simplify(path);
+  let preferred = null;
+  for (const c of candidates) {
+    const points = simplify(c.path);
     if (points.length < 2) continue;
     const score = scorePath(points, obstacles);
+    if (preferKey && c.key === preferKey) preferred = { points, key: c.key, score };
     if (
       !bestScore ||
       score.blocked < bestScore.blocked - 0.5 ||
@@ -254,16 +281,38 @@ export function routeBetween(from, to, sameTrack, bite = 0, obstacles = []) {
         (score.bends < bestScore.bends ||
           (score.bends === bestScore.bends && score.length < bestScore.length)))
     ) {
-      best = points;
+      best = { points, key: c.key };
       bestScore = score;
     }
   }
+  // 지난번 후보가 여전히 있고, 가장 나은 것보다 거의 더 가려지지 않으면 그대로
+  // 이어 쓰되, 크기가 바뀌어 그 후보가 거꾸로 가게 됐으면(세로 경로가 위로, 가로 경로가 반대쪽으로 나가거나 들어오면) 새로 고른다
+  const forward = (c) => {
+    const p = c.points, n = p.length;
+    const d0 = { x: p[1].x - p[0].x, y: p[1].y - p[0].y }, d1 = { x: p[n - 1].x - p[n - 2].x, y: p[n - 1].y - p[n - 2].y };
+    if (c.key[0] === 'h') return (goRight ? d0.x > 0 && d1.x > 0 : d0.x < 0 && d1.x < 0) && !d0.y && !d1.y;
+    return d0.y > 0 && d1.y > 0 && !d0.x && !d1.x;
+  };
+  const pick = preferred && forward(preferred) && preferred.score.blocked <= bestScore.blocked + PREFER_SLACK ? preferred : best;
+  if (pick) return { points: pick.points, key: pick.points.length === 2 ? `${pick.key}=` : pick.key };
 
-  return best ?? [
+  return { points: [
     { x: from.x + from.w / 2, y: from.y + from.h },
     { x: to.x + to.w / 2, y: to.y },
-  ];
+  ], key: null };
 }
+
+/**
+ * 곧은 선을 이어 그릴 자리 — 두 구간 [a, a+aw]·[b, b+bw]가 겹치는 데(가장자리 4px 안쪽)에서 v에 가장 가까운 값. 겹치지 않으면 null.
+ */
+function keepLine(v, a, aw, b, bw) {
+  const lo = Math.max(a, b) + 4, hi = Math.min(a + aw, b + bw) - 4;
+  if (lo > hi) return null;
+  return Math.min(hi, Math.max(lo, v));
+}
+
+/** 이어 쓸 후보가 가장 나은 후보보다 이만큼(px)까지 더 가려져도 그대로 쓴다 — 크기만 바뀌어 생긴 근소한 차로 튀지 않게 */
+const PREFER_SLACK = 12;
 
 /* ── 사용자가 고친 화살표 (꺾은선 연결선) ─────────────────────
    파워포인트의 꺾은선 화살표처럼: 양 끝은 카드 테두리 위의 한 점(어느 변 · 변 위 비율), 가운데 구간의 위치는
@@ -346,43 +395,49 @@ function validRoute(pts, A, B, boxes) {
  * 꺾은선 경로 — A(시작 테두리 점) → B(끝 테두리 점). 파워포인트 꺾은선 연결선처럼 A의 변에서 바깥으로 나가 B의 변으로
  * 바깥에서 들어온다. 후보(한 번 꺾임 → 가운데 구간 하나 → 짧게 빠져나간 뒤 꺾임)를 차례로 보고 맞는 첫 경로를 쓴다.
  * m은 가운데 구간 위치(그 구간 양끝 기준 비율, 0.5 = 한가운데). boxes는 두 카드 상자(가로지르는지 본다).
- * @returns {{points, axis:'x'|'y'|null, mid:{x,y}|null, adj:{axis,from,to}|null, valid:boolean}}
+ * prefer(꼴 이름)를 주면 그 꼴이 방향만 맞으면 그대로 쓴다 — 확대·축소로 크기만 바뀔 때 모양이 다른 꼴로 튀지 않게
+ * (카드 사이가 좁아져 살짝 겹치더라도 같은 꼴을 지킨다. 화살표는 카드 아래에 그려진다).
+ * @returns {{points, axis:'x'|'y'|null, mid:{x,y}|null, adj:{axis,from,to}|null, valid:boolean, form:string}}
  *   adj — 가운데 손잡이를 끌 때 m = (좌표 − from) / (to − from)
  */
-export function elbowRoute(A, B, m = 0.5, boxes = []) {
+export function elbowRoute(A, B, m = 0.5, boxes = [], prefer = null) {
   const k = Number.isFinite(Number(m)) ? Number(m) : 0.5;
   const P = ({ x, y }) => ({ x, y });
   const ah = A.n.x !== 0, bh = B.n.x !== 0;
   const lerp = (a, b) => a + (b - a) * k;
   const cand = [];
   // 곧은 선 — 마주 보는 두 변이 한 줄 위에 있으면
-  cand.push({ points: [P(A), P(B)], axis: null });
+  cand.push({ id: 'line', points: [P(A), P(B)], axis: null });
   // 한 번 꺾임 — A의 법선 방향으로 먼저
-  cand.push({ points: [P(A), ah ? { x: B.x, y: A.y } : { x: A.x, y: B.y }, P(B)], axis: null });
+  cand.push({ id: 'corner', points: [P(A), ah ? { x: B.x, y: A.y } : { x: A.x, y: B.y }, P(B)], axis: null });
   // 가운데 구간 하나(두 번 꺾임) — 나란한 법선
-  if (ah && bh) { const mx = lerp(A.x, B.x); cand.push({ points: [P(A), { x: mx, y: A.y }, { x: mx, y: B.y }, P(B)], axis: 'x', adj: { axis: 'x', from: A.x, to: B.x }, mid: { x: mx, y: (A.y + B.y) / 2 } }); }
-  if (!ah && !bh) { const my = lerp(A.y, B.y); cand.push({ points: [P(A), { x: A.x, y: my }, { x: B.x, y: my }, P(B)], axis: 'y', adj: { axis: 'y', from: A.y, to: B.y }, mid: { x: (A.x + B.x) / 2, y: my } }); }
+  if (ah && bh) { const mx = lerp(A.x, B.x); cand.push({ id: 'midx', points: [P(A), { x: mx, y: A.y }, { x: mx, y: B.y }, P(B)], axis: 'x', adj: { axis: 'x', from: A.x, to: B.x }, mid: { x: mx, y: (A.y + B.y) / 2 } }); }
+  if (!ah && !bh) { const my = lerp(A.y, B.y); cand.push({ id: 'midy', points: [P(A), { x: A.x, y: my }, { x: B.x, y: my }, P(B)], axis: 'y', adj: { axis: 'y', from: A.y, to: B.y }, mid: { x: (A.x + B.x) / 2, y: my } }); }
   // 변에서 짧게 곧게 빠져나간 뒤 — 카드 사이가 좁으면 더 짧게(16 → 8 → 4px)
   for (const st of [STUB, STUB / 2, STUB / 4]) {
     const A1 = { x: A.x + A.n.x * st, y: A.y + A.n.y * st };
     const B1 = { x: B.x + B.n.x * st, y: B.y + B.n.y * st };
     // 한 번 꺾어 들어가기(엇갈린 법선) — 두 모서리 다
-    cand.push({ points: [P(A), A1, { x: B1.x, y: A1.y }, B1, P(B)], axis: null });
-    cand.push({ points: [P(A), A1, { x: A1.x, y: B1.y }, B1, P(B)], axis: null });
+    cand.push({ id: `sc1:${st}`, points: [P(A), A1, { x: B1.x, y: A1.y }, B1, P(B)], axis: null });
+    cand.push({ id: `sc2:${st}`, points: [P(A), A1, { x: A1.x, y: B1.y }, B1, P(B)], axis: null });
     // 가운데 가로 구간 또는 세로 구간
-    { const my = lerp(A1.y, B1.y); cand.push({ points: [P(A), A1, { x: A1.x, y: my }, { x: B1.x, y: my }, B1, P(B)], axis: 'y', adj: { axis: 'y', from: A1.y, to: B1.y }, mid: { x: (A1.x + B1.x) / 2, y: my } }); }
-    { const mx = lerp(A1.x, B1.x); cand.push({ points: [P(A), A1, { x: mx, y: A1.y }, { x: mx, y: B1.y }, B1, P(B)], axis: 'x', adj: { axis: 'x', from: A1.x, to: B1.x }, mid: { x: mx, y: (A1.y + B1.y) / 2 } }); }
+    { const my = lerp(A1.y, B1.y); cand.push({ id: `smy:${st}`, points: [P(A), A1, { x: A1.x, y: my }, { x: B1.x, y: my }, B1, P(B)], axis: 'y', adj: { axis: 'y', from: A1.y, to: B1.y }, mid: { x: (A1.x + B1.x) / 2, y: my } }); }
+    { const mx = lerp(A1.x, B1.x); cand.push({ id: `smx:${st}`, points: [P(A), A1, { x: mx, y: A1.y }, { x: mx, y: B1.y }, B1, P(B)], axis: 'x', adj: { axis: 'x', from: A1.x, to: B1.x }, mid: { x: mx, y: (A1.y + B1.y) / 2 } }); }
   }
-  for (const c of cand) {
-    if (validRoute(c.points, A, B, boxes)) {
-      const pts = simplify(c.points);
-      // 가운데 구간이 접혀 사라졌으면(곧은 선이 됐으면) 손잡이도 없다
-      const hasMid = c.axis && pts.length >= 4;
-      return { points: pts, axis: hasMid ? c.axis : null, mid: hasMid ? c.mid : null, adj: hasMid ? c.adj : null, valid: true };
-    }
+  const done = (c, valid) => {
+    const pts = simplify(c.points);
+    // 가운데 구간이 접혀 사라졌으면(곧은 선이 됐으면) 손잡이도 없다
+    const hasMid = c.axis && pts.length >= 4;
+    return { points: pts, axis: hasMid ? c.axis : null, mid: hasMid ? c.mid : null, adj: hasMid ? c.adj : null, valid, form: c.id };
+  };
+  // 이어 쓸 꼴 — 방향(나가고 들어오는 쪽)만 맞으면 그대로
+  if (prefer) {
+    const c = cand.find((x) => x.id === prefer);
+    if (c && validRoute(c.points, A, B, [])) return done(c, validRoute(c.points, A, B, boxes));
   }
+  for (const c of cand) if (validRoute(c.points, A, B, boxes)) return done(c, true);
   // 맞는 것이 없으면(카드가 겹쳐 있는 등) 한 번 꺾임으로 그린다
-  return { points: simplify(cand[1].points), axis: null, mid: null, adj: null, valid: false };
+  return done(cand[1], false);
 }
 
 /**
@@ -402,5 +457,7 @@ export function overrideFromRoute(points, from, to) {
     const v = r.adj.axis === 'x' ? pts[1].x : pts[1].y;
     if (Math.abs(r.adj.to - r.adj.from) > 0.5) m = (v - r.adj.from) / (r.adj.to - r.adj.from);
   }
-  return { a, b, m: Math.round(m * 1000) / 1000 };
+  m = Math.round(m * 1000) / 1000;
+  // 그 m으로 실제로 고른 꼴 — 다음부터는 이 꼴을 이어 쓴다
+  return { a, b, m, f: elbowRoute(A, B, m, [from, to]).form };
 }

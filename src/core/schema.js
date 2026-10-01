@@ -511,6 +511,8 @@ export function normalize(doc) {
     if (!relIds.has(id) || !a || !b) continue;
     const m = Number(o.m);
     arrows[id] = { a, b, m: Number.isFinite(m) ? Math.min(3, Math.max(-2, m)) : 0.5 };
+    // 꼴 — 고칠 때 고른 경로 모양(곧은 선·한 번 꺾임·가운데 구간…). 확대·축소에도 이 꼴을 지킨다
+    if (typeof o.f === 'string' && /^[a-z0-9:]{2,12}$/.test(o.f)) arrows[id].f = o.f;
   }
   doc.meta.arrows = arrows;
 

@@ -22,6 +22,9 @@ export class Store extends Emitter {
 
   constructor({ adapter, doc }) {
     super();
+    /** 문서가 바뀐 횟수 — 'change'마다 하나씩(되돌리기·교체 포함). 화면 크기만 바뀐 그리기와 가를 때 쓴다(화살표 모양 유지). */
+    this.rev = 0;
+    this.on('change', () => { this.rev += 1; });
     this.#adapter = adapter;
     this.#doc = doc;
   }
