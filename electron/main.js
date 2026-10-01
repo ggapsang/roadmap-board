@@ -239,6 +239,7 @@ async function runSmoke(target) {
   let nested = null;
   let relCheck = null;
   let linkHl = null;
+  let arrowEdit = null;
   let scaleCheck = null;
   let dateless = null;
   let containCheck = null;
@@ -459,6 +460,68 @@ async function runSmoke(target) {
     return { arrows, linked: linked.size, want: want.size, cousins: cousins.size, ok, kept, cleared, filled: !!fill && fill !== base };
   })()`);
   console.log('[smoke] link-hl ' + JSON.stringify(linkHl));
+
+  // 화살표 모양 고치기 — 더블클릭하면 손잡이, 끝 손잡이를 끌면 연결된 카드 테두리를 따라(가장 가까운 테두리 점),
+  // 가운데 손잡이는 꺾이는 위치. 되돌리기·저장 왕복·Esc·자동 경로로 되돌리기.
+  arrowEdit = await target.webContents.executeJavaScript(`(async () => {
+    const run = (async () => {
+      const r = window.__roadmap, sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+      const path = [...document.querySelectorAll('.arrows .arrow')].find((p) => p.dataset.rel);
+      const id = path.dataset.rel, toId = path.dataset.to;
+      const before = path.getAttribute('d');
+      path.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      await sleep(80);
+      const handles = document.querySelectorAll('#grid .arrow-handles .ah-end').length;
+      const noChangeYet = !r.store.meta.arrows?.[id];                              // 편집만 시작 — 아직 안 바뀐다
+      // 끝 손잡이를 후행 카드 오른쪽 변 가운데로
+      const toCard = document.querySelector('#grid .ev[data-id="' + toId + '"]').getBoundingClientRect();
+      const hb = document.querySelector('#grid .arrow-handles .ah-end[data-part="b"]');
+      const hr = hb.getBoundingClientRect();
+      const at = (x, y) => ({ bubbles: true, clientX: x, clientY: y, button: 0, pointerId: 31 });
+      hb.dispatchEvent(new PointerEvent('pointerdown', at(hr.left + 5, hr.top + 5)));
+      window.dispatchEvent(new PointerEvent('pointermove', at(toCard.right + 3, toCard.top + toCard.height / 2)));
+      window.dispatchEvent(new PointerEvent('pointerup', at(toCard.right + 3, toCard.top + toCard.height / 2)));
+      await sleep(120);
+      const o = r.store.meta.arrows?.[id];
+      const endOk = o?.b?.side === 'right' && Math.abs(o.b.t - 0.5) < 0.05;
+      const after = document.querySelector('.arrows .arrow[data-rel="' + id + '"]')?.getAttribute('d');
+      const redrawn = after !== before && !!document.querySelector('.arrows .arrow.custom[data-rel="' + id + '"]');
+      const stillEditing = !!document.querySelector('#grid .arrow-handles');
+      // 되돌리기 한 번 = 끌기 전체
+      r.store.undo(); await sleep(80);
+      const undone = !r.store.meta.arrows?.[id];
+      r.store.redo(); await sleep(80);
+      // 가운데 손잡이 — 양 끝이 오른쪽 변 → 왼쪽 변이면 가운데 세로 구간이 생겨 그 위치를 옮긴다
+      r.store.commit('시험', (doc) => { doc.meta.arrows = { ...doc.meta.arrows, [id]: { a: { side: 'right', t: 0.5 }, b: { side: 'left', t: 0.5 }, m: 0.5 } }; });
+      await sleep(80);
+      let midOk = null;
+      const hm = document.querySelector('#grid .arrow-handles .ah-mid');
+      if (hm) {
+        const m0 = r.store.meta.arrows[id].m, mr = hm.getBoundingClientRect();
+        const horizontal = hm.classList.contains('ah-x');
+        hm.dispatchEvent(new PointerEvent('pointerdown', at(mr.left + 4, mr.top + 4)));
+        window.dispatchEvent(new PointerEvent('pointermove', at(mr.left + 4 + (horizontal ? 15 : 0), mr.top + 4 + (horizontal ? 0 : 15))));
+        window.dispatchEvent(new PointerEvent('pointerup', at(mr.left + 4 + (horizontal ? 15 : 0), mr.top + 4 + (horizontal ? 0 : 15))));
+        await sleep(100);
+        midOk = r.store.meta.arrows[id].m !== m0;
+      }
+      // Esc로 끝
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await sleep(50);
+      const ended = !document.querySelector('#grid .arrow-handles');
+      // 저장 왕복 — 다시 읽어도 모양이 남는다
+      await sleep(300);
+      r.tabs.markAllStale(); await r.tabs.reloadActive(); await sleep(250);
+      const persisted = r.store.meta.arrows?.[id]?.b?.side === 'left' && r.store.meta.arrows?.[id]?.a?.side === 'right';
+      // 우클릭 '자동 경로로 되돌리기'
+      r.board.resetArrow(id); await sleep(80);
+      const reset = !r.store.meta.arrows?.[id] && !document.querySelector('.arrows .arrow.custom[data-rel="' + id + '"]');
+      return { handles, noChangeYet, endOk, redrawn, stillEditing, undone, midOk, ended, persisted, reset };
+    })();
+    const guard = new Promise((res) => setTimeout(() => res({ error: 'timeout' }), 12000));
+    return Promise.race([run.catch((e) => ({ error: String(e && e.stack || e) })), guard]);
+  })()`);
+  console.log('[smoke] arrow-edit ' + JSON.stringify(arrowEdit));
 
   // 포함(contain)도 관계로 노출되는가 — 정규화 후 doc.relations에 contain이 생긴다
     containCheck = await target.webContents.executeJavaScript(`(async () => {
@@ -2833,6 +2896,9 @@ async function runSmoke(target) {
     && graphCheck?.ui?.scoped?.backToAll === true && graphCheck?.ui?.scoped?.backToScoped === true
     && styleUi?.noCurrentInCombine === true && styleUi?.detailLabel === '세부내역' && styleUi?.sizeLabel === '사이즈 수동 설정' && styleUi?.descBlock === true
     && relCheck?.allDep === true && relCheck?.added === true && relCheck?.removed === true
+    && arrowEdit?.handles === 2 && arrowEdit?.noChangeYet === true && arrowEdit?.endOk === true && arrowEdit?.redrawn === true
+    && arrowEdit?.stillEditing === true && arrowEdit?.undone === true && arrowEdit?.midOk === true && arrowEdit?.ended === true
+    && arrowEdit?.persisted === true && arrowEdit?.reset === true
     && linkHl?.arrows > 0 && linkHl?.ok === true && linkHl?.kept === true && linkHl?.cleared === true && linkHl?.filled === true
     && scaleCheck?.options === 4 && scaleCheck?.defaultMode === 'month-week'
     && scaleCheck?.weekDay?.outer === true && scaleCheck?.weekDay?.ppd === true && scaleCheck?.weekDay?.newLen === 1 && scaleCheck?.weekDay?.step === 'day'

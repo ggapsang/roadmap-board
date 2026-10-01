@@ -787,6 +787,7 @@ export class BoardRepository {
     const metaExtra = {};
     if (boardMeta.display) metaExtra.display = boardMeta.display;
     if (boardMeta.statusLabels) metaExtra.statusLabels = boardMeta.statusLabels;
+    if (boardMeta.arrows) metaExtra.arrows = boardMeta.arrows;     // 사용자가 고친 화살표 모양(보드 표시)
 
     const base = {
       version: board.doc_version,
@@ -1071,6 +1072,7 @@ export class BoardRepository {
       const metaJson = JSON.stringify({
         display: doc.meta.display ?? null,
         statusLabels: doc.meta.statusLabels ?? null,
+        arrows: doc.meta.arrows && Object.keys(doc.meta.arrows).length ? doc.meta.arrows : null,
       });
       this.db.prepare(`
         INSERT INTO board (id, name, start_date, end_date, doc_version, root_event_id, meta_json)

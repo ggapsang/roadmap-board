@@ -7,7 +7,7 @@
  * 파워포인트 화살표 도형처럼 보이도록 선이 아니라 다각형으로 그린다.
  * 굵기와 머리 크기는 문서의 표시 설정(meta.display)에서 온다.
  */
-import { blockArrowPath, routeBetween } from '../../core/arrow-geometry.js';
+import { blockArrowPath, routeBetween, anchorPoint, elbowRoute } from '../../core/arrow-geometry.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 
@@ -23,11 +23,15 @@ export function createArrowLayer() {
  * @param {HTMLElement} grid .ev 카드들을 품은 컨테이너
  * @param {object[]} items
  * @param {{arrowWidth:number, arrowHead:number}} display
+ * @param {Object<string,{a,b,m}>} [arrows] 사용자가 고친 화살표 모양(doc.meta.arrows) — 관계 id → 꺾은선 연결선
+ * 그린 화살표의 기하는 layer._geom(관계 id → {from,to,points,box:{from,to},edit})에 남긴다 — 편집 손잡이가 쓴다.
  */
-export function drawArrows(layer, grid, items, relations, display) {
+export function drawArrows(layer, grid, items, relations, display, arrows = {}) {
   const group = layer.querySelector('g');
   if (!group) return;
   group.replaceChildren();
+  const geom = new Map();
+  layer._geom = geom;
 
   const width = display?.arrowWidth ?? 7;
   const head = display?.arrowHead ?? 2;
@@ -77,15 +81,29 @@ export function drawArrows(layer, grid, items, relations, display) {
       obstacles.push(rect);
     }
 
-    const sameTrack = trackOf.get(rel.from) === trackOf.get(rel.to);
-    const d = blockArrowPath(routeBetween(from, to, sameTrack, bite, obstacles), width, head);
+    // 사용자가 고친 모양이 있으면 그것(양 끝 = 카드 테두리 위 점, 가운데 구간 위치), 없으면 자동 경로
+    const o = arrows?.[rel.id];
+    let points, edit = null;
+    if (o) {
+      const A = anchorPoint(from, o.a), B = anchorPoint(to, o.b);
+      const r = elbowRoute(A, B, o.m, [from, to]);
+      points = r.points;
+      edit = { A, B, axis: r.axis, mid: r.mid, adj: r.adj };
+    } else {
+      const sameTrack = trackOf.get(rel.from) === trackOf.get(rel.to);
+      points = routeBetween(from, to, sameTrack, bite, obstacles);
+    }
+    const d = blockArrowPath(points, width, head);
     if (!d) continue;
+    geom.set(rel.id, { from: rel.from, to: rel.to, points, box: { from, to }, edit, custom: !!o });
 
     const path = document.createElementNS(NS, 'path');
     path.setAttribute('d', d);
     path.setAttribute('class', 'arrow');
     path.dataset.from = rel.from;       // 카드에 올렸을 때 이어진 화살표를 찾는다(Board#linkHighlight)
     path.dataset.to = rel.to;
+    path.dataset.rel = rel.id;
+    if (o) path.classList.add('custom');
     path.append(makeTitle(rel.from, rel.to, items));
     group.append(path);
   }

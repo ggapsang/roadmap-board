@@ -134,7 +134,7 @@
 
 ## 9. 무시해도 되는 것 (화면 전용)
 
-`bands` 전체, `meta.display`(단 `dated`는 §6), `tracks[].w`, `place`의 `sp`·`x`·`w`·`hd`·`align`·`showNote`·`fill`.
+`bands` 전체, `meta.display`(단 `dated`는 §6), `meta.arrows`(사용자가 고친 화살표 모양), `tracks[].w`, `place`의 `sp`·`x`·`w`·`hd`·`align`·`showNote`·`fill`.
 이 값들은 칸 높이·카드 폭·색 같은 **보이는 모양**일 뿐, 일정의 의미·순서·기간과 무관하다.
 
 ## 10. 자주 하는 계산

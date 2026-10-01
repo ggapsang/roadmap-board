@@ -25,6 +25,7 @@ import { renderAxis, makeTodayLine } from './axis.js';
 import { attachBandEditing } from './bands.js';
 import { renderCard, fitTitle } from './card.js';
 import { createArrowLayer, drawArrows } from './arrows.js';
+import { anchorPoint, anchorFromPoint, elbowRoute, overrideFromRoute } from '../../core/arrow-geometry.js';
 import { attachDrag } from './drag.js';
 
 export class Board {
@@ -506,8 +507,9 @@ export class Board {
     for (const node of cardEls.values()) fitTitle(node);
 
     // 카드가 붙은 뒤에야 offsetLeft/offsetTop이 확정된다
-    drawArrows(this.arrowLayer, this.grid, this.store.items, this.store.relations, this.store.meta.display);
+    drawArrows(this.arrowLayer, this.grid, this.store.items, this.store.relations, this.store.meta.display, this.store.meta.arrows ?? {});
     this.#linkHighlight(this._hoverId ?? null);
+    this.#drawArrowHandles();
   }
 
   /** 각 트랙 컬럼의 실제 너비(px) */
@@ -567,8 +569,9 @@ export class Board {
   }
 
   redrawArrows() {
-    drawArrows(this.arrowLayer, this.grid, this.store.items, this.store.relations, this.store.meta.display);
+    drawArrows(this.arrowLayer, this.grid, this.store.items, this.store.relations, this.store.meta.display, this.store.meta.arrows ?? {});
     this.#linkHighlight(this._hoverId ?? null);
+    this.#drawArrowHandles();
   }
 
   /**
@@ -614,6 +617,122 @@ export class Board {
     for (const n of this.grid.querySelectorAll('.ev')) if (ids.has(n.dataset.id)) n.classList.add('linked');
   }
 
+  // ── 화살표 모양 고치기 (꺾은선 연결선) ─────────────────────
+  // 화살표를 더블클릭하면 편집 — 양 끝 손잡이를 끌면 그 끝이 **연결된 카드의 테두리**를 따라 움직이고(가장 가까운 테두리 점),
+  // 가운데 마름모 손잡이는 파워포인트 꺾은선 화살표처럼 가운데 구간의 위치를 옮긴다. 값은 카드에 대한 비율이라 카드가
+  // 움직여도 모양이 따라간다. 보드 표시 값(doc.meta.arrows, 되돌리기 가능). Esc·빈 곳 클릭으로 끝, 우클릭 '자동 경로로'.
+  // 끌기 리스너는 window에(규약 14 — 손잡이는 다시 그릴 때마다 새로 만든다). 마우스 좌표 ÷ 보드 배율(규약 24).
+
+  /** 이 관계의 지금 모양 — 고친 값이 있으면 그것, 없으면 자동 경로에서 옮긴 값 */
+  #arrowShape(relId) {
+    const g = this.arrowLayer._geom?.get(relId);
+    if (!g) return null;
+    const saved = this.store.meta.arrows?.[relId];
+    return saved ? structuredClone(saved) : overrideFromRoute(g.points, g.box.from, g.box.to);
+  }
+
+  editArrow(relId) {
+    if (this.store.readonly || !this.arrowLayer._geom?.has(relId)) return;
+    this._arrowEdit = relId;
+    this.#drawArrowHandles();
+    if (this._arrowEditOff) return;
+    // 끝내기 — Esc, 손잡이·그 화살표 밖을 누르면
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); this.endArrowEdit(); } };
+    const onDown = (e) => {
+      if (e.target.closest?.('.arrow-handles .ah')) return;
+      if (e.target.closest?.('.arrow')?.dataset.rel === this._arrowEdit) return;
+      this.endArrowEdit();
+    };
+    document.addEventListener('keydown', onKey, true);
+    document.addEventListener('pointerdown', onDown, true);
+    this._arrowEditOff = () => {
+      document.removeEventListener('keydown', onKey, true);
+      document.removeEventListener('pointerdown', onDown, true);
+    };
+  }
+
+  endArrowEdit() {
+    this._arrowEdit = null;
+    this._arrowEditOff?.();
+    this._arrowEditOff = null;
+    this.#drawArrowHandles();
+  }
+
+  /** 편집 중인 화살표의 손잡이 — 양 끝(동그라미)과, 가운데 구간을 옮길 수 있으면 마름모 */
+  #drawArrowHandles() {
+    this.grid.querySelector(':scope > .arrow-handles')?.remove();
+    for (const p of this.arrowLayer.querySelectorAll('.arrow.editing')) p.classList.remove('editing');
+    const id = this._arrowEdit;
+    if (!id) return;
+    const g = this.arrowLayer._geom?.get(id);
+    if (!g) { this._arrowEdit = null; this._arrowEditOff?.(); this._arrowEditOff = null; return; }   // 관계·카드가 사라졌다
+    const shape = this.#arrowShape(id);
+    const A = anchorPoint(g.box.from, shape.a), B = anchorPoint(g.box.to, shape.b);
+    const r = elbowRoute(A, B, shape.m, [g.box.from, g.box.to]);
+    this.arrowLayer.querySelector(`.arrow[data-rel="${CSS.escape(id)}"]`)?.classList.add('editing');
+    const layer = el('div.arrow-handles', { attrs: { 'aria-hidden': 'true' } });
+    const handle = (cls, p, part, title) => {
+      const h = el(`div.ah.${cls}`, { title, style: { left: `${p.x}px`, top: `${p.y}px` }, dataset: { part } });
+      h.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); this.#dragArrowHandle(id, part, e); });
+      layer.append(h);
+    };
+    handle('ah-end', A, 'a', '시작 — 끌면 선행 카드 테두리를 따라 움직입니다');
+    handle('ah-end', B, 'b', '끝 — 끌면 후행 카드 테두리를 따라 움직입니다');
+    if (r.axis) handle(`ah-mid.ah-${r.axis}`, r.mid, 'm', '가운데 구간 — 끌어서 꺾이는 위치를 옮깁니다');
+    this.grid.append(layer);
+  }
+
+  #dragArrowHandle(id, part, ev) {
+    if (this.store.readonly) return;
+    const g0 = this.arrowLayer._geom?.get(id);
+    if (!g0) return;
+    let began = false;
+    const toBoard = (e) => {
+      const gr = this.grid.getBoundingClientRect();
+      return { x: (e.clientX - gr.left) / this.zoom, y: (e.clientY - gr.top) / this.zoom };
+    };
+    const move = (e) => {
+      const g = this.arrowLayer._geom?.get(id) ?? g0;
+      const p = toBoard(e);
+      const next = this.#arrowShape(id);
+      if (!next) return;
+      const boxes = [g.box.from, g.box.to];
+      if (part === 'a') next.a = anchorFromPoint(g.box.from, p);
+      else if (part === 'b') next.b = anchorFromPoint(g.box.to, p);
+      else {
+        const r = elbowRoute(anchorPoint(g.box.from, next.a), anchorPoint(g.box.to, next.b), next.m, boxes);
+        const adj = r.adj;
+        if (!adj || Math.abs(adj.to - adj.from) < 0.5) return;
+        next.m = Math.round((((adj.axis === 'x' ? p.x : p.y) - adj.from) / (adj.to - adj.from)) * 1000) / 1000;
+      }
+      // 연결선으로 맞지 않는 모양(카드를 가로지르거나 머리가 바깥을 향함)이 되는 자리로는 옮기지 않는다
+      if (part === 'm' && !elbowRoute(anchorPoint(g.box.from, next.a), anchorPoint(g.box.to, next.b), next.m, boxes).valid) return;
+      if (!began) { this.store.begin('화살표 모양'); began = true; }
+      this.store.commit('화살표 모양', (doc) => { doc.meta.arrows = { ...(doc.meta.arrows ?? {}), [id]: next }; });
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      document.body.classList.remove('dragging-arrow');
+      if (began) this.store.end();
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+    document.body.classList.add('dragging-arrow');
+  }
+
+  /** 자동 경로로 되돌리기 — 고친 모양을 지운다 */
+  resetArrow(relId) {
+    if (!this.store.meta.arrows?.[relId]) return;
+    this.store.commit('화살표 자동 경로', (doc) => {
+      const next = { ...(doc.meta.arrows ?? {}) };
+      delete next[relId];
+      doc.meta.arrows = next;
+    });
+  }
+
   // ── 입력 ────────────────────────────────────────────────
 
   #attachEvents() {
@@ -634,6 +753,8 @@ export class Board {
 
     // 자식 카드의 가로 폭 손잡이를 더블클릭하면 자동 배치로 되돌린다
     this.grid.addEventListener('dblclick', (ev) => {
+      const arrow = ev.target.closest?.('.arrow');
+      if (arrow?.dataset.rel) { ev.stopPropagation(); this.editArrow(arrow.dataset.rel); return; }
       const cls = ev.target.classList;
       if (cls.contains('grip-hw') || cls.contains('grip-he')) {
         const card = ev.target.closest('.ev');
@@ -657,6 +778,16 @@ export class Board {
     // 우클릭 — 카드에서 '이벤트 복사', 빈 칸에서 '붙여넣기'. 보드를 넘나든다(클립보드는 인스턴스에).
     this.grid.addEventListener('contextmenu', (ev) => {
       if (this.store.readonly) return;
+      const arrow = ev.target.closest?.('.arrow');
+      if (arrow?.dataset.rel) {
+        ev.preventDefault();
+        const id = arrow.dataset.rel;
+        openCtxMenu(ev.clientX, ev.clientY, [
+          { label: '화살표 모양 고치기', action: () => this.editArrow(id) },
+          { label: '자동 경로로 되돌리기', disabled: !this.store.meta.arrows?.[id], action: () => { this.resetArrow(id); this.endArrowEdit(); } },
+        ]);
+        return;
+      }
       const card = ev.target.closest('.ev');
       const col = ev.target.closest('.col');
       if (!card && !col) return;

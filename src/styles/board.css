@@ -72,6 +72,15 @@ body.panel-open .cal{min-width:0}
 .arrow:hover{fill:var(--accent-soft);stroke:var(--accent)}
 /* 카드에 커서를 올리면 그 카드에 닿는 화살표를 채워 칠한다(Board#linkHighlight) */
 .arrow.hl{fill:var(--accent);stroke:var(--accent)}
+/* 화살표 모양 고치기(더블클릭) — 고치는 화살표와 손잡이. 손잡이는 카드 위(떠 있는 편집 층) */
+.arrow.editing{fill:var(--accent-soft);stroke:var(--accent);stroke-dasharray:4 2}
+.arrow-handles{position:absolute;inset:0;z-index:40;pointer-events:none}
+.ah{position:absolute;width:var(--u3);height:var(--u3);margin:calc(var(--u3) / -2) 0 0 calc(var(--u3) / -2);
+  border-radius:50%;background:var(--bg-panel);border:2px solid var(--accent);pointer-events:auto;cursor:move;box-sizing:border-box}
+.ah-mid{border-radius:2px;transform:rotate(45deg);background:var(--accent)}
+.ah-mid.ah-x{cursor:ew-resize}
+.ah-mid.ah-y{cursor:ns-resize}
+body.dragging-arrow, body.dragging-arrow *{cursor:grabbing !important;user-select:none}
 
 /* ── 일정 카드 ────────────────────────────────────
    "테두리 박스"가 아니라 "정보가 놓인 표면"이다 (가이드 §4 / §9).

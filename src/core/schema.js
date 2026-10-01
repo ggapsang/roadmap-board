@@ -15,7 +15,7 @@ import {
   RELATION_TYPES, RELATION_KEYS, FILL_KEYS, SCALE_KEYS, SLOT_UNIT_OF, BAND_SCALE,
 } from '../config/index.js';
 
-export const SCHEMA_VERSION = 18;
+export const SCHEMA_VERSION = 19;
 
 /**
  * v0 = P0 시안 문서(version 필드 없음).
@@ -223,6 +223,13 @@ function v17_to_v18(doc) {
   return doc;
 }
 
+function v18_to_v19(doc) {
+  // 사용자가 고친 화살표 모양(보드 표시) — 관계 id → 꺾은선 연결선. 옛 문서엔 없다(전부 자동 경로).
+  if (doc.meta && typeof doc.meta === 'object') doc.meta.arrows = doc.meta.arrows ?? {};
+  doc.version = 19;
+  return doc;
+}
+
 const MIGRATIONS = {
   0: v0_to_v1,
   1: v1_to_v2,
@@ -242,6 +249,7 @@ const MIGRATIONS = {
   15: v15_to_v16,
   16: v16_to_v17,
   17: v17_to_v18,
+  18: v18_to_v19,
 };
 
 export const ALIGNS = ['top', 'middle', 'bottom'];
@@ -490,6 +498,21 @@ export function normalize(doc) {
 
   // ── 조합(구성) — 태스크와 본질이 다른 순서 없는 포함 (docs/SAVE.md §5)
   normalizeCompose(doc, warnings);
+
+  // ── 사용자가 고친 화살표 모양(보드 표시) — 관계 id → { a:{side,t}, b:{side,t}, m }. 없는 관계·틀린 값은 버린다
+  //    (화살표는 자동 경로로 돌아간다). 끝점 = 카드 테두리 위 점(변·비율), m = 가운데 구간 위치(A→B 비율).
+  const relIds = new Set(doc.relations.filter((r) => r.type === 'dep').map((r) => r.id));
+  const SIDES = ['top', 'right', 'bottom', 'left'];
+  const end = (e) => (isObj(e) && SIDES.includes(e.side) && Number.isFinite(Number(e.t))
+    ? { side: e.side, t: Math.min(1, Math.max(0, Number(e.t))) } : null);
+  const arrows = {};
+  for (const [id, o] of Object.entries(isObj(doc.meta.arrows) ? doc.meta.arrows : {})) {
+    const a = end(o?.a), b = end(o?.b);
+    if (!relIds.has(id) || !a || !b) continue;
+    const m = Number(o.m);
+    arrows[id] = { a, b, m: Number.isFinite(m) ? Math.min(3, Math.max(-2, m)) : 0.5 };
+  }
+  doc.meta.arrows = arrows;
 
   doc.version = SCHEMA_VERSION;
   return { doc, warnings };

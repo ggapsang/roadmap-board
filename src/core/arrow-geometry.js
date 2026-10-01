@@ -264,3 +264,143 @@ export function routeBetween(from, to, sameTrack, bite = 0, obstacles = []) {
     { x: to.x + to.w / 2, y: to.y },
   ];
 }
+
+/* ── 사용자가 고친 화살표 (꺾은선 연결선) ─────────────────────
+   파워포인트의 꺾은선 화살표처럼: 양 끝은 카드 테두리 위의 한 점(어느 변 · 변 위 비율), 가운데 구간의 위치는
+   조절 손잡이로 옮긴다. 값은 카드에 대한 비율이라 카드가 움직이거나 커져도 모양이 따라간다(보드 표시 값,
+   doc.meta.arrows). 고친 적 없는 화살표는 위의 routeBetween이 자동으로 잡는다.                         */
+
+const NORMAL = { top: { x: 0, y: -1 }, bottom: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } };
+const clamp01 = (v) => Math.min(1, Math.max(0, v));
+
+/**
+ * 카드 테두리 위의 점 — 변(side)과 그 변 위 비율(t: 위·아래 변은 왼→오, 왼·오른 변은 위→아래)
+ * @returns {{x:number, y:number, side:string, n:{x:number,y:number}}} n = 바깥쪽 법선
+ */
+export function anchorPoint(box, a) {
+  const t = clamp01(Number(a?.t) || 0);
+  const side = NORMAL[a?.side] ? a.side : 'bottom';
+  const p = side === 'top' ? { x: box.x + box.w * t, y: box.y }
+    : side === 'bottom' ? { x: box.x + box.w * t, y: box.y + box.h }
+      : side === 'left' ? { x: box.x, y: box.y + box.h * t } : { x: box.x + box.w, y: box.y + box.h * t };
+  return { ...p, side, n: NORMAL[side] };
+}
+
+/** 점 p에서 가장 가까운 카드 테두리 위치 → {side, t} (끝점 손잡이를 끌 때) */
+export function anchorFromPoint(box, p) {
+  const tx = clamp01((p.x - box.x) / (box.w || 1));
+  const ty = clamp01((p.y - box.y) / (box.h || 1));
+  const cand = [
+    { side: 'top', t: tx, d: Math.abs(p.y - box.y) + Math.max(0, box.x - p.x, p.x - box.x - box.w) },
+    { side: 'bottom', t: tx, d: Math.abs(p.y - box.y - box.h) + Math.max(0, box.x - p.x, p.x - box.x - box.w) },
+    { side: 'left', t: ty, d: Math.abs(p.x - box.x) + Math.max(0, box.y - p.y, p.y - box.y - box.h) },
+    { side: 'right', t: ty, d: Math.abs(p.x - box.x - box.w) + Math.max(0, box.y - p.y, p.y - box.y - box.h) },
+  ];
+  const best = cand.sort((a, b) => a.d - b.d)[0];
+  return { side: best.side, t: Math.round(best.t * 1000) / 1000 };
+}
+
+/**
+ * 가운데 구간을 옮길 수 있는 축 — 두 끝의 법선이 나란하면(둘 다 가로 또는 둘 다 세로) 가운데 구간이 하나 생겨
+ * 그 위치(m)를 옮긴다: 'x'면 세로 구간의 x, 'y'면 가로 구간의 y. 법선이 엇갈리면(한 번 꺾임) 옮길 구간이 없다(null).
+ */
+export function adjustAxis(A, B) {
+  const ah = A.n.x !== 0, bh = B.n.x !== 0;
+  if (ah && bh) return 'x';
+  if (!ah && !bh) return 'y';
+  return null;
+}
+
+const STUB = 16;   // 변에서 곧게 빠져나오는 최소 길이(꺾기 전에)
+
+const sgn = (v) => (v > 0.5 ? 1 : v < -0.5 ? -1 : 0);
+
+/** 선분 p→q가 상자 안쪽을 지나는가(테두리에 닿는 것은 괜찮다) */
+function crosses(p, q, box) {
+  const e = 0.5;
+  const loX = Math.min(p.x, q.x), hiX = Math.max(p.x, q.x), loY = Math.min(p.y, q.y), hiY = Math.max(p.y, q.y);
+  return hiX > box.x + e && loX < box.x + box.w - e && hiY > box.y + e && loY < box.y + box.h - e;
+}
+
+/**
+ * 후보 경로가 연결선으로 맞는가 — 시작은 A의 바깥쪽(법선)으로 나가고, 끝은 B의 바깥쪽에서 들어온다(머리가 카드를 향한다).
+ * 중간에 되돌아가지 않고(180° 꺾임 없음), 두 카드 안쪽을 지나지 않는다.
+ */
+function validRoute(pts, A, B, boxes) {
+  const q = simplify(pts);
+  if (q.length < 2) return false;
+  const d0 = { x: sgn(q[1].x - q[0].x), y: sgn(q[1].y - q[0].y) };
+  const dl = { x: sgn(q[q.length - 1].x - q[q.length - 2].x), y: sgn(q[q.length - 1].y - q[q.length - 2].y) };
+  if (d0.x !== A.n.x || d0.y !== A.n.y) return false;
+  if (dl.x !== -B.n.x || dl.y !== -B.n.y) return false;
+  for (let i = 1; i < q.length - 1; i += 1) {
+    const a = { x: sgn(q[i].x - q[i - 1].x), y: sgn(q[i].y - q[i - 1].y) };
+    const b = { x: sgn(q[i + 1].x - q[i].x), y: sgn(q[i + 1].y - q[i].y) };
+    if (a.x === -b.x && a.y === -b.y) return false;                       // 되돌아감
+  }
+  for (let i = 0; i < q.length - 1; i += 1) for (const box of boxes) if (box && crosses(q[i], q[i + 1], box)) return false;
+  return true;
+}
+
+/**
+ * 꺾은선 경로 — A(시작 테두리 점) → B(끝 테두리 점). 파워포인트 꺾은선 연결선처럼 A의 변에서 바깥으로 나가 B의 변으로
+ * 바깥에서 들어온다. 후보(한 번 꺾임 → 가운데 구간 하나 → 짧게 빠져나간 뒤 꺾임)를 차례로 보고 맞는 첫 경로를 쓴다.
+ * m은 가운데 구간 위치(그 구간 양끝 기준 비율, 0.5 = 한가운데). boxes는 두 카드 상자(가로지르는지 본다).
+ * @returns {{points, axis:'x'|'y'|null, mid:{x,y}|null, adj:{axis,from,to}|null, valid:boolean}}
+ *   adj — 가운데 손잡이를 끌 때 m = (좌표 − from) / (to − from)
+ */
+export function elbowRoute(A, B, m = 0.5, boxes = []) {
+  const k = Number.isFinite(Number(m)) ? Number(m) : 0.5;
+  const P = ({ x, y }) => ({ x, y });
+  const ah = A.n.x !== 0, bh = B.n.x !== 0;
+  const lerp = (a, b) => a + (b - a) * k;
+  const cand = [];
+  // 곧은 선 — 마주 보는 두 변이 한 줄 위에 있으면
+  cand.push({ points: [P(A), P(B)], axis: null });
+  // 한 번 꺾임 — A의 법선 방향으로 먼저
+  cand.push({ points: [P(A), ah ? { x: B.x, y: A.y } : { x: A.x, y: B.y }, P(B)], axis: null });
+  // 가운데 구간 하나(두 번 꺾임) — 나란한 법선
+  if (ah && bh) { const mx = lerp(A.x, B.x); cand.push({ points: [P(A), { x: mx, y: A.y }, { x: mx, y: B.y }, P(B)], axis: 'x', adj: { axis: 'x', from: A.x, to: B.x }, mid: { x: mx, y: (A.y + B.y) / 2 } }); }
+  if (!ah && !bh) { const my = lerp(A.y, B.y); cand.push({ points: [P(A), { x: A.x, y: my }, { x: B.x, y: my }, P(B)], axis: 'y', adj: { axis: 'y', from: A.y, to: B.y }, mid: { x: (A.x + B.x) / 2, y: my } }); }
+  // 변에서 짧게 곧게 빠져나간 뒤 — 카드 사이가 좁으면 더 짧게(16 → 8 → 4px)
+  for (const st of [STUB, STUB / 2, STUB / 4]) {
+    const A1 = { x: A.x + A.n.x * st, y: A.y + A.n.y * st };
+    const B1 = { x: B.x + B.n.x * st, y: B.y + B.n.y * st };
+    // 한 번 꺾어 들어가기(엇갈린 법선) — 두 모서리 다
+    cand.push({ points: [P(A), A1, { x: B1.x, y: A1.y }, B1, P(B)], axis: null });
+    cand.push({ points: [P(A), A1, { x: A1.x, y: B1.y }, B1, P(B)], axis: null });
+    // 가운데 가로 구간 또는 세로 구간
+    { const my = lerp(A1.y, B1.y); cand.push({ points: [P(A), A1, { x: A1.x, y: my }, { x: B1.x, y: my }, B1, P(B)], axis: 'y', adj: { axis: 'y', from: A1.y, to: B1.y }, mid: { x: (A1.x + B1.x) / 2, y: my } }); }
+    { const mx = lerp(A1.x, B1.x); cand.push({ points: [P(A), A1, { x: mx, y: A1.y }, { x: mx, y: B1.y }, B1, P(B)], axis: 'x', adj: { axis: 'x', from: A1.x, to: B1.x }, mid: { x: mx, y: (A1.y + B1.y) / 2 } }); }
+  }
+  for (const c of cand) {
+    if (validRoute(c.points, A, B, boxes)) {
+      const pts = simplify(c.points);
+      // 가운데 구간이 접혀 사라졌으면(곧은 선이 됐으면) 손잡이도 없다
+      const hasMid = c.axis && pts.length >= 4;
+      return { points: pts, axis: hasMid ? c.axis : null, mid: hasMid ? c.mid : null, adj: hasMid ? c.adj : null, valid: true };
+    }
+  }
+  // 맞는 것이 없으면(카드가 겹쳐 있는 등) 한 번 꺾임으로 그린다
+  return { points: simplify(cand[1].points), axis: null, mid: null, adj: null, valid: false };
+}
+
+/**
+ * 자동 경로(routeBetween의 점열)를 고칠 수 있는 꼴로 옮긴다 — 편집을 시작할 때 모양이 튀지 않게.
+ * @returns {{a:{side,t}, b:{side,t}, m:number}}
+ */
+export function overrideFromRoute(points, from, to) {
+  const pts = simplify(points);
+  const first = pts[0], last = pts[pts.length - 1];
+  const a = anchorFromPoint(from, first);
+  const b = anchorFromPoint(to, last);
+  const A = anchorPoint(from, a), B = anchorPoint(to, b);
+  // 자동 경로의 가운데 구간 좌표를 같은 꼴의 m으로 — 기본(0.5)으로 그려 본 꼴의 adj 기준
+  let m = 0.5;
+  const r = elbowRoute(A, B, 0.5, [from, to]);
+  if (r.adj && pts.length >= 4) {
+    const v = r.adj.axis === 'x' ? pts[1].x : pts[1].y;
+    if (Math.abs(r.adj.to - r.adj.from) > 0.5) m = (v - r.adj.from) / (r.adj.to - r.adj.from);
+  }
+  return { a, b, m: Math.round(m * 1000) / 1000 };
+}
