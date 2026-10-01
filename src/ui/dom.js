@@ -60,6 +60,8 @@ export const ICONS = {
   close:  '<path d="m6 6 12 12M18 6 6 18"/>',
   up:     '<path d="m6 15 6-6 6 6"/>',
   down:   '<path d="m6 9 6 6 6-6"/>',
+  // 끌어서 순서 바꾸기 손잡이 — 점 여섯 개
+  grip:   '<circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/>',
   trash:  '<path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13"/>',
   copy:   '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/>',
   pencil: '<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/>',

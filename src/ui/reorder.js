@@ -8,15 +8,20 @@
  * 리스너는 컨테이너(재렌더돼도 남는 것)와 window에만 붙인다. 탭 요소는 재렌더로 통째로 바뀔 수 있어
  * 거기 붙이면 드래그 중에 끊긴다(CLAUDE.md 규약 14와 같은 이유).
  *
+ * 세로 목록(편집 패널의 태스크 등)은 axis:'y'로 — 표시선이 가로줄이 된다. handle을 주면 그 손잡이를 눌렀을 때만 끈다
+ * (줄 안에 입력 칸·체크박스가 있어 아무 데서나 끌면 글자 선택·클릭과 부딪친다).
+ *
  * @param {HTMLElement} container 탭들을 담은 요소
- * @param {{ item: string, exclude?: string, onReorder: (from:number, to:number) => void }} o
+ * @param {{ item: string, exclude?: string, handle?: string, axis?: 'x'|'y', onReorder: (from:number, to:number) => void }} o
  *   item     탭 선택자(컨테이너의 자식)
  *   exclude  여기서 누르면 드래그를 시작하지 않는다(닫기 버튼 등)
+ *   handle   있으면 여기서 눌렀을 때만 끈다
  *   to       '끌어낸 자리를 뺀' 뒤의 새 인덱스
  */
 const DRAG_SLOP = 5;
 
-export function attachTabReorder(container, { item, exclude = null, onReorder }) {
+export function attachTabReorder(container, { item, exclude = null, handle = null, axis = 'x', onReorder }) {
+  const Y = axis === 'y';
   let swallowClick = false;
   container.addEventListener('click', (e) => {
     if (swallowClick) { e.stopPropagation(); e.preventDefault(); swallowClick = false; }
@@ -26,27 +31,37 @@ export function attachTabReorder(container, { item, exclude = null, onReorder })
     if (e.button !== 0) return;
     const tab = e.target.closest(item);
     if (!tab || !container.contains(tab) || (exclude && e.target.closest(exclude))) return;
+    if (handle && !e.target.closest(handle)) return;
+    if (handle) e.preventDefault();                  // 손잡이를 누른 것은 글자 선택·포커스 이동이 아니다
     const tabs = [...container.querySelectorAll(item)];
     const from = tabs.indexOf(tab);
     if (from < 0) return;
-    const startX = e.clientX;
+    const start = Y ? e.clientY : e.clientX;
     let dragging = false;
     let to = from;
     const mark = document.createElement('div');
-    mark.className = 'tab-drop';
+    mark.className = Y ? 'tab-drop list-drop' : 'tab-drop';
     mark.setAttribute('aria-hidden', 'true');
 
-    const place = (clientX) => {
+    const place = (c) => {
       const rects = tabs.map((t) => t.getBoundingClientRect());
-      let idx = rects.findIndex((r) => clientX < r.left + r.width / 2);
+      let idx = rects.findIndex((r) => (Y ? c < r.top + r.height / 2 : c < r.left + r.width / 2));
       if (idx < 0) idx = rects.length;
       to = idx;
       const box = container.getBoundingClientRect();
-      const x = idx >= rects.length ? rects[rects.length - 1].right : rects[idx].left;
-      mark.style.left = `${x - box.left + container.scrollLeft - 1}px`;
+      if (Y) {
+        // 두 줄 사이(간격 가운데)에 가로줄
+        const last = rects[rects.length - 1];
+        const y = idx >= rects.length ? last.bottom : idx === 0 ? rects[0].top : (rects[idx - 1].bottom + rects[idx].top) / 2;
+        mark.style.top = `${y - box.top + container.scrollTop - 1}px`;
+      } else {
+        const x = idx >= rects.length ? rects[rects.length - 1].right : rects[idx].left;
+        mark.style.left = `${x - box.left + container.scrollLeft - 1}px`;
+      }
     };
     const move = (ev) => {
-      if (!dragging && Math.abs(ev.clientX - startX) < DRAG_SLOP) return;
+      const cur = Y ? ev.clientY : ev.clientX;
+      if (!dragging && Math.abs(cur - start) < DRAG_SLOP) return;
       if (!dragging) {
         dragging = true;
         tab.classList.add('dragging');
@@ -55,7 +70,7 @@ export function attachTabReorder(container, { item, exclude = null, onReorder })
         container.append(mark);
       }
       ev.preventDefault();
-      place(ev.clientX);
+      place(cur);
     };
     const up = () => {
       window.removeEventListener('pointermove', move);

@@ -838,6 +838,11 @@ export class ItemPanel {
   #renderTasks(item) {
     const box = $('i-tasks');
     clear(box);
+    // 끌어서 보이는 순서 바꾸기 — 손잡이(점 여섯 개)를 잡고. 상자는 다시 그려도 남으니 한 번만 붙인다(규약 14)
+    if (!box._reorder) {
+      box._reorder = true;
+      attachTabReorder(box, { item: '.task', handle: '.task-grip', axis: 'y', onReorder: (from, to) => this.#moveTask(from, to) });
+    }
     const tasks = Array.isArray(item.tasks) ? item.tasks : [];
 
     const done = tasks.filter((t) => t.done).length;
@@ -863,10 +868,17 @@ export class ItemPanel {
         type: 'text', value: t.text, placeholder: '할 일',
         on: { input: (e) => { this.store.commit('태스크 수정', () => { t.text = e.target.value; }); } },
       });
-      const up = el('button.task-del.task-promote', {
-        type: 'button', title: '하위 카드로 승격 (순서축에 올림 · 규칙 5, id 유지)',
+      // 하위 카드로 만들기 — 순서 바꾸기(위·아래)로 읽히지 않게 화살표 아이콘 대신 글자로
+      const up = el('button.kind-btn.task-promote', {
+        type: 'button', text: '카드로',
+        title: '하위 카드로 만들기 — 이 태스크를 카드 안의 하위 카드로 옮깁니다(같은 이벤트, 순서축에 놓임)',
         on: { click: (e) => { e.preventDefault(); this.#promoteTask(item, t); } },
-      }, [icon(ICONS.up)]);
+      });
+      const grip = el('span.task-grip', {
+        title: '끌어서 순서 바꾸기',
+        // 줄이 label이라 누르면 체크박스가 바뀐다 — 손잡이 클릭은 막는다
+        on: { click: (e) => e.preventDefault() },
+      }, [icon(ICONS.grip)]);
       const rm = el('button.task-del', {
         type: 'button', title: '태스크 삭제',
         on: {
@@ -882,10 +894,22 @@ export class ItemPanel {
         type: 'button', text: '≡', title: '항등설정 · 다른 보드 자리 · 항등 해제',
         on: { click: (e) => { e.preventDefault(); this.#taskSameMenu(t, e.currentTarget); } },
       });
-      const row = el('label.task', {}, [cb, text, same, up, rm]);
+      const row = el('label.task', {}, [grip, cb, text, same, up, rm]);
       if (t.done) row.classList.add('done');
       box.append(row);
     }
+  }
+
+  /** 태스크의 보이는 순서 바꾸기 — 저장되는 것은 순서(ord)뿐, 태스크의 뜻(순서 없는 포함)은 그대로 */
+  #moveTask(from, to) {
+    const item = this.item;
+    if (!item || this.store.readonly || !Array.isArray(item.tasks)) return;
+    if (from === to || from < 0 || from >= item.tasks.length) return;
+    this.store.commit('태스크 순서', () => {
+      const [t] = item.tasks.splice(from, 1);
+      item.tasks.splice(Math.min(to, item.tasks.length), 0, t);
+    });
+    this.#renderTasks(this.item);
   }
 
   #addTask() {
@@ -977,10 +1001,12 @@ export class ItemPanel {
     // (2) 조합이 없으면 — 같은 보드 하위 카드 트리. '태스크로 내림'을 뒤에 붙인다.
     const renderKid = (c, container) => {
       const subKids = this.store.items.filter((x) => x.parent === c.id);
-      const demote = el('button.task-del.task-demote.no-toggle', {
-        type: 'button', title: '태스크로 내림 (규칙 5, id 유지)',
+      // 태스크로 만들기 — '카드로'와 짝. 펼침(▸)·순서 바꾸기로 읽히지 않게 글자로
+      const demote = el('button.kind-btn.task-demote.no-toggle', {
+        type: 'button', text: '태스크로',
+        title: '태스크로 만들기 — 이 하위 카드를 카드의 태스크(할 일)로 옮깁니다(같은 이벤트)',
         on: { click: (e) => { e.preventDefault(); e.stopPropagation(); this.#demoteChild(this.item, c); } },
-      }, [icon(ICONS.down)]);
+      });
       const { row, kids } = node({
         title: c.ti, status: c.st, onOpen: () => this.open(c.id), tag: demote, hasKids: subKids.length > 0,
       });

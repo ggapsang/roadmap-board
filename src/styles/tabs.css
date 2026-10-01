@@ -19,6 +19,8 @@
 .tab-drop{position:absolute;top:var(--u1);bottom:var(--u1);width:2px;border-radius:1px;
   background:var(--accent);pointer-events:none;z-index:2}
 body.reordering-tabs{user-select:none;cursor:grabbing}
+/* 세로 목록(태스크)의 놓을 자리 — 가로줄 */
+.tab-drop.list-drop{top:auto;bottom:auto;left:0;right:0;width:auto;height:2px}
 .tab-name{overflow:hidden;text-overflow:ellipsis}
 .tab-graph>.ic{width:14px;height:14px;flex:none;color:var(--text-tertiary)}
 .tab-graph.active>.ic{color:var(--text-secondary)}
