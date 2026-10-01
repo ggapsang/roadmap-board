@@ -690,8 +690,9 @@ export class Board {
       h.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); this.#dragArrowHandle(id, part, e); });
       layer.append(h);
     };
-    handle('ah-end', A, 'a', '시작 — 끌면 선행 카드 테두리를 따라 움직입니다');
-    handle('ah-end', B, 'b', '끝 — 끌면 후행 카드 테두리를 따라 움직입니다');
+    // 양 끝 손잡이는 실제로 그려진 끝에(곧은 선으로 맞춰지면 테두리 위에서 조금 옮겨진다)
+    handle('ah-end', r.points[0] ?? A, 'a', '시작 — 끌면 선행 카드 테두리를 따라 움직입니다');
+    handle('ah-end', r.points[r.points.length - 1] ?? B, 'b', '끝 — 끌면 후행 카드 테두리를 따라 움직입니다');
     if (r.axis) handle(`ah-mid.ah-${r.axis}`, r.mid, 'm', '가운데 구간 — 끌어서 꺾이는 위치를 옮깁니다');
     this.grid.append(layer);
   }

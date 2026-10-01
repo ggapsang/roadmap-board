@@ -189,9 +189,7 @@ export function routeBetweenKeyed(from, to, sameTrack, bite = 0, obstacles = [],
 
   const candidates = [];
   const oid = (box, i) => box.id ?? `#${i}`;
-  // prefer 끝의 '='는 '그때 곧은 선이었다'
-  const preferKey = prefer?.endsWith('=') ? prefer.slice(0, -1) : prefer;
-  const straightKept = (key) => prefer === `${key}=`;
+  const preferKey = prefer;
   const downward = to.y >= from.y + from.h - 1;
 
   // ── 세로 경로 (위 -> 아래) ───────────────────────────────
@@ -199,14 +197,13 @@ export function routeBetweenKeyed(from, to, sameTrack, bite = 0, obstacles = [],
     const y1 = from.y + from.h - biteV(from);
     const y2 = to.y + biteV(to);
     const mid = (from.y + from.h + to.y) / 2;
+    // 곧은 선 — 두 카드가 가로로 겹치면 그 안에서. 크기가 다른 카드끼리 가운데·가장자리 점이 1~3px 어긋나 생기던
+    // 작은 계단을 없앤다. 맨 앞에 두어 점수가 같으면 이것을 쓴다(그래서 크기가 바뀌어도 겹치는 한 늘 곧다).
+    const lx = lineAt(from.x, from.w, to.x, to.w);
+    if (lx != null) candidates.push({ key: 'vs', path: [{ x: lx, y: y1 }, { x: lx, y: y2 }] });
     spread(from.x, from.w).forEach((sx, si) => {
       spread(to.x, to.w).forEach((tx, ti) => {
         const key = `v${si}${ti}`;
-        if (straightKept(key)) {
-          // 지난번엔 곧은 선이었다 — 두 카드가 가로로 겹치는 데가 있으면 그 안에서 곧게(크기만 바뀌어 생긴 어긋남으로 계단이 되지 않게)
-          const x = keepLine(sx, from.x, from.w, to.x, to.w);
-          if (x != null) { candidates.push({ key, path: [{ x, y: y1 }, { x, y: y2 }] }); return; }
-        }
         if (Math.abs(sx - tx) < 1) {
           candidates.push({ key, path: [{ x: sx, y: y1 }, { x: tx, y: y2 }] });
         } else {
@@ -232,12 +229,12 @@ export function routeBetweenKeyed(from, to, sameTrack, bite = 0, obstacles = [],
     if (between(box.x + box.w + 6, sideOut, sideIn) && !turnXs.has(box.x + box.w + 6)) turnXs.set(box.x + box.w + 6, `${oid(box, i)}>`);
   });
 
+  // 곧은 가로선 — 두 카드가 세로로 겹치고 옆으로 떨어져 있으면 그 안에서
+  const ly = (goRight ? sideIn > sideOut : sideIn < sideOut) ? lineAt(from.y, from.h, to.y, to.h) : null;
+  if (ly != null) candidates.push({ key: 'hs', path: [{ x: sx, y: ly }, { x: tx, y: ly }] });
+
   spread(from.y, from.h).forEach((sy, si) => {
     spread(to.y, to.h).forEach((ty, ti) => {
-      if (straightKept(`h${si}${ti}`)) {
-        const y = keepLine(sy, from.y, from.h, to.y, to.h);
-        if (y != null) { candidates.push({ key: `h${si}${ti}`, path: [{ x: sx, y }, { x: tx, y }] }); return; }
-      }
       if (Math.abs(sy - ty) < 1) {
         candidates.push({ key: `h${si}${ti}`, path: [{ x: sx, y: sy }, { x: tx, y: ty }] });
         return;
@@ -294,7 +291,7 @@ export function routeBetweenKeyed(from, to, sameTrack, bite = 0, obstacles = [],
     return d0.y > 0 && d1.y > 0 && !d0.x && !d1.x;
   };
   const pick = preferred && forward(preferred) && preferred.score.blocked <= bestScore.blocked + PREFER_SLACK ? preferred : best;
-  if (pick) return { points: pick.points, key: pick.points.length === 2 ? `${pick.key}=` : pick.key };
+  if (pick) return { points: pick.points, key: pick.key };
 
   return { points: [
     { x: from.x + from.w / 2, y: from.y + from.h },
@@ -302,14 +299,32 @@ export function routeBetweenKeyed(from, to, sameTrack, bite = 0, obstacles = [],
   ], key: null };
 }
 
+/** 곧은 선을 놓을 만큼 겹쳐야 하는 폭(px) — 이보다 좁으면 카드 모서리에 붙은 선이 되어 어색하다 */
+const LINE_MIN = 12;
+
 /**
- * 곧은 선을 이어 그릴 자리 — 두 구간 [a, a+aw]·[b, b+bw]가 겹치는 데(가장자리 4px 안쪽)에서 v에 가장 가까운 값. 겹치지 않으면 null.
+ * 두 구간 [a, a+aw]·[b, b+bw]를 함께 지나는 곧은 선의 자리. 좁은 쪽 카드의 가운데가 넓은 쪽 안에 들면 그 가운데(화살표가
+ * 작은 카드 한가운데로), 아니면 겹친 구간의 가운데. 겹침이 LINE_MIN보다 좁으면 null.
+ */
+function lineAt(a, aw, b, bw) {
+  const lo = Math.max(a, b), hi = Math.min(a + aw, b + bw);
+  if (hi - lo < LINE_MIN) return null;
+  const [n, nw] = aw <= bw ? [a, aw] : [b, bw];
+  const c = n + nw / 2;
+  return c >= lo + LINE_MIN / 2 && c <= hi - LINE_MIN / 2 ? c : (lo + hi) / 2;
+}
+
+/**
+ * 곧은 선을 이어 그릴 자리 — 두 구간이 겹치는 데(가장자리 4px 안쪽)에서 v에 가장 가까운 값. 겹치지 않으면 null.
  */
 function keepLine(v, a, aw, b, bw) {
   const lo = Math.max(a, b) + 4, hi = Math.min(a + aw, b + bw) - 4;
   if (lo > hi) return null;
   return Math.min(hi, Math.max(lo, v));
 }
+
+/** 고친 화살표의 양 끝이 이만큼(px) 안으로 어긋나 있으면 곧은 선으로 맞춘다 */
+const SNAP = 8;
 
 /** 이어 쓸 후보가 가장 나은 후보보다 이만큼(px)까지 더 가려져도 그대로 쓴다 — 크기만 바뀌어 생긴 근소한 차로 튀지 않게 */
 const PREFER_SLACK = 12;
@@ -406,8 +421,18 @@ export function elbowRoute(A, B, m = 0.5, boxes = [], prefer = null) {
   const ah = A.n.x !== 0, bh = B.n.x !== 0;
   const lerp = (a, b) => a + (b - a) * k;
   const cand = [];
-  // 곧은 선 — 마주 보는 두 변이 한 줄 위에 있으면
-  cand.push({ id: 'line', points: [P(A), P(B)], axis: null });
+  // 곧은 선 — 마주 보는 두 변이 한 줄 위에 있으면. 조금(SNAP) 어긋났거나, 지난번에 곧은 선이었는데(prefer 'line') 크기가 바뀌어
+  // 어긋났으면 두 카드가 겹치는 데서 곧게 맞춘다(작은 계단이 생기지 않게). 그때 양 끝은 테두리 위에서 조금 옮겨진다.
+  const facing = A.n.x === -B.n.x && A.n.y === -B.n.y;
+  const vert = A.n.x === 0;
+  const off = vert ? B.x - A.x : B.y - A.y;
+  let line = [P(A), P(B)];
+  if (facing && Math.abs(off) >= 0.5 && (prefer === 'line' || Math.abs(off) <= SNAP) && boxes[0] && boxes[1]) {
+    const [f, t] = boxes;
+    const v = vert ? keepLine((A.x + B.x) / 2, f.x, f.w, t.x, t.w) : keepLine((A.y + B.y) / 2, f.y, f.h, t.y, t.h);
+    if (v != null) line = vert ? [{ x: v, y: A.y }, { x: v, y: B.y }] : [{ x: A.x, y: v }, { x: B.x, y: v }];
+  }
+  cand.push({ id: 'line', points: line, axis: null });
   // 한 번 꺾임 — A의 법선 방향으로 먼저
   cand.push({ id: 'corner', points: [P(A), ah ? { x: B.x, y: A.y } : { x: A.x, y: B.y }, P(B)], axis: null });
   // 가운데 구간 하나(두 번 꺾임) — 나란한 법선
