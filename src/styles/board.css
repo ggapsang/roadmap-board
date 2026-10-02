@@ -187,17 +187,20 @@ body.dragging-arrow, body.dragging-arrow *{cursor:grabbing !important;user-selec
 .ev.container{overflow:visible;padding-bottom:var(--u2);
   background:var(--surface-group);z-index:auto}
 /* 자식은 날짜 위치대로 들어오므로 상위 제목과 겹칠 수 있다.
-   배경 + 위 레이어(z:8)로 항상 읽히게 하고, 세로 정렬(c-*)에 따라 모양을 바꾼다. */
+   배경 + 위 레이어(z:8)로 항상 읽히게 하고, 세로 정렬(c-*)에 따라 모양을 바꾼다.
+   제목 바의 면은 그 카드 자신의 면을 그대로 받는다(inherit) — 상위 일정 안에 든 상위 일정(겹 부모)은 몸통이 한 단계 뜬 면이라,
+   그룹 면(회색)을 칠하면 이름만 회색으로 강조된 것처럼 보였다(2026-10-02 사용자). 채우기·hover·선택도 몸통과 같이 따라간다. */
 .ev.container>.t{flex:none;text-align:center;z-index:8;
-  padding:var(--u1) var(--u2);background:var(--surface-group)}
-/* 위(기본) — 위에 붙는 제목 바, 스크롤해도 보이게 sticky */
-.ev.container.c-top>.t{width:100%;position:sticky;top:0;
-  margin:calc(var(--u1) * -1) calc(var(--u2) * -1) 0;
-  border-radius:var(--r-card) var(--r-card) 0 0}
+  padding:var(--u1) var(--u2);background:inherit}
+/* 위(기본) — 위에 붙는 제목 바, 스크롤해도 보이게 sticky. 카드 안쪽 여백(위 u2, 옆 u3)만큼 당겨 테두리에 붙인다 —
+   왼쪽은 상태 표시자(4px)를 비켜 u2만. 폭은 stretch로(width:100%에 음수 여백을 주면 오른쪽이 모자라 가운데가 어긋난다). */
+.ev.container.c-top>.t{align-self:stretch;width:auto;position:sticky;top:0;
+  margin:calc(var(--u2) * -1) calc(var(--u3) * -1) 0 calc(var(--u2) * -1);
+  border-radius:0 var(--r-card) 0 0}
 /* 아래 — 아래에 붙는 제목 바 */
-.ev.container.c-bottom>.t{width:100%;position:sticky;bottom:0;
-  margin:0 calc(var(--u2) * -1) calc(var(--u1) * -1);
-  border-radius:0 0 var(--r-card) var(--r-card)}
+.ev.container.c-bottom>.t{align-self:stretch;width:auto;position:sticky;bottom:0;
+  margin:0 calc(var(--u3) * -1) calc(var(--u2) * -1) calc(var(--u2) * -1);
+  border-radius:0 0 var(--r-card) 0}
 /* 가운데 — 가운데 떠 있는 제목. 배경만으로 자식 위에서 읽히게 하고 테두리는 두지 않는다. */
 .ev.container.c-middle>.t{align-self:center;max-width:100%;border-radius:var(--r-card)}
 .ev.container>.meta{display:none}
@@ -321,7 +324,6 @@ body.reordering-col{cursor:grabbing!important;user-select:none}
 .ev.child[data-fill]{--fill-base:var(--bg-elevated)}
 .ev.ms.point[data-fill]{--fill-base:var(--bg-elevated)}       /* 점 마일스톤 — 트랙을 가로지르는 얇은 표식 */
 .ev.container[data-fill]{--fill-base:var(--surface-group)}
-.ev.container[data-fill]>.t{background:linear-gradient(var(--fill),var(--fill)),var(--surface-group)}
 .ev[data-fill][data-fill]:hover{--fill-base:var(--surface-card-hover)}
 .ev.sel[data-fill][data-fill]{--fill-base:var(--surface-sel)}
 .ev[data-fill="gray"]{--fill:var(--fill-gray)}
