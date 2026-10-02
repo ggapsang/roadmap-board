@@ -2253,6 +2253,13 @@ async function runSmoke(target) {
         const childFilled = painted2(chEl);
         r.store.commit('채우기 점검 원복', () => { pointMs.place.fill = null; childCard.place.fill = null; });
         await sleep(80);
+        // 빗금 — 채우기 팔레트의 한 칸. 사선 무늬(repeating-linear-gradient)로 그린다
+        document.querySelector('#i-fill .fill-sw[data-fill="hatch"]').click();
+        await sleep(150);
+        const hatchBg = node() ? getComputedStyle(node()).backgroundImage : '';
+        const hatched = r.store.item(id).place.fill === 'hatch' && /repeating-linear-gradient/.test(hatchBg);
+        document.querySelector('#i-fill .fill-sw[data-fill="blue"]').click();
+        await sleep(150);
         // 비고 — 기본 숨김, 켜면 카드에
         const hiddenByDefault = noteBefore === false && !node()?.querySelector('.card-note');
         r.store.commit('비고', () => { r.store.item(id).note = '스모크 비고'; });
@@ -2305,7 +2312,7 @@ async function runSmoke(target) {
         const detailLabel = document.querySelector('#i-children').closest('.fld').querySelector('label').firstChild.textContent.trim();
         const sizeLabel = document.getElementById('i-fixedh').closest('.fld').querySelector('label').textContent.trim();
         const descBlock = getComputedStyle(document.querySelector('#pItem .fld > label .desc')).display === 'block';
-        return { id, tabName, filled, painted, msFilled, childFilled, hiddenByDefault, noteShown, noteHidden, titles, btns, moved, stillOpen, closedOnScrim, noCurrentInCombine, detailLabel, sizeLabel, descBlock };
+        return { id, tabName, filled, painted, hatched, msFilled, childFilled, hiddenByDefault, noteShown, noteHidden, titles, btns, moved, stillOpen, closedOnScrim, noCurrentInCombine, detailLabel, sizeLabel, descBlock };
       })();
       const guard = new Promise((res) => setTimeout(() => res({ error: 'timeout' }), 10000));
       return Promise.race([run.catch((e) => ({ error: String(e) })), guard]);
@@ -2910,7 +2917,7 @@ async function runSmoke(target) {
     && launcherGraph?.ownTab === true && launcherGraph?.shown === true && launcherGraph?.nodes > 0
     && launcherGraph?.single === true && launcherGraph?.noBoardKeys === true && launcherGraph?.closed === true
     && trashUi?.asked === true && trashUi?.gone === true && trashUi?.purged === true && trashUi?.closed === true
-    && styleUi?.tabName === '스타일' && styleUi?.filled === true && styleUi?.painted === true && styleUi?.msFilled === true && styleUi?.childFilled === true && styleUi?.dbFill === 'blue'
+    && styleUi?.tabName === '스타일' && styleUi?.filled === true && styleUi?.painted === true && styleUi?.hatched === true && styleUi?.msFilled === true && styleUi?.childFilled === true && styleUi?.dbFill === 'blue'
     && titleSafe?.foldedBad?.length === 0 && titleSafe?.openBad?.length === 0 && titleSafe?.lanes1 > titleSafe?.lanes0
     && noteMd?.live?.h1Raw === true && noteMd?.live?.strongRendered === true && noteMd?.live?.em === true && noteMd?.live?.strike === true
     && noteMd?.live?.code === true && noteMd?.live?.bullet === true && JSON.stringify(noteMd?.live?.boxes) === '[true,false]'

@@ -333,6 +333,7 @@ body.panel-open{--panel-w:var(--panel-size)}
 .fill-sw[data-fill="blue"]{--sw:var(--fill-blue)}
 .fill-sw[data-fill="purple"]{--sw:var(--fill-purple)}
 .fill-sw[data-fill="pink"]{--sw:var(--fill-pink)}
+.fill-sw[data-fill="hatch"]{background:repeating-linear-gradient(135deg,var(--fill-hatch) 0 1.5px,transparent 1.5px 6px),var(--surface-card)}
 
 /* ── 도움말 팝업 (src/ui/help.js, docs/HELP.md) ─────────── */
 .help-dlg{position:relative;max-width:920px;width:94vw;height:min(82vh,860px);display:flex;flex-direction:column;padding:var(--u4) var(--u5)}

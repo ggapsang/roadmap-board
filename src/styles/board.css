@@ -334,3 +334,8 @@ body.reordering-col{cursor:grabbing!important;user-select:none}
 .ev[data-fill="blue"]{--fill:var(--fill-blue)}
 .ev[data-fill="purple"]{--fill:var(--fill-purple)}
 .ev[data-fill="pink"]{--fill:var(--fill-pink)}
+/* 빗금(///) — 단색 overlay 대신 사선 무늬. 선 1.5px, 간격 12px로 듬성듬성(촘촘하면 글자가 안 읽힌다).
+   면 색(--fill-base)은 다른 채우기와 같이 자리·hover·선택을 따른다. 상위 일정의 제목 바는 무늬 없이 면 색만(이름이 읽히게). */
+.ev[data-fill="hatch"][data-fill]{
+  background:repeating-linear-gradient(135deg,var(--fill-hatch) 0 1.5px,transparent 1.5px 12px),var(--fill-base)}
+.ev.container[data-fill="hatch"]>.t{background:var(--fill-base)}

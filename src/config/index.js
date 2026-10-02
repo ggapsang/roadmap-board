@@ -133,6 +133,8 @@ export const FILLS = [
   { key: 'blue',   label: '파랑' },
   { key: 'purple', label: '보라' },
   { key: 'pink',   label: '분홍' },
+  // 빗금(///) — 색이 아니라 무늬. 면 색은 그대로 두고 옅은 사선을 듬성듬성 긋는다(--fill-hatch 선 색)
+  { key: 'hatch',  label: '빗금' },
 ];
 export const FILL_KEYS = FILLS.map((f) => f.key);
 

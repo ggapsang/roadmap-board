@@ -92,6 +92,7 @@
   --fill-blue:rgba(59,130,246,.15);
   --fill-purple:rgba(139,92,246,.15);
   --fill-pink:rgba(236,72,153,.14);
+  --fill-hatch:rgba(120,113,108,.30);   /* 빗금 선 색 — 무늬라 면 색보다 조금 진하게 */
 
   /* ── 그래프 뷰 — 노드는 한 색(G-08), 엣지는 계열 네 가지 색(G-14). Orange는 호버·선택 강조에만 */
   --graph-node:var(--neutral-400);
@@ -166,6 +167,7 @@
   --fill-blue:rgba(59,130,246,.24);
   --fill-purple:rgba(139,92,246,.26);
   --fill-pink:rgba(236,72,153,.22);
+  --fill-hatch:rgba(163,163,163,.26);
 
   --graph-node:var(--neutral-400);
   --graph-node-edge:var(--neutral-900);
@@ -222,6 +224,7 @@
   --fill-blue:rgba(59,130,246,.24);
   --fill-purple:rgba(139,92,246,.26);
   --fill-pink:rgba(236,72,153,.22);
+  --fill-hatch:rgba(163,163,163,.26);
 
   --graph-node:var(--neutral-400);
   --graph-node-edge:var(--neutral-900);
