@@ -11,7 +11,7 @@
 import { shortMD, dayIndex, parseDate, inclusiveDays } from '../../core/dates.js';
 import { newId, ALIGNS } from '../../core/schema.js';
 import { STATUSES, ITEM_TYPES, FILLS, statusList } from '../../config/index.js';
-import { $, el, clear, icon, ICONS } from '../dom.js';
+import { $, el, clear, icon, ICONS, editGroup } from '../dom.js';
 import { askConfirm, askChoice, askTree, askTreeTabs } from '../dialog.js';
 import { openCombinePicker, pickEventForMerge, composedOf } from '../combine.js';
 import { toast } from '../toast.js';
@@ -154,7 +154,7 @@ export class ItemPanel {
     $(F.title).addEventListener('input', () => {
       const item = this.item;
       if (!item) return;
-      this.store.commit('제목 수정', () => { item.ti = $(F.title).value; });
+      this.store.commit('제목 수정', () => { item.ti = $(F.title).value; }, { group: editGroup($(F.title)) });
       autogrow($(F.title));
       this.#renderTitleDrop();
     });
@@ -866,7 +866,7 @@ export class ItemPanel {
       });
       const text = el('input.task-text', {
         type: 'text', value: t.text, placeholder: '할 일',
-        on: { input: (e) => { this.store.commit('태스크 수정', () => { t.text = e.target.value; }); } },
+        on: { input: (e) => { this.store.commit('태스크 수정', () => { t.text = e.target.value; }, { group: editGroup(e.target) }); } },
       });
       // 하위 카드로 만들기 — 순서 바꾸기(위·아래)로 읽히지 않게 화살표 아이콘 대신 글자로
       const up = el('button.kind-btn.task-promote', {

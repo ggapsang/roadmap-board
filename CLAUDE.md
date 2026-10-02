@@ -209,6 +209,10 @@ src/               렌더러 (프레임워크 없음, ES 모듈)
 25. **글을 쓰는 중엔 보드 단축키가 비켜 준다.** 입력 칸·textarea·contenteditable(비고 편집기)에 포커스가 있으면 전역 단축키
    (`src/main.js` keydown)는 Ctrl+Z/Y/I/B와 Delete/Backspace를 가로채지 않는다 — 그 칸의 글자 되돌리기·지우기가 먼저다.
    포커스 판정은 태그 이름만 보지 말고 `isContentEditable`도 본다(비고 편집기에서 Backspace가 카드를 지우던 위험).
+   **단, Ctrl+Z/Y는 '글을 쓰는 칸'(글 input·textarea·contenteditable)에서만 비켜 준다** — 날짜·select·체크박스·숫자·슬라이더는 자기
+   되돌리기가 없어 보드 되돌리기로 보낸다(2026-10-02 사용자 결정: 글 쓰는 칸과 보드 되돌리기는 구분). Delete/Backspace·Ctrl+I/B는 어느
+   입력 칸에서든 비켜 준다. 되돌린 뒤 열린 패널은 `syncPanelsToDoc`이 다시 채운다. 글자마다 commit하는 칸은
+   `store.commit(label, fn, { group: editGroup(input) })`로 한 번 고친 것을 한 단계로 묶는다(새 입력 칸을 만들 때도).
 26. **화살표 모양은 보드 표시 값이다 (`doc.meta.arrows`, 문서 v19).** 관계(rel)는 보드와 무관하므로 모양을 관계에 두지 않는다 —
    보드 meta_json에 관계 id → `{a:{side,t}, b:{side,t}, m}`(양 끝 = 카드 테두리의 변·비율, m = 가운데 구간 위치 비율). 카드에 대한
    비율이라 카드가 움직여도 따라간다. 경로는 `elbowRoute`가 고른다 — 시작 변 바깥으로 나가 끝 변으로 바깥에서 들어오고 두 카드를

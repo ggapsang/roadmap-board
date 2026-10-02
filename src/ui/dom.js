@@ -38,6 +38,22 @@ export function clear(node) {
   return node;
 }
 
+let editSeq = 0;
+/**
+ * 입력 칸 하나를 '한 번' 고친 것의 묶음 이름 — store.commit(label, fn, { group: editGroup(input) }).
+ * 칸에 들어갈 때(focus)와 고치기를 마칠 때(change: 글 칸은 떠날 때, 슬라이더는 놓을 때) 새 이름이 된다. 글자마다 commit해도
+ * Ctrl+Z 한 번에 그 칸을 고치기 전으로 돌아간다(한 글자씩 되돌아가지 않게).
+ */
+export function editGroup(node) {
+  if (!node._editBound) {
+    node._editBound = true;
+    const reset = () => { node._edit = null; };
+    node.addEventListener('focus', reset);
+    node.addEventListener('change', reset);
+  }
+  return (node._edit ??= `edit${++editSeq}`);
+}
+
 /** Lucide 계열 인라인 SVG — 24px 그리드, 1.5px centered stroke (기획안 §6) */
 export function icon(path) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');

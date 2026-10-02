@@ -11,7 +11,7 @@
 import { newId } from '../../core/schema.js';
 import { DISPLAY_LIMITS, STATUSES, statusList, SCALE_MODES, SCALE_KEYS, SLOT_UNIT_OF, SLOT_UNITS } from '../../config/index.js';
 import { applyCalendar } from '../../core/timeline.js';
-import { $, el, clear, button, ICONS } from '../dom.js';
+import { $, el, clear, button, ICONS, editGroup } from '../dom.js';
 import { askCalendar } from '../dialog.js';
 import { openCombinePicker, composedOf } from '../combine.js';
 import { toast } from '../toast.js';
@@ -41,7 +41,7 @@ export class ConfigPanel {
       input.addEventListener('input', () => {
         const value = Number(input.value);
         $(`${id}-out`).textContent = format(value);
-        this.store.commit('표시 설정', (doc) => { doc.meta.display[key] = value; });
+        this.store.commit('표시 설정', (doc) => { doc.meta.display[key] = value; }, { group: editGroup(input) });
       });
     }
     this._displayFields = fields;
@@ -126,7 +126,7 @@ export class ConfigPanel {
     for (const s of statusList(this.store.doc)) {
       const input = el('input', {
         value: s.label, attrs: { 'aria-label': `${s.key} 상태 이름` },
-        on: { input: (e) => this.#setStatusLabel(s.key, e.target.value) },
+        on: { input: (e) => this.#setStatusLabel(s.key, e.target.value, editGroup(e.target)) },
       });
       list.append(el('div.trow', {}, [
         el('span.st-dot', { className: 'st-dot st-' + s.key }),
@@ -135,14 +135,14 @@ export class ConfigPanel {
     }
   }
 
-  #setStatusLabel(key, label) {
+  #setStatusLabel(key, label, group = null) {
     this.store.commit('상태 이름', (doc) => {
       if (!doc.meta.statusLabels) doc.meta.statusLabels = {};
       const def = STATUSES.find((s) => s.key === key)?.label ?? key;
       const v = label.trim();
       if (!v || v === def) delete doc.meta.statusLabels[key];   // 기본과 같으면 재정의 안 남김
       else doc.meta.statusLabels[key] = v;
-    });
+    }, { group });
   }
 
   // ── 트랙 ────────────────────────────────────────────────
@@ -154,11 +154,11 @@ export class ConfigPanel {
     this.store.tracks.forEach((track, i) => {
       const name = el('input', {
         value: track.name, attrs: { 'aria-label': '트랙 이름' },
-        on: { input: (e) => this.store.commit('트랙 이름', () => { track.name = e.target.value; }) },
+        on: { input: (e) => this.store.commit('트랙 이름', () => { track.name = e.target.value; }, { group: editGroup(e.target) }) },
       });
       const lab = el('input.lab', {
         value: track.lab ?? '', attrs: { 'aria-label': '분류 라벨', placeholder: '분류 (예: 요구사항 4)' },
-        on: { input: (e) => this.store.commit('트랙 라벨', () => { track.lab = e.target.value; }) },
+        on: { input: (e) => this.store.commit('트랙 라벨', () => { track.lab = e.target.value; }, { group: editGroup(e.target) }) },
       });
 
       // 트랙도 이벤트다 — 여러 이벤트로 이 트랙을 이룰 수 있다(조합=구성, docs/SAVE.md §5).

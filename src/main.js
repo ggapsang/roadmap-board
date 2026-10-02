@@ -32,6 +32,9 @@ import { DataPanel } from './ui/panels/data.js';
 import { GraphView } from './ui/graph.js';
 import { openHelp } from './ui/help.js';
 
+/** 글을 쓰는 입력 칸 — 여기서는 Ctrl+Z/Y가 그 칸의 글자 되돌리기다. 날짜·체크박스·숫자 등은 보드 되돌리기로 넘긴다 */
+const TEXT_INPUTS = new Set(['text', 'search', 'email', 'url', 'tel', 'password']);
+
 async function boot() {
   initTheme();
 
@@ -150,6 +153,20 @@ async function boot() {
 
   // ── 렌더 경로 ───────────────────────────────────────────
 
+  /**
+   * 되돌리기·다시 실행 뒤 열린 패널을 문서에 맞춘다. 일정 편집은 그 일정을 다시 채우고(되돌려서 사라졌으면 닫는다),
+   * 보드 설정은 다시 그린다. 패널은 열 때 한 번 채우는 구조라 그냥 두면 되돌리기 전 값이 남아 보인다.
+   */
+  function syncPanelsToDoc() {
+    if (panels.current === 'pItem') {
+      const id = view.selectedItem;
+      if (id && store.item(id)) itemPanel.open(id);
+      else panels.close({ force: true });   // 되돌려서 그 일정이 없어졌다 — 고정해 둔 패널도 닫는다
+    } else if (panels.current === 'pTrack') {
+      configPanel.render();
+    }
+  }
+
   function refresh() {
     board.render();
     renderStatusBar($('statusBar'), { store, view, onChange: refresh });
@@ -167,6 +184,8 @@ async function boot() {
     // 기간·트랙 구성이 통째로 바뀌는 변경은 골격부터 다시 그린다
     if (['replace', 'undo', 'redo', 'adopt'].includes(reason)) rebuild();
     else refresh();
+    // 되돌리기·다시 실행 — 열린 패널의 칸도 되돌린 값으로(패널은 문서를 새로 읽어야 보인다)
+    if (['undo', 'redo', 'replace'].includes(reason)) syncPanelsToDoc();
     tabs?.syncActiveName();   // 보드 이름이 바뀌었으면 탭 이름도 맞춘다
     if (panels.current === 'pData') $('d-json').value = store.toJSON();
   });
@@ -236,11 +255,15 @@ async function boot() {
       return;
     }
     if (tabs.graphActive) return;        // 그래프 탭 — 보드 단축키(되돌리기·삭제 등)는 뒤의 보드에 가지 않게
-    // 글을 쓰는 중 — 입력 칸·비고 편집기(contenteditable). 여기서는 되돌리기(Ctrl+Z/Y)가 그 칸의 글자만 되돌리고,
-    // 보드(카드) 되돌리기·카드 삭제(Delete/Backspace)·선택 모드(Ctrl+I)로 번지지 않는다.
+    // 입력 칸에 있을 때 — 글을 쓰는 칸(글 입력·textarea·비고 편집기)이면 되돌리기(Ctrl+Z/Y)는 그 칸의 글자만 되돌린다.
+    // 날짜·드롭다운·체크박스·숫자·슬라이더는 자기 되돌리기가 없어 Ctrl+Z/Y를 보드 되돌리기로 넘긴다(패널에서 고친 것도
+    // 되돌아간다). 카드 삭제(Delete/Backspace)·선택 모드(Ctrl+I/B)는 어느 입력 칸에서든 번지지 않는다.
     const ae = document.activeElement;
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(ae?.tagName ?? '') || !!ae?.isContentEditable;
-    if (typing && (e.ctrlKey || e.metaKey) && ['z', 'y', 'i', 'b'].includes(e.key.toLowerCase())) return;
+    const writing = typing && (ae.isContentEditable || ae.tagName === 'TEXTAREA'
+      || (ae.tagName === 'INPUT' && TEXT_INPUTS.has((ae.type || 'text').toLowerCase())));
+    const k = e.key.toLowerCase();
+    if ((e.ctrlKey || e.metaKey) && (writing ? ['z', 'y', 'i', 'b'] : typing ? ['i', 'b'] : []).includes(k)) return;
 
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
       e.preventDefault();
