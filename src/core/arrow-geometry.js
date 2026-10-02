@@ -419,8 +419,6 @@ export function elbowRoute(A, B, m = 0.5, boxes = [], prefer = null) {
   const k = Number.isFinite(Number(m)) ? Number(m) : 0.5;
   const P = ({ x, y }) => ({ x, y });
   const ah = A.n.x !== 0, bh = B.n.x !== 0;
-  const lerp = (a, b) => a + (b - a) * k;
-  const cand = [];
   // 곧은 선 — 마주 보는 두 변이 한 줄 위에 있으면. 조금(SNAP) 어긋났거나, 지난번에 곧은 선이었는데(prefer 'line') 크기가 바뀌어
   // 어긋났으면 두 카드가 겹치는 데서 곧게 맞춘다(작은 계단이 생기지 않게). 그때 양 끝은 테두리 위에서 조금 옮겨진다.
   const facing = A.n.x === -B.n.x && A.n.y === -B.n.y;
@@ -432,38 +430,64 @@ export function elbowRoute(A, B, m = 0.5, boxes = [], prefer = null) {
     const v = vert ? keepLine((A.x + B.x) / 2, f.x, f.w, t.x, t.w) : keepLine((A.y + B.y) / 2, f.y, f.h, t.y, t.h);
     if (v != null) line = vert ? [{ x: v, y: A.y }, { x: v, y: B.y }] : [{ x: A.x, y: v }, { x: B.x, y: v }];
   }
-  cand.push({ id: 'line', points: line, axis: null });
-  // 한 번 꺾임 — A의 법선 방향으로 먼저
-  cand.push({ id: 'corner', points: [P(A), ah ? { x: B.x, y: A.y } : { x: A.x, y: B.y }, P(B)], axis: null });
-  // 가운데 구간 하나(두 번 꺾임) — 나란한 법선
-  if (ah && bh) { const mx = lerp(A.x, B.x); cand.push({ id: 'midx', points: [P(A), { x: mx, y: A.y }, { x: mx, y: B.y }, P(B)], axis: 'x', adj: { axis: 'x', from: A.x, to: B.x }, mid: { x: mx, y: (A.y + B.y) / 2 } }); }
-  if (!ah && !bh) { const my = lerp(A.y, B.y); cand.push({ id: 'midy', points: [P(A), { x: A.x, y: my }, { x: B.x, y: my }, P(B)], axis: 'y', adj: { axis: 'y', from: A.y, to: B.y }, mid: { x: (A.x + B.x) / 2, y: my } }); }
-  // 변에서 짧게 곧게 빠져나간 뒤 — 카드 사이가 좁으면 더 짧게(16 → 8 → 4px)
-  for (const st of [STUB, STUB / 2, STUB / 4]) {
-    const A1 = { x: A.x + A.n.x * st, y: A.y + A.n.y * st };
-    const B1 = { x: B.x + B.n.x * st, y: B.y + B.n.y * st };
-    // 한 번 꺾어 들어가기(엇갈린 법선) — 두 모서리 다
-    cand.push({ id: `sc1:${st}`, points: [P(A), A1, { x: B1.x, y: A1.y }, B1, P(B)], axis: null });
-    cand.push({ id: `sc2:${st}`, points: [P(A), A1, { x: A1.x, y: B1.y }, B1, P(B)], axis: null });
-    // 가운데 가로 구간 또는 세로 구간
-    { const my = lerp(A1.y, B1.y); cand.push({ id: `smy:${st}`, points: [P(A), A1, { x: A1.x, y: my }, { x: B1.x, y: my }, B1, P(B)], axis: 'y', adj: { axis: 'y', from: A1.y, to: B1.y }, mid: { x: (A1.x + B1.x) / 2, y: my } }); }
-    { const mx = lerp(A1.x, B1.x); cand.push({ id: `smx:${st}`, points: [P(A), A1, { x: mx, y: A1.y }, { x: mx, y: B1.y }, B1, P(B)], axis: 'x', adj: { axis: 'x', from: A1.x, to: B1.x }, mid: { x: mx, y: (A1.y + B1.y) / 2 } }); }
-  }
+  // 후보 — 가운데 구간 위치(t)를 받아 만든다(맞는 것이 없으면 t를 옮겨 다시 만들어 본다)
+  const build = (t) => {
+    const lerp = (a, b) => a + (b - a) * t;
+    const cand = [];
+    cand.push({ id: 'line', points: line, axis: null });
+    // 한 번 꺾임 — A의 법선 방향으로 먼저
+    cand.push({ id: 'corner', points: [P(A), ah ? { x: B.x, y: A.y } : { x: A.x, y: B.y }, P(B)], axis: null });
+    // 가운데 구간 하나(두 번 꺾임) — 나란한 법선
+    if (ah && bh) { const mx = lerp(A.x, B.x); cand.push({ id: 'midx', points: [P(A), { x: mx, y: A.y }, { x: mx, y: B.y }, P(B)], axis: 'x', adj: { axis: 'x', from: A.x, to: B.x }, mid: { x: mx, y: (A.y + B.y) / 2 } }); }
+    if (!ah && !bh) { const my = lerp(A.y, B.y); cand.push({ id: 'midy', points: [P(A), { x: A.x, y: my }, { x: B.x, y: my }, P(B)], axis: 'y', adj: { axis: 'y', from: A.y, to: B.y }, mid: { x: (A.x + B.x) / 2, y: my } }); }
+    // 변에서 짧게 곧게 빠져나간 뒤 — 카드 사이가 좁으면 더 짧게(16 → 8 → 4px)
+    for (const st of [STUB, STUB / 2, STUB / 4]) {
+      const A1 = { x: A.x + A.n.x * st, y: A.y + A.n.y * st };
+      const B1 = { x: B.x + B.n.x * st, y: B.y + B.n.y * st };
+      // 한 번 꺾어 들어가기(엇갈린 법선) — 두 모서리 다
+      cand.push({ id: `sc1:${st}`, points: [P(A), A1, { x: B1.x, y: A1.y }, B1, P(B)], axis: null });
+      cand.push({ id: `sc2:${st}`, points: [P(A), A1, { x: A1.x, y: B1.y }, B1, P(B)], axis: null });
+      // 가운데 가로 구간 또는 세로 구간
+      { const my = lerp(A1.y, B1.y); cand.push({ id: `smy:${st}`, points: [P(A), A1, { x: A1.x, y: my }, { x: B1.x, y: my }, B1, P(B)], axis: 'y', adj: { axis: 'y', from: A1.y, to: B1.y }, mid: { x: (A1.x + B1.x) / 2, y: my } }); }
+      { const mx = lerp(A1.x, B1.x); cand.push({ id: `smx:${st}`, points: [P(A), A1, { x: mx, y: A1.y }, { x: mx, y: B1.y }, B1, P(B)], axis: 'x', adj: { axis: 'x', from: A1.x, to: B1.x }, mid: { x: mx, y: (A1.y + B1.y) / 2 } }); }
+    }
+    return cand;
+  };
   const done = (c, valid) => {
     const pts = simplify(c.points);
     // 가운데 구간이 접혀 사라졌으면(곧은 선이 됐으면) 손잡이도 없다
     const hasMid = c.axis && pts.length >= 4;
     return { points: pts, axis: hasMid ? c.axis : null, mid: hasMid ? c.mid : null, adj: hasMid ? c.adj : null, valid, form: c.id };
   };
+  const cand = build(k);
   // 이어 쓸 꼴 — 방향(나가고 들어오는 쪽)만 맞으면 그대로
   if (prefer) {
     const c = cand.find((x) => x.id === prefer);
     if (c && validRoute(c.points, A, B, [])) return done(c, validRoute(c.points, A, B, boxes));
   }
   for (const c of cand) if (validRoute(c.points, A, B, boxes)) return done(c, true);
-  // 맞는 것이 없으면(카드가 겹쳐 있는 등) 한 번 꺾임으로 그린다
+  // 이 가운데 위치로는 맞는 것이 없다(예: 키 큰 카드 바로 아래 붙은 카드로 옆변→옆변 — 가운데 구간이 카드를 지난다).
+  // 가운데 위치를 가까운 데부터 옮겨 보며 맞는 가운데 구간 경로를 찾는다(두 카드 사이 틈, 또는 카드 바깥으로 돌아서). 저장한 m은 그대로.
+  for (const t of MID_TRIES.map((d) => k + d)) {
+    const hit = build(t).find((c) => c.adj && validRoute(c.points, A, B, boxes));
+    if (!hit) continue;
+    // 그 꼴이 맞는 범위의 한가운데로 — 틈의 가장자리(카드 테두리에 붙은 선)가 아니라 틈 가운데를 지나게
+    const ok = (u) => { const c = build(u).find((x) => x.id === hit.id); return c && validRoute(c.points, A, B, boxes) ? c : null; };
+    let lo = t, hi = t;
+    for (let n = 0; n < 600 && ok(lo - 0.005); n += 1) lo -= 0.005;
+    for (let n = 0; n < 600 && ok(hi + 0.005); n += 1) hi += 0.005;
+    return done(ok((lo + hi) / 2) ?? hit, true);
+  }
+  // 그래도 없으면(카드가 겹쳐 있는 등) 한 번 꺾임으로 그린다
   return done(cand[1], false);
 }
+
+/** 맞는 경로가 없을 때 가운데 위치를 옮겨 볼 폭 — 가까운 데부터(±0.02 … ±2.5) */
+const MID_TRIES = (() => {
+  const out = [];
+  for (let d = 0.02; d <= 2.5; d += 0.02) out.push(+d.toFixed(2), -d.toFixed(2));
+  return out;
+})();
 
 /**
  * 자동 경로(routeBetween의 점열)를 고칠 수 있는 꼴로 옮긴다 — 편집을 시작할 때 모양이 튀지 않게.

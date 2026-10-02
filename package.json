@@ -10,7 +10,8 @@
     "dev": "electron . --dev",
     "example-db": "electron scripts/make-example-db.mjs",
     "dist": "node scripts/dist.mjs",
-    "test": "electron . --smoke"
+    "test": "electron . --smoke",
+    "test:all": "electron . --smoke --all"
   },
   "author": "다임리서치",
   "license": "UNLICENSED",

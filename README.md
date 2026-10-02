@@ -31,7 +31,8 @@ Electron 앱이 뜨면 **프로젝트 목록**이 먼저 나온다. 보드 하�
 |---|---|
 | `npm start` | 앱 실행 |
 | `npm run dev` | 개발자 도구를 함께 연다 |
-| `npm test` | 스모크 — 창을 띄워 렌더와 저장 왕복을 확인하고 종료 |
+| `npm test` | 스모크 — 창을 띄워 렌더와 저장 왕복을 확인하고, 고친 코드에 닿는 점검 단계만 돌리고 종료 |
+| `npm run test:all` | 스모크 단계 전부 |
 | `npm test -- --shot ./shots` | 위에 더해 화면을 PNG로 남긴다 |
 | `npm start -- --db ./machina.db` | DB 파일을 직접 지정 (과제별로 나눠 쓸 때) |
 | `npm run dist` | Windows 64비트 설치 파일·포터블 exe 생성 → `dist/` ([배포](#배포)) |

@@ -33,8 +33,11 @@
 npm install
 npm start          # 앱 실행
 npm run dev        # 개발자 도구 함께
-npm test           # 스모크 — 창을 띄워 렌더/저장 왕복을 확인하고 종료
-npm test -- --shot ./shots   # 스모크에 화면 캡처 추가 (라이트/다크 둘 다)
+npm test           # 스모크 — 기본 점검(렌더·저장 왕복) + 고친 코드에 닿는 단계만(git이 보는 바뀐 파일 → 영역)
+npm run test:all   # 스모크 전부 (버전 올리기·빌드 전, 공용 코드를 크게 고쳤을 때)
+npm test -- --only arrow-edit,zoom   # 이름으로 고른 단계만 (이름은 npm test -- --list)
+npm test -- --since origin/main      # 그 커밋 이후 바뀐 파일까지 더해 고르기
+npm test -- --shot ./shots   # 스모크에 화면 캡처 추가 (라이트/다크 둘 다, 단계 전부)
 npm start -- --db ./other.db   # DB 파일 지정
 npx electron . --repro --db <실제DB복사본> --board N   # 실제 데이터 왕복 점검 — DB를 고쳐 쓰므로 복사본만
 ```
@@ -43,7 +46,9 @@ npx electron . --repro --db <실제DB복사본> --board N   # 실제 데이터 �
 
 ```
 electron/          메인 프로세스 — 창, IPC, SQLite
-  main.js            app:// 프로토콜, IPC 핸들러, 메뉴, 스모크
+  main.js            app:// 프로토콜, IPC 핸들러, 메뉴, --repro
+  smoke/index.js     스모크 실행기 — 기본 점검 + 단계 고르기(AREAS: 영역 → 소스, GLOBAL: 고치면 전부)
+  smoke/steps/       NNN-이름.js 한 단계 = {name, areas, requires?, run, check}. 번호 순. 혼자 돌아도 통과(필요한 구조는 requires)
   preload.cjs        contextBridge로 window.roadmapDB만 노출 (sandbox:true라 CJS)
   db/index.js        연결 + PRAGMA user_version 기반 마이그레이션
   db/repository.js   문서 <-> 정규화 테이블
@@ -222,6 +227,13 @@ src/               렌더러 (프레임워크 없음, ES 모듈)
    그것을 prefer로 넘긴다. 후보 이름은 픽셀이 아니라 '어느 지점·어느 장애물(id) 옆'이어야 한다 — 새 후보를 넣을 때도 이름을 붙인다.
    **두 카드가 겹치는 폭(LINE_MIN 이상)이 있으면 곧은 선 후보(`vs`·`hs`)를 맨 앞에 둔다** — 크기가 다른 카드끼리 가운데·가장자리 점이
    1~3px 어긋나 작은 계단이 생기던 것. 고친 화살표도 양 끝이 SNAP 안으로 어긋났거나 곧은 선이던 것(prefer 'line')이면 겹친 데서 곧게 맞춘다.
+
+27. **스모크는 단계 파일로 (electron/smoke/).** 새 점검은 `steps/`에 파일 하나를 더하고 `areas`에 그 기능의 영역을 적는다 —
+   `npm test`가 바뀐 파일의 영역으로 단계를 고르므로 영역을 빠뜨리면 그 코드를 고쳐도 안 돈다. 새 소스 파일은 `AREAS`(또는 `GLOBAL`)에
+   넣는다 — 어느 영역에도 없는 소스를 고치면 실행기가 경고하고 전부 돌린다. 단계는 **혼자 돌아도** 통과해야 한다(고친 상태는 단계 안에서
+   원복, 앞 단계의 결과값을 쓰지 않는다). 앞 단계가 만든 문서 구조(nesting의 상위 카드, task의 태스크, bands의 구간)가 필요하면
+   `requires: ['nesting']`처럼 적는다 — 실행기가 그 단계를 앞에 더해 돈다. 단계를 고치면 `--only 이름`으로 혼자 돌려 본다.
+   버전 올리기·빌드 전에는 `npm run test:all`.
 
 ## 데이터
 
