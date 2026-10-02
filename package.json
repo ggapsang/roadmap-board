@@ -1,6 +1,6 @@
 {
   "name": "wolfpack",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "WOLFPACK — 시간축 위에서 일정을 편집·공유하는 프로젝트 보드",
   "private": true,
   "type": "module",
