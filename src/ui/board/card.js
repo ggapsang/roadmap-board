@@ -43,9 +43,11 @@ export function renderCard(item, ctx) {
   // 점 마일스톤(시작=끝)만 얇은 표식으로 그린다. 기간 마일스톤은 막대로 떨어진다.
   const msPoint = timeline.isPoint(item);
   // 카드에 쓰는 위치 글자 — 날짜('10.05 – 10.20') 또는 칸('칸 3–5'). 툴팁엔 날짜를 온전히.
-  const where = timeline.label(item);
+  // 날짜 없는 보드(처음부터 눈금 없이 만든 보드)는 쓰지 않는다 — 칸 번호는 순서일 뿐이라 카드에 적으면 군더더기(2026-10-06 사용자).
+  const where = timeline.dated ? timeline.label(item) : '';
   const showsDate = timeline.dated && timeline.mode.key !== 'none';
   const whereFull = !showsDate ? where : item.s === item.e ? item.s : `${item.s} – ${item.e}`;
+  const tip = (...parts) => parts.filter(Boolean).join(' · ');
   // 크기 강제 모드 — 가로(x/w)·세로(hd)를 드래그로 자유 조절. hd가 그 표식이다.
   const forced = item.place?.hd != null;
 
@@ -131,7 +133,7 @@ export function renderCard(item, ctx) {
       el('span.t', { text: item.alias || item.ti }),
       el('span.meta', { text: where }),
     );
-    node.title = `${item.alias ? `${item.alias} (별칭 · 제목: ${item.ti})` : item.ti} · ${whereFull} · ${item.og}`;
+    node.title = tip(item.alias ? `${item.alias} (별칭 · 제목: ${item.ti})` : item.ti, whereFull, item.og);
     // 최상위 점 마일스톤만 트랙 걸침 손잡이. 상위에 든 것은 폭 손잡이. 사본(echo)은 손잡이 없음.
     if (!echo) addHorizontalGrips(node, { span: !parent });
     return node;
@@ -165,7 +167,7 @@ export function renderCard(item, ctx) {
   }
 
   const meta = el('div.meta', {}, [
-    el('span.dt', { text: where }),
+    where ? el('span.dt', { text: where }) : null,
     el('span.tag', { text: item.og }),
   ]);
   // 태스크가 있으면 완료/전체를 작은 칩으로. 순서 없는 할 일이라 카드엔 개수만 보인다.
@@ -198,7 +200,7 @@ export function renderCard(item, ctx) {
     const widthGrips = forced || !!parent;
     addHorizontalGrips(node, { span: !widthGrips });
   }
-  node.title = `${item.alias ? `${item.alias}\n(별칭 · 제목: ${item.ti})` : label}\n${whereFull} · ${item.og}${item.pg ? ' · ' + item.pg + '%' : ''}`;
+  node.title = `${item.alias ? `${item.alias}\n(별칭 · 제목: ${item.ti})` : label}\n${tip(whereFull, item.og, item.pg ? item.pg + '%' : '')}`;
   return node;
 }
 

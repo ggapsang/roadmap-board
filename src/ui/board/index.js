@@ -897,6 +897,7 @@ export class Board {
         };
         if (same && node.pos) tl.set(item, Math.max(0, node.pos.s + shift), Math.max(0, node.pos.e + shift));
         else tl.set(item, at, tl.newEnd(at));
+        this.#forceSizeIfDateless(item);
         doc.items.push(item);
         for (const c of (node.children ?? [])) build(c, id, home);
       };
@@ -983,6 +984,18 @@ export class Board {
    * endPos를 주면 거기까지(끌어서 만든 길이), 없으면 눈금 모드의 기본 길이.
    * 위치는 날짜 있는 보드면 일 인덱스, 날짜 없는 보드면 칸 인덱스다.
    */
+  /**
+   * 날짜 없는 보드(처음부터 눈금 없이 만든 보드)의 새 카드는 '사이즈 수동 설정'(크기 강제)을 켠 채로 만든다 — 칸은 순서일 뿐이라
+   * 기간대로 늘어나는 자동 크기보다 손으로 맞추는 쪽이 맞다(2026-10-06 사용자). 높이는 칸 길이, 폭은 그 트랙 한 칸.
+   * 날짜 있는 보드는 그대로 자동 크기. 패널의 '크기 강제' 켜기와 같은 값이다.
+   */
+  #forceSizeIfDateless(item) {
+    if (this.timeline.dated) return;
+    item.place.hd = Math.max(1, item.place.slot?.len ?? 1);
+    item.place.x = 0;
+    item.place.w = Math.max(1, item.place.sp ?? 1);
+  }
+
   createItem(trackId, startPos, endPos = null) {
     const tl = this.timeline;
     const start = Math.max(0, startPos);
@@ -996,6 +1009,7 @@ export class Board {
       place: { t: trackId, sp: 1, align: 'middle', showNote: false, hd: null, x: null, w: null, slot: null },
     };
     tl.set(item, start, end);
+    this.#forceSizeIfDateless(item);
     this.store.commit('일정 추가', (doc) => { doc.items.push(item); });
     this.handlers.openItem(item.id);
     return item;

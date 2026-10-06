@@ -36,6 +36,9 @@ export default {
           await sleep(500);
           out.aSlot = JSON.stringify(a.place.slot); out.aDate = a.s;
           out.label = document.querySelector('.ev[data-id="' + b.id + '"] .dt')?.textContent ?? '';
+          out.noSlotText = !/칸/.test(document.querySelector('.ev[data-id="' + b.id + '"]')?.textContent ?? '칸');
+          out.forced = JSON.stringify([a.place.hd, a.place.x, a.place.w, b.place.hd]);
+          out.forcedBtn = document.getElementById('i-fixedh').getAttribute('aria-pressed');
           out.slotsHidden = document.getElementById('i-dates').hidden && !document.getElementById('i-slots').hidden;
           out.a = a.id; out.b = b.id;
           window.__datelessShot = window.__datelessShot ?? null;
@@ -69,7 +72,8 @@ export default {
     return dateless;
   },
   check: (dateless) => (dateless?.dated === false && dateless?.gutNumbers === true && dateless?.outer === 0 && dateless?.now === false
-      && dateless?.aSlot === '{"s":2,"len":1}' && dateless?.aDate == null && dateless?.label === '칸 5–7'
+      && dateless?.aSlot === '{"s":2,"len":1}' && dateless?.aDate == null && dateless?.label === '' && dateless?.noSlotText === true
+      && dateless?.forced === '[1,0,1,3]' && dateless?.forcedBtn === 'true'
       && dateless?.slotsHidden === true && dateless?.reloaded === '{"s":4,"len":3}'
       && dateless?.cal?.dated === true && dateless?.cal?.scale === 'month-week'
       && dateless?.cal?.s === '2026-11-02' && dateless?.cal?.e === '2026-11-22' && dateless?.undone === true

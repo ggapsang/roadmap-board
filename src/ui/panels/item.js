@@ -1191,6 +1191,8 @@ export class ItemPanel {
         place: {
           t: parent.place.t, sp: 1, x: null, w: null, hd: null, align: 'middle', showNote: false,
           slot: parent.place.slot ? { ...parent.place.slot } : null,     // 날짜 없는 보드 — 부모 칸 그대로
+          // 날짜 없는 보드의 새 카드는 크기 강제를 켠 채로(Board#forceSizeIfDateless와 같은 규칙)
+          ...(this.store.meta.display?.dated === false ? { hd: Math.max(1, parent.place.slot?.len ?? 1), x: 0, w: 1 } : {}),
         },
       });
       this.#syncProgress(parent);
