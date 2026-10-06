@@ -80,6 +80,28 @@ export default {
             await sleep(200);
             const it2 = r.store.item(a.id);
             out.freeHeight = { hd: it2.place.hd, slot: JSON.stringify(it2.place.slot), shorter: card().getBoundingClientRect().height < cr.height - 5 };
+            // 위 가장자리도 단위에 붙지 않는다 — 같은 칸 안이면 윗변만 내려가고(바닥 그대로), 위 칸으로 넘기면 시작 칸이 바뀐다
+            {
+              const cardB = () => document.querySelector('.ev[data-id="' + b.id + '"]');
+              const drag = async (dy) => {
+                const g = cardB().querySelector('.grip-top'), gb = g.getBoundingClientRect();
+                const at3 = (y) => ({ bubbles: true, clientX: gb.left + gb.width / 2, clientY: y, button: 0, pointerId: 9 });
+                g.dispatchEvent(new PointerEvent('pointerdown', at3(gb.top + 2)));
+                grid.dispatchEvent(new PointerEvent('pointermove', at3(gb.top + 2 + dy / 2)));
+                grid.dispatchEvent(new PointerEvent('pointermove', at3(gb.top + 2 + dy)));
+                grid.dispatchEvent(new PointerEvent('pointerup', at3(gb.top + 2 + dy)));
+                await sleep(200);
+              };
+              const bottom0 = cardB().getBoundingClientRect().bottom;
+              await drag(c0 * 0.3);
+              const ib = r.store.item(b.id);
+              const down = { oy: ib.place.oy, hd: ib.place.hd, slot: JSON.stringify(ib.place.slot), bottomKept: Math.abs(cardB().getBoundingClientRect().bottom - bottom0) < 2 };
+              await drag(-c0);
+              const ib2 = r.store.item(b.id);
+              const up = { oy: ib2.place.oy, hd: ib2.place.hd, s: ib2.place.slot.s, bottomKept: Math.abs(cardB().getBoundingClientRect().bottom - bottom0) < 2 };
+              r.store.undo(); r.store.undo(); await sleep(200);          // 두 번 끈 것 원복 — 아래 다시 읽기 점검이 원래 칸을 본다
+              out.topFree = { down, up, undone: JSON.stringify(r.store.item(b.id).place.slot) === '{"s":4,"len":3}' && !r.store.item(b.id).place.oy };
+            }
             r.itemPanel.open(a.id); await sleep(150);
           }
           out.slotsHidden = document.getElementById('i-dates').hidden && !document.getElementById('i-slots').hidden;
@@ -119,6 +141,10 @@ export default {
       && dateless?.slotRow?.cell >= 1.8 && dateless?.slotRow?.cardGrew === true && dateless?.slotRow?.otherSame === true
       && dateless?.freeHeight?.hd > 0.4 && dateless?.freeHeight?.hd < 0.8 && dateless?.freeHeight?.slot === '{"s":2,"len":1}'
       && dateless?.freeHeight?.shorter === true
+      && dateless?.topFree?.down?.oy >= 0.2 && dateless?.topFree?.down?.oy <= 0.4 && dateless?.topFree?.down?.slot === '{"s":4,"len":3}'
+      && dateless?.topFree?.down?.bottomKept === true && dateless?.topFree?.down?.hd < 3
+      && dateless?.topFree?.up?.s === 3 && dateless?.topFree?.up?.oy >= 0.2 && dateless?.topFree?.up?.oy <= 0.4 && dateless?.topFree?.up?.hd > 3
+      && dateless?.topFree?.up?.bottomKept === true && dateless?.topFree?.undone === true
       && dateless?.slotRow?.undone === true && dateless?.slotRow?.reloaded === dateless?.slotRow?.scale && dateless?.slotRow?.reset === true && dateless?.now === false
       && dateless?.aSlot === '{"s":2,"len":1}' && dateless?.aDate == null && dateless?.label === '' && dateless?.noSlotText === true
       && dateless?.forced === '[1,0,1,3]' && dateless?.forcedBtn === 'true'

@@ -72,6 +72,7 @@ export function attachDrag(grid, {
       startTrack: trackIndexAt(ev.clientX),
       homeTrack: store.trackIndex(item.place.t),
       hd0: item.place?.hd ?? null,
+      oy0: item.place?.hd != null ? Math.max(0, Number(item.place?.oy) || 0) : 0,
       hostWidth,
       x0: item.place?.x ?? (rect.left - hostLeft) / hostWidth,
       w0: item.place?.w ?? rect.width / hostWidth,
@@ -147,14 +148,37 @@ export function attachDrag(grid, {
       const dy = (ev.clientY - drag.y) / getZoom();
       if (!drag.moved && Math.abs(dy) < 2) return;
       if (!drag.moved) { store.begin('기간 조절'); drag.moved = true; }
-      const top = scale.y(drag.startDay);
-      const want = Math.max(LAYOUT.minCardHeight, scale.extent(drag.startDay, drag.hd0) + dy);
+      const topPos = drag.startDay + drag.oy0;
+      const top = scale.y(topPos);
+      const want = Math.max(LAYOUT.minCardHeight, scale.extent(topPos, drag.hd0) + dy);
       // 축 끝 너머는 기본 일당(칸당) 픽셀로 센다(extent와 같은 규칙)
       const px = top + want;
       const bottom = px >= scale.height ? scale.totalDays + (px - scale.height) / scale.ppd : scale.dayAt(px);
       store.commit('드래그', () => {
         const item = store.item(drag.id);
-        if (item) item.place.hd = Math.max(HD_MIN, Math.round((bottom - drag.startDay) * 100) / 100);
+        if (item) item.place.hd = Math.max(HD_MIN, Math.round((bottom - topPos) * 100) / 100);
+      });
+      return;
+    }
+
+    // 크기 강제의 위 가장자리 — 바닥은 그대로 두고 윗변을 끈 만큼(단위에 붙이지 않는다). 같은 칸(날짜) 안이면 윗변 여백(oy)만
+    // 바뀌고, 다른 칸으로 넘어가면 시작 칸(날짜)이 그 칸으로 바뀐다(2026-10-06 사용자).
+    if (drag.mode === 'size-top' && drag.hd0 != null) {
+      const dy = (ev.clientY - drag.y) / getZoom();
+      if (!drag.moved && Math.abs(dy) < 2) return;
+      if (!drag.moved) { store.begin('기간 조절'); drag.moved = true; }
+      const topPos0 = drag.startDay + drag.oy0;
+      const bottomPos = topPos0 + drag.hd0;
+      const bottomPx = scale.y(topPos0) + scale.extent(topPos0, drag.hd0);
+      const px = Math.max(0, Math.min(bottomPx - LAYOUT.minCardHeight, scale.y(topPos0) + dy));
+      const newTop = Math.min(scale.dayAt(px), bottomPos - HD_MIN);
+      const s = Math.max(0, tl.snap(Math.floor(newTop)));
+      store.commit('드래그', () => {
+        const item = store.item(drag.id);
+        if (!item) return;
+        tl.set(item, s, Math.max(s, drag.endDay));
+        item.place.oy = newTop - s > 0.005 ? Math.round((newTop - s) * 100) / 100 : null;
+        item.place.hd = Math.max(HD_MIN, Math.round((bottomPos - newTop) * 100) / 100);
       });
       return;
     }

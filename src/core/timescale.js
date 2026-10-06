@@ -15,6 +15,11 @@
  */
 import { dayIndex } from './dates.js';
 
+/** 카드 윗변의 여백(위치 단위) — 크기 강제 카드만(place.oy). 시작 칸·날짜 안에서 윗변이 내려온 만큼 */
+export function topOffset(item) {
+  return item?.place?.hd != null ? Math.max(0, Number(item.place.oy) || 0) : 0;
+}
+
 export class TimeScale {
   /**
    * @param {Date} origin 보드 시작일
@@ -80,8 +85,8 @@ export class TimeScale {
     return this.timeline?.pos(item)
       ?? { s: dayIndex(item.s, this.origin), e: dayIndex(item.e || item.s, this.origin) };
   }
-  /** 이벤트의 top(px) — 시작 위치 */
-  topOf(item) { return this.y(this.#pos(item).s); }
+  /** 이벤트의 top(px) — 시작 위치(크기 강제 카드는 + 위쪽 여백) */
+  topOf(item) { return this.y(this.#pos(item).s + topOffset(item)); }
   /** 이벤트의 높이(px) — 기간(끝 포함) */
   heightOf(item) {
     const p = this.#pos(item);
@@ -178,7 +183,7 @@ export class SlotScale {
     }
     return lo + (py - this.top[lo]) / (this.h[lo] || this.ppd);
   }
-  topOf(item) { return this.y(this.timeline.pos(item)?.s ?? 0); }
+  topOf(item) { return this.y((this.timeline.pos(item)?.s ?? 0) + topOffset(item)); }
   heightOf(item) {
     const p = this.timeline.pos(item) ?? { s: 0, e: 0 };
     return (p.e - p.s + 1) * this.ppd;

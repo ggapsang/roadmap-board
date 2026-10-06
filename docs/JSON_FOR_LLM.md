@@ -27,7 +27,7 @@
 
 ```jsonc
 {
-  "version": 20,          // 문서 형식 버전(해석에는 무시해도 된다)
+  "version": 21,          // 문서 형식 버전(해석에는 무시해도 된다)
   "meta":      { ... },   // 보드 이름·표시 기간·표시 설정
   "orgs":      [ ... ],   // 담당 조직 이름 목록
   "tracks":    [ ... ],   // 트랙(가로 칸) 목록 — 배열 순서 = 화면 왼쪽→오른쪽
@@ -80,7 +80,7 @@
     "t": "track:2:t0",          // 놓인 트랙(홈 트랙) id
     "tracks": ["track:2:t0", "track:2:t1"],  // 걸쳐 있는 트랙들(여러 트랙에 동시에 속한다)
     "slot": null,               // 날짜 없는 보드에서의 칸 위치(§6). 날짜 있는 보드는 null
-    "sp": 2, "x": 0, "w": 1.98, "hd": 27, "align": "middle", "showNote": false, "fill": null  // 화면용 — 무시
+    "sp": 2, "x": 0, "w": 1.98, "hd": 27, "oy": null, "align": "middle", "showNote": false, "fill": null  // 화면용 — 무시
   }
 }
 ```
@@ -138,7 +138,7 @@
 
 ## 9. 무시해도 되는 것 (화면 전용)
 
-`bands` 전체, `meta.display`(단 `dated`는 §6. `slotRows`도 칸 높이일 뿐), `meta.arrows`(사용자가 고친 화살표 모양), `tracks[].w`·`tracks[].fill`, `place`의 `sp`·`x`·`w`·`hd`·`align`·`showNote`·`fill`.
+`bands` 전체, `meta.display`(단 `dated`는 §6. `slotRows`도 칸 높이일 뿐), `meta.arrows`(사용자가 고친 화살표 모양), `tracks[].w`·`tracks[].fill`, `place`의 `sp`·`x`·`w`·`hd`·`oy`·`align`·`showNote`·`fill`.
 이 값들은 칸 높이·카드 폭·색 같은 **보이는 모양**일 뿐, 일정의 의미·순서·기간과 무관하다.
 
 ## 10. 자주 하는 계산

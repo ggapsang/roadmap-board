@@ -15,7 +15,7 @@ import {
   RELATION_TYPES, RELATION_KEYS, FILL_KEYS, SCALE_KEYS, SLOT_UNIT_OF, BAND_SCALE,
 } from '../config/index.js';
 
-export const SCHEMA_VERSION = 20;
+export const SCHEMA_VERSION = 21;
 
 /**
  * v0 = P0 시안 문서(version 필드 없음).
@@ -242,6 +242,13 @@ function v19_to_v20(doc) {
   return doc;
 }
 
+function v20_to_v21(doc) {
+  // 크기 강제 카드의 위쪽 여백(place.oy) — 옛 문서엔 없다(칸 맨 위)
+  for (const it of doc.items ?? []) if (it?.place && typeof it.place === 'object') it.place.oy = it.place.oy ?? null;
+  doc.version = 21;
+  return doc;
+}
+
 const MIGRATIONS = {
   0: v0_to_v1,
   1: v1_to_v2,
@@ -263,6 +270,7 @@ const MIGRATIONS = {
   17: v17_to_v18,
   18: v18_to_v19,
   19: v19_to_v20,
+  20: v20_to_v21,
 };
 
 export const ALIGNS = ['top', 'middle', 'bottom'];
@@ -474,6 +482,8 @@ export function normalize(doc) {
       // 세로 크기 강제(일 단위). 없거나 잘못됐으면 null = 기간대로 자동.
       // 크기 강제 높이(위치 단위) — 소수 허용(같은 칸·같은 주 안에서도 높이를 맞춘다). 0.01 단위, 하한 0.05
       hd: (typeof hd === 'number' && hd > 0) ? Math.max(0.05, Math.round(hd * 100) / 100) : null,
+      // 크기 강제 카드의 위쪽 여백(위치 단위, 시작 칸·날짜 안에서 윗변이 내려온 만큼). 크기 강제일 때만, 0이면 없음(null)
+      oy: (typeof hd === 'number' && hd > 0 && Number(pl.oy) > 0) ? Math.round(Number(pl.oy) * 100) / 100 : null,
       x: ratio(pl.x ?? it.x),
       // 가로 폭 비율. 1 = 한 칸. **크기 강제로 여러 트랙에 걸치면 w>1이 될 수 있다**(sp만큼).
       // 1로 잘라 버리면 걸친 카드가 데이터 적용·재정규화 때 한 칸으로 쪼그라든다. 트랙 수까지 허용.

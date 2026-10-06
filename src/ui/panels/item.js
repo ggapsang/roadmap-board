@@ -275,7 +275,7 @@ export class ItemPanel {
           item.place.x = 0;
           item.place.w = Math.max(1, item.place.sp ?? 1);
         } else {
-          item.place.hd = null; item.place.x = null; item.place.w = null;
+          item.place.hd = null; item.place.x = null; item.place.w = null; item.place.oy = null;
         }
       });
       $('i-fixedh').setAttribute('aria-pressed', String(next));

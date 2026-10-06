@@ -12,7 +12,7 @@
  * (P0 시안은 buildHead()를 drawArrows() 뒤에 호출해 한 프레임 어긋났다.)
  */
 import { parseDate, dayIndex, shortMD } from '../../core/dates.js';
-import { TimeScale, SlotScale } from '../../core/timescale.js';
+import { TimeScale, SlotScale, topOffset } from '../../core/timescale.js';
 import { DateTimeline, SlotTimeline } from '../../core/timeline.js';
 import { computeLayout, gridTemplate } from '../../core/layout.js';
 import { newId } from '../../core/schema.js';
@@ -374,9 +374,10 @@ export class Board {
     const tl = this.timeline, sc = this.scale;
     const p = tl.pos(item);
     if (!p) return null;
-    const top = sc.y(p.s);
+    const off = topOffset(item);
+    const top = sc.y(p.s + off);
     if (tl.isPoint(item)) return { s: top, e: top + LAYOUT.pointCardHeight };
-    const raw = item.place?.hd != null ? sc.extent(p.s, item.place.hd) : sc.heightOf(item);
+    const raw = item.place?.hd != null ? sc.extent(p.s + off, item.place.hd) : sc.heightOf(item);
     return { s: top, e: top + Math.max(LAYOUT.minCardHeight, raw - LAYOUT.cardGap) };
   }
 

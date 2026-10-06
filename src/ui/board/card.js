@@ -8,6 +8,7 @@
 import { renderMarkdown } from '../markdown.js';
 import { LAYOUT } from '../../config/index.js';
 import { el } from '../dom.js';
+import { topOffset } from '../../core/timescale.js';
 
 const ALIGN_CSS = { top: 'flex-start', middle: 'center', bottom: 'flex-end' };
 
@@ -142,7 +143,7 @@ export function renderCard(item, ctx) {
   // 세로 크기 강제(hd, 위치 단위 — 일 또는 칸)면 기간과 무관하게 그 길이로. 아니면 기간대로.
   // 강제 길이도 축 배율을 탄다 — 시작 위치부터 hd일만큼을 축에서 잰다. 기본 일당 픽셀로 곱하면 접힌(늘린)
   // 구간을 지날 때 카드만 원래 길이로 남아 실제보다 길게(짧게) 내려간다.
-  const rawH = forced ? scale.extent(timeline.pos(item)?.s ?? 0, item.place.hd) : scale.heightOf(item);
+  const rawH = forced ? scale.extent((timeline.pos(item)?.s ?? 0) + topOffset(item), item.place.hd) : scale.heightOf(item);
   const height = Math.max(LAYOUT.minCardHeight, rawH - LAYOUT.cardGap);
 
   node.style.height = height + 'px';
