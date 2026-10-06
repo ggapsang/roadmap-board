@@ -82,7 +82,8 @@ async function boot() {
     // 참조 목록에서 그쪽으로 가기 — 그 보드를 열고(이미 이 보드면 그대로) 카드면 열어 보이게, 트랙이면 트랙 편집,
     // 태스크면 그것을 담은 카드, 보드 자체면 보드만
     goToEvent: async (boardId, id) => {
-      if (boardId && boardId !== adapter.projectId) await tabs.openBoard(boardId);
+      // 다른 창에 열린 보드면 그 창이 앞으로 나온다(한 보드는 한 창에만) — 여기서는 더 하지 않는다
+      if (boardId && boardId !== adapter.projectId && !(await tabs.openBoard(boardId))) return;
       view.selectedRel = null;
       const host = store.items.find((x) => (x.tasks ?? []).some((t) => t.id === id));
       const cardId = store.item(id) ? id : host?.id ?? null;
@@ -119,10 +120,27 @@ async function boot() {
     onGraph: () => tabs.openGraph(),
   });
 
+  // 창끼리(데스크톱) — 탭을 끌어 따로 빼기, 다른 창으로 옮기기, 한 보드는 한 창에만
+  const bridge = window.roadmapDB?.claimBoard ? {
+    claim: async (id) => (await window.roadmapDB.claimBoard(id))?.ok !== false,
+    report: (ids) => window.roadmapDB.reportTabs(ids),
+    detach: (payload) => window.roadmapDB.detachTab(payload),
+  } : null;
   tabs = new BoardTabs({
     mount: $('tabbar'), launcher, graph: graphView, openProject, adoptCached,
     getDoc: () => store.doc,
     boardName: () => store.meta.name,
+    win: bridge,
+    // 떼어 내기 전 — 쓰던 비고 등을 저장하고 DB에 닿을 때까지(새 창이 그 보드를 읽는다)
+    beforeDetach: async () => { document.activeElement?.blur?.(); itemPanel.flushNote(); await store.flush(); },
+  });
+  window.roadmapDB?.onTabActivate?.((id) => tabs.showBoard(id));
+  window.roadmapDB?.onTabAdopt?.((tab) => tabs.adopt(tab));
+  // 다른 창의 저장·합치기로 이 창 보드의 화면이 달라졌다 — 다른 탭은 돌아갈 때, 보고 있는 보드는 바로 다시 읽는다
+  window.roadmapDB?.onBoardsStale?.(async (ids) => {
+    const active = adapter.projectId;
+    if (ids == null) tabs.markAllStale(); else tabs.markStale(ids);
+    if (active != null && (ids == null || ids.includes(active))) await tabs.reloadActive();
   });
 
   // 저장은 바뀐 것만 쓴다(docs/SAVE.md). 그 저장으로 다른 보드 화면이 달라졌으면 그 탭은 돌아갈 때
@@ -420,6 +438,12 @@ async function boot() {
   }
 
   tabs.init();
+  // 탭을 끌어 뺀 창 — 그 탭(보드·그래프)을 바로 연다(보드는 메인이 이 창 것으로 옮겨 두었다)
+  {
+    const q = new URLSearchParams(location.search);
+    if (q.get('board')) await tabs.openBoard(Number(q.get('board')), { claimed: true });
+    else if (q.get('graph')) await tabs.openGraph({ scope: q.get('graph') === 'all' ? null : Number(q.get('graph')), name: q.get('gname') ?? '' });
+  }
 
   const foot = $('l-foot');
   if (adapter.info) {

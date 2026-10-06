@@ -11,7 +11,8 @@
  *
  *   +          새 보드 선택 탭
  *   탭 클릭    그 보드로 전환 (캐시가 있으면 즉시)
- *   탭 끌기    순서 바꾸기 (브라우저처럼)
+ *   탭 끌기    순서 바꾸기 (브라우저처럼). 탭 줄 밖으로 끌어 놓으면 따로 창으로, 다른 창 위에 놓으면 그 창의 탭으로
+ *              (o.win — 창끼리 다리. 한 보드는 한 창에만: 다른 창에 열린 보드를 열면 그 창이 앞으로 나온다)
  *   탭 ×       탭 닫기 (마지막 하나면 선택 화면으로)
  *
  * 탭은 세 종류다 — 보드 선택(boardId null), 보드(boardId), 그래프(kind 'graph'). 그래프 탭은 보드 탭이 아니다
@@ -31,7 +32,7 @@ export class BoardTabs {
    * @param {()=>object} o.getDoc         현재 활성 문서
    * @param {()=>string} o.boardName      현재 열린 보드 이름
    */
-  constructor({ mount, launcher, graph, openProject, adoptCached, getDoc, boardName }) {
+  constructor({ mount, launcher, graph, openProject, adoptCached, getDoc, boardName, win = null, beforeDetach = null }) {
     this.mount = mount;
     this.launcher = launcher;
     this.graph = graph;    // 그래프 뷰 — show()/hide({reset}) (보드와 무관)
@@ -39,13 +40,18 @@ export class BoardTabs {
     this.adoptCached = adoptCached;
     this.getDoc = getDoc;
     this.boardName = boardName;
+    this.win = win;                  // 창끼리: {claim(id)→bool, report(ids), detach({tab,x,y,last})→{to}} — 없으면(브라우저) 한 창
+    this.beforeDetach = beforeDetach;  // 떼어 내기 전 — 쓰던 것을 저장(비고 등)
     this.tabs = [];        // [{ key, boardId:number|null, name, kind?:'graph' }]
     this.active = -1;
     this.seq = 0;
     this.docs = new Map();  // boardId -> 메모리 문서(살아 있는 참조)
     this.stale = new Set(); // 다른 보드의 저장·합치기로 화면이 달라진 보드 — 돌아갈 때 다시 읽는다
     // 탭을 끌어 순서를 바꾼다. 탭 요소는 render마다 새로 그려지므로 컨테이너(mount)에 붙인다.
-    attachTabReorder(mount, { item: '.tab', exclude: '.tab-x', onReorder: (from, to) => this.move(from, to) });
+    attachTabReorder(mount, {
+      item: '.tab', exclude: '.tab-x', onReorder: (from, to) => this.move(from, to),
+      onDetach: this.win ? (i, x, y) => this.detach(i, x, y) : null,
+    });
   }
 
   /** 탭 순서 바꾸기 — 활성 탭은 그대로 활성으로 따라간다. 보드 전환은 일어나지 않는다. */
@@ -146,9 +152,11 @@ export class BoardTabs {
    * 보드를 연다. 이미 열려 있으면 그 탭으로, 활성 탭이 선택 화면이면 그 자리에서,
    * 아니면 새 탭으로. (런처에서 고르거나, 카드에서 링크된 보드로 드릴인할 때.)
    */
-  async openBoard(id) {
+  async openBoard(id, { claimed = false } = {}) {
     const found = this.tabs.findIndex((t) => t.boardId === id);
-    if (found >= 0) { await this.activate(found); return; }
+    if (found >= 0) { await this.activate(found); return true; }
+    // 한 보드는 한 창에만 — 다른 창에 열려 있으면 그 창이 앞으로 나오고 여기서는 열지 않는다
+    if (!claimed && this.win?.claim && !(await this.win.claim(id))) return false;
     this.#stash();
     const cur = this.#cur();
     if (this.#isPicker(cur)) {
@@ -158,6 +166,37 @@ export class BoardTabs {
       this.active = this.tabs.length - 1;
     }
     await this.#apply();
+    return true;
+  }
+
+  /**
+   * 탭 떼어 내기 — 탭 줄 밖으로 끌어 놓았다. 쓰던 것을 저장한 뒤 메인에 맡긴다: 다른 창 위면 그 창의 탭으로, 빈 곳이면 새 창으로.
+   * 탭이 하나뿐인 창은 새 창 대신 창을 그리로 옮긴다(메인이 'moved'로 답한다 — 탭은 그대로). 보드 선택 탭은 떼지 않는다.
+   */
+  async detach(i, x, y) {
+    const t = this.tabs[i];
+    if (!t || this.#isPicker(t) || !this.win?.detach) return null;
+    if (this.active === i) { await this.beforeDetach?.(); this.#stash(); }
+    const res = await this.win.detach({
+      tab: { kind: t.kind === 'graph' ? 'graph' : 'board', boardId: t.boardId ?? null, scope: t.scope ?? null, name: t.name ?? '' },
+      x, y, last: this.tabs.length === 1,
+    });
+    if (!res || res.to === 'moved') return res;
+    const k = this.tabs.indexOf(t);
+    if (k >= 0) this.closeTab(k);
+    return res;
+  }
+
+  /** 다른 창에서 끌어 온 탭을 받는다 — 보드는 메인이 이 창 것으로 옮겨 두었다(claim 없이 연다) */
+  async adopt(tab) {
+    if (tab?.kind === 'graph') { await this.openGraph({ scope: tab.scope ?? null, name: tab.name ?? '' }); return; }
+    if (tab?.boardId != null) await this.openBoard(tab.boardId, { claimed: true });
+  }
+
+  /** 다른 창이 이 창에 열린 보드를 열려고 했다 — 그 탭을 보인다 */
+  async showBoard(id) {
+    const i = this.tabs.findIndex((t) => t.boardId === id);
+    if (i >= 0) await this.activate(i);
   }
 
   closeTab(i) {
@@ -217,6 +256,10 @@ export class BoardTabs {
   }
 
   render() {
+    // 이 창의 탭에 열린 보드들을 메인에 알린다(바뀔 때만) — 한 보드는 한 창에만
+    const ids = this.tabs.map((t) => t.boardId).filter((x) => x != null);
+    const sig = ids.join(',');
+    if (sig !== this._reported) { this._reported = sig; this.win?.report?.(ids); }
     clear(this.mount);
     this.tabs.forEach((t, i) => {
       const tab = el('div', {

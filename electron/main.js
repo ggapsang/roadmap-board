@@ -115,8 +115,38 @@ function registerProtocol() {
  */
 function boardZoom(target, dir) { target?.webContents.send('view:board-zoom', dir); }
 
-function createWindow() {
-  win = new BrowserWindow({
+/**
+ * 창마다의 상태 — 탭을 끌어 따로 뺀 창도 같은 렌더러를 띄운다. webContents.id → 상태.
+ *   boards  이 창의 탭에 열린 보드들 — **한 보드는 한 창에만**(두 창에서 같은 보드를 고치면 한쪽이 덮인다, 2026-10-07 사용자)
+ *   active  이 창의 저장 대상 보드 — DB 요청은 보낸 창의 보드로 간다(repo.boardId를 요청마다 맞춘다)
+ *   flushed 닫기 전 저장을 마쳤나
+ */
+const winState = new Map();
+const stateOf = (e) => winState.get(e?.sender?.id) ?? null;
+
+/** 다른 창들에 알린다(보낸 창 빼고) — 저장·합치기로 그 창의 보드 화면이 달라졌을 때 */
+function broadcast(e, channel, payload) {
+  for (const [id, st] of winState) {
+    if (id === e?.sender?.id || st.win.isDestroyed()) continue;
+    st.win.webContents.send(channel, payload);
+  }
+}
+
+/** 화면 좌표(x,y) 위에 있는 다른 창 — 탭을 끌어 놓은 곳 */
+function windowAt(x, y, exceptId) {
+  for (const [id, st] of winState) {
+    if (id === exceptId || st.win.isDestroyed() || st.win.isMinimized()) continue;
+    const b = st.win.getBounds();
+    if (x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height) return st.win;
+  }
+  return null;
+}
+
+/**
+ * @param {{board?:number, graph?:{scope:number|null,name:string}, x?:number, y?:number}} [open] 새 창이 처음 열 탭(탭을 끌어 뺀 창)
+ */
+function createWindow(open = null) {
+  const w = new BrowserWindow({
     width: 1440,
     height: 900,
     minWidth: 900,
@@ -125,6 +155,7 @@ function createWindow() {
     title: 'WOLFPACK',
     icon: path.join(ROOT, 'assets', 'icon.png'),
     show: false,
+    ...(open && Number.isFinite(open.x) ? { x: Math.round(open.x), y: Math.round(open.y) } : {}),
     webPreferences: {
       preload: path.join(HERE, 'preload.cjs'),
       contextIsolation: true,
@@ -134,49 +165,65 @@ function createWindow() {
     },
   });
 
+  const wcId = w.webContents.id;
+  const st = { win: w, boards: new Set(open?.board != null ? [open.board] : []), active: null, flushed: false };
+  winState.set(wcId, st);
+  const first = !win;
+  if (!win) win = w;                       // 첫 창 — 스모크·재현·메뉴의 기본 창
+  w.on('closed', () => {
+    winState.delete(wcId);
+    if (win === w) win = [...winState.values()][0]?.win ?? null;
+  });
+
   // 스모크에서도 창을 띄운다. Chromium은 보이지 않는 창에 프레임을 만들지 않아
   // Page.captureScreenshot(PNG 내보내기)이 응답하지 않는다.
-  win.once('ready-to-show', () => { if (SMOKE) win.showInactive(); else win.show(); });
-  win.loadURL('app://board/index.html');
-  // 창 닫기(X) — 쓰던 것을 저장하고 닫는다(아래 flushRenderer)
-  win.on('close', (e) => {
-    if (!needsFlush()) return;
+  w.once('ready-to-show', () => { if (SMOKE) w.showInactive(); else w.show(); });
+  // 탭을 끌어 뺀 창은 그 탭(보드·그래프)을 바로 연다
+  const q = new URLSearchParams();
+  if (open?.board != null) q.set('board', String(open.board));
+  if (open?.graph) { q.set('graph', open.graph.scope == null ? 'all' : String(open.graph.scope)); q.set('gname', open.graph.name ?? ''); }
+  w.loadURL('app://board/index.html' + (q.size ? `?${q}` : ''));
+  // 창 닫기(X) — 쓰던 것을 저장하고 닫는다(아래 flushWindow)
+  w.on('close', (e) => {
+    if (st.flushed || SMOKE || REPRO) return;
     e.preventDefault();
-    flushRenderer().then(() => { flushed = true; win.close(); });
+    flushWindow(w).then(() => { st.flushed = true; if (!w.isDestroyed()) w.close(); });
   });
+  const win0 = w;                            // 아래는 이 창에 대한 설정
   // Ctrl+휠은 렌더러가 받아 보드만 확대한다(src/main.js). 렌더러가 기본 동작을 막으므로 이 이벤트는 대개 안 오지만,
   // 오면(렌더러가 못 받은 경우) 같은 보드 확대로 보낸다. 창 전체 배율은 늘 100% — 0.2.3에서 저장했던 창 배율도 지운다.
-  win.webContents.on('zoom-changed', (_e, direction) => boardZoom(win, direction === 'in' ? 1 : -1));
-  win.webContents.on('did-finish-load', () => {
-    win.webContents.setZoomFactor(1);
+  win0.webContents.on('zoom-changed', (_e, direction) => boardZoom(win0, direction === 'in' ? 1 : -1));
+  win0.webContents.on('did-finish-load', () => {
+    win0.webContents.setZoomFactor(1);
     if (!SMOKE && !REPRO) { try { fs.rmSync(path.join(app.getPath('userData'), 'view.json'), { force: true }); } catch { /* 없으면 그만 */ } }
   });
   if (SMOKE) {
     // 렌더러 콘솔을 그대로 끌어온다 — 부팅 실패 원인이 여기 찍힌다
-    win.webContents.on('console-message', (e) => {
+    win0.webContents.on('console-message', (e) => {
       const level = ['debug', 'info', 'warn', 'error'][e.level] ?? e.level;
       console.log(`[renderer:${level}] ${e.message}`);
     });
-    win.webContents.on('did-fail-load', (_e, code, desc, url) =>
+    win0.webContents.on('did-fail-load', (_e, code, desc, url) =>
       console.log(`[renderer] 로드 실패 ${code} ${desc} ${url}`));
-    win.webContents.once('did-finish-load', () => runSmoke(win, {
+    if (first) win0.webContents.once('did-finish-load', () => runSmoke(win0, {
       app, db, root: ROOT, capture, shotDir, resolveDbPath, BoardRepository, fs, path, ROOT,
     }));
   }
   if (REPRO) {
-    win.webContents.on('console-message', (e) => {
+    win0.webContents.on('console-message', (e) => {
       const level = ['debug', 'info', 'warn', 'error'][e.level] ?? e.level;
       console.log(`[renderer:${level}] ${e.message}`);
     });
-    win.webContents.once('did-finish-load', () => runRepro(win));
+    if (first) win0.webContents.once('did-finish-load', () => runRepro(win0));
   }
-  if (DEV) win.webContents.openDevTools({ mode: 'detach' });
+  if (DEV) win0.webContents.openDevTools({ mode: 'detach' });
 
   // 외부 링크는 기본 브라우저로
-  win.webContents.setWindowOpenHandler(({ url }) => {
+  win0.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
   });
+  return w;
 }
 
 /** --repro : 실제 데이터에서 조합(구성)·합치기·복사붙여넣기 왕복 점검. 반드시 DB 복사본으로. */
@@ -448,9 +495,9 @@ function buildMenu() {
       submenu: [
         { role: 'reload', label: '새로고침' },
         // 보드 확대·축소 — Ctrl+휠과 같다(도구 모음·패널은 그대로). 단축키(Ctrl +/-/0)는 카드 글자 크기가 쓰므로 달지 않는다.
-        { label: '보드 원래 크기 (100%)', click: () => boardZoom(win, 0) },
-        { label: '보드 확대 (Ctrl+휠 위)', click: () => boardZoom(win, 1) },
-        { label: '보드 축소 (Ctrl+휠 아래)', click: () => boardZoom(win, -1) },
+        { label: '보드 원래 크기 (100%)', click: () => boardZoom(BrowserWindow.getFocusedWindow() ?? win, 0) },
+        { label: '보드 확대 (Ctrl+휠 위)', click: () => boardZoom(BrowserWindow.getFocusedWindow() ?? win, 1) },
+        { label: '보드 축소 (Ctrl+휠 아래)', click: () => boardZoom(BrowserWindow.getFocusedWindow() ?? win, -1) },
         { type: 'separator' },
         { role: 'togglefullscreen', label: '전체 화면' },
         { role: 'toggleDevTools', label: '개발자 도구' },
@@ -464,20 +511,24 @@ function buildMenu() {
  * 저장 위치를 묻는다. 스모크에서는 대화상자를 띄울 수 없으므로
  * --shot 디렉터리(또는 임시 폴더)에 바로 떨군다.
  */
-async function askSavePath({ title, defaultPath, filters }) {
+async function askSavePath({ title, defaultPath, filters, parent = null }) {
   if (SMOKE) {
     const dir = shotDir() ?? app.getPath('temp');
     fs.mkdirSync(dir, { recursive: true });
     return path.join(dir, defaultPath);
   }
-  const { canceled, filePath } = await dialog.showSaveDialog(win, { title, defaultPath, filters });
+  const { canceled, filePath } = await dialog.showSaveDialog(parent ?? win, { title, defaultPath, filters });
   return canceled ? null : filePath;
 }
 
 function registerIpc() {
-  const guard = (fn) => (...args) => {
+  // DB 요청은 보낸 창의 보드로 — 창마다 저장 대상 보드가 다르다(repo.boardId를 요청마다 맞춘다. better-sqlite3는 동기라
+  // 요청 사이에 끼어들 틈이 없다).
+  const guard = (fn) => (e, ...args) => {
     try {
-      return { ok: true, data: fn(...args) };
+      const st = stateOf(e);
+      if (st) repo.open(st.active);
+      return { ok: true, data: fn(e, ...args) };
     } catch (err) {
       console.error('[ipc]', err);
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
@@ -486,21 +537,79 @@ function registerIpc() {
 
   ipcMain.handle('db:load', guard(() => repo.load()));
   // 저장은 바뀐 것만 적용한다(docs/SAVE.md). 영향받은 다른 보드·순환이라 넣지 않은 간선을 돌려준다.
-  ipcMain.handle('db:save', guard((_e, doc, label) => repo.save(doc, label ?? '')));
+  ipcMain.handle('db:save', guard((e, doc, label) => {
+    const res = repo.save(doc, label ?? '');
+    // 이 저장으로 화면이 달라진 보드가 다른 창에 열려 있으면 그 창이 다시 읽게 한다
+    if (res?.affected?.length) broadcast(e, 'boards:stale', res.affected);
+    return res;
+  }));
 
   // 프로젝트
   ipcMain.handle('project:list', guard(() => repo.listProjects()));
   ipcMain.handle('event:list', guard(() => repo.listEvents()));
   ipcMain.handle('project:reorder', guard((_e, ids) => { repo.reorderProjects(ids ?? []); return true; }));
   // 렌더러가 보드를 연다 — 받은 문서가 그 보드의 저장 기준이 된다(docs/SAVE.md §3).
-  ipcMain.handle('project:open', guard((_e, id) => repo.openView(id)));
+  ipcMain.handle('project:open', guard((e, id) => {
+    const st = stateOf(e);
+    if (st) { st.active = id; st.boards.add(id); }
+    return repo.openView(id);
+  }));
   // 활성 보드만 바꾼다(문서는 안 읽음). 탭 캐시에서 즉시 전환할 때 저장 대상을 맞춘다.
-  ipcMain.handle('project:select', guard((_e, id) => { repo.open(id); repo.touchOpened(id); return true; }));
+  ipcMain.handle('project:select', guard((e, id) => {
+    const st = stateOf(e);
+    if (st) st.active = id;
+    repo.open(id); repo.touchOpened(id); return true;
+  }));
+
+  // ── 창 — 탭을 끌어 따로 빼거나 다른 창으로 옮긴다. 한 보드는 한 창에만.
+  // 보드를 열려는 창이 묻는다 — 다른 창에 이미 열려 있으면 그 창을 앞으로 가져와 그 탭을 보이고 거절한다
+  ipcMain.handle('board:claim', (e, id) => {
+    const me = e.sender.id;
+    for (const [wid, st] of winState) {
+      if (wid === me || !st.boards.has(id) || st.win.isDestroyed()) continue;
+      if (st.win.isMinimized()) st.win.restore();
+      st.win.focus();
+      st.win.webContents.send('tab:activate', id);
+      return { ok: false, elsewhere: true };
+    }
+    stateOf(e)?.boards.add(id);
+    return { ok: true };
+  });
+  // 이 창의 탭에 열린 보드들(탭을 열고 닫을 때마다)
+  ipcMain.on('tabs:report', (e, ids) => {
+    const st = stateOf(e);
+    if (st) st.boards = new Set((ids ?? []).filter((x) => x != null));
+  });
+  // 탭을 탭 줄 밖으로 끌어 놓았다 — 다른 창 위면 그 창의 탭으로, 빈 곳이면 새 창으로(탭이 하나뿐이면 창을 그리로 옮긴다)
+  ipcMain.handle('tab:detach', (e, { tab, x, y, last }) => {
+    const src = stateOf(e);
+    const target = windowAt(x, y, e.sender.id);
+    const move = (st) => { if (tab.boardId != null) { src?.boards.delete(tab.boardId); st?.boards.add(tab.boardId); } };
+    if (target) {
+      move(winState.get(target.webContents.id));
+      target.webContents.send('tab:adopt', tab);
+      target.focus();
+      if (last && src) { src.flushed = true; setTimeout(() => { if (!src.win.isDestroyed()) src.win.close(); }, 50); }
+      return { to: 'window' };
+    }
+    if (last) {                                   // 탭 하나뿐인 창 — 새 창 대신 이 창을 놓은 곳으로
+      src?.win.setPosition(Math.round(x - 120), Math.round(y - 16));
+      return { to: 'moved' };
+    }
+    const opened = createWindow({
+      board: tab.boardId ?? undefined, graph: tab.kind === 'graph' ? { scope: tab.scope ?? null, name: tab.name ?? '' } : null,
+      x: x - 120, y: y - 16,
+    });
+    move(winState.get(opened.webContents.id));
+    return { to: 'new' };
+  });
   // 한 이벤트가 품은 카드들 — '상세' 탭에서 조합한 이벤트의 안쪽 일정을 펼칠 때.
   ipcMain.handle('event:cards', guard((_e, id, opts) => repo.eventCards(id, opts ?? {})));
   ipcMain.handle('event:places', guard((_e, id) => repo.eventPlaces(id)));
-  ipcMain.handle('event:split', guard((_e, boardId, id) => repo.splitEvent(boardId, id)));
-  ipcMain.handle('event:unsplit', guard((_e, snap) => repo.unsplitEvent(snap)));
+  // DB 전체를 바꾸는 작업(항등 해제·합치기·삭제·이름·휴지통) — 다른 창들은 열린 보드를 다시 읽는다
+  const wide = (fn) => guard((e, ...args) => { const r = fn(e, ...args); broadcast(e, 'boards:stale', null); return r; });
+  ipcMain.handle('event:split', wide((_e, boardId, id) => repo.splitEvent(boardId, id)));
+  ipcMain.handle('event:unsplit', wide((_e, snap) => repo.unsplitEvent(snap)));
   // 이벤트 몇 개의 본질 · 조상(조합 대상에서 빼야 순환이 안 생긴다)
   ipcMain.handle('event:get', guard((_e, ids) => repo.eventsById(ids)));
   // 그래프 뷰 — 이벤트·포함·관계 전체(읽기 전용)
@@ -508,15 +617,15 @@ function registerIpc() {
   ipcMain.handle('event:ancestors', guard((_e, id) => repo.ancestorsOf(id)));
   // 휴지통 — 부모를 모두 잃은 이벤트 (docs/SAVE.md §7)
   ipcMain.handle('trash:list', guard(() => repo.listTrash()));
-  ipcMain.handle('trash:purge', guard((_e, ids) => repo.purgeTrash(ids ?? [])));
-  ipcMain.handle('trash:empty', guard(() => repo.emptyTrash()));
+  ipcMain.handle('trash:purge', wide((_e, ids) => repo.purgeTrash(ids ?? [])));
+  ipcMain.handle('trash:empty', wide(() => repo.emptyTrash()));
   // 동일 매핑 = 두 이벤트를 하나로 합치기(§7.2). 되돌리기 스냅샷을 돌려준다.
-  ipcMain.handle('event:merge', guard((_e, keepId, dropId) => repo.mergeEvents(keepId, dropId)));
-  ipcMain.handle('event:unmerge', guard((_e, snapshot) => repo.unmergeEvents(snapshot)));
+  ipcMain.handle('event:merge', wide((_e, keepId, dropId) => repo.mergeEvents(keepId, dropId)));
+  ipcMain.handle('event:unmerge', wide((_e, snapshot) => repo.unmergeEvents(snapshot)));
   ipcMain.handle('project:create', guard((_e, doc, name) => repo.createProject(doc, name)));
-  ipcMain.handle('project:rename', guard((_e, id, name) => { repo.renameProject(id, name); return true; }));
+  ipcMain.handle('project:rename', wide((_e, id, name) => { repo.renameProject(id, name); return true; }));
   ipcMain.handle('project:duplicate', guard((_e, id, name) => repo.duplicateProject(id, name)));
-  ipcMain.handle('project:delete', guard((_e, id) => { repo.deleteProject(id); return true; }));
+  ipcMain.handle('project:delete', wide((_e, id) => { repo.deleteProject(id); return true; }));
   ipcMain.handle('project:deletePreview', guard((_e, id) => repo.deletePreview(id)));
   ipcMain.handle('db:revisions', guard((_e, limit) => repo.listRevisions(limit ?? 50)));
   ipcMain.handle('db:revision', guard((_e, id) => repo.getRevision(id)));
@@ -531,15 +640,16 @@ function registerIpc() {
    * capturePage()는 뷰포트까지만 찍으므로 CDP의 Page.captureScreenshot에
    * captureBeyondViewport를 켜서 쓴다.
    */
-  ipcMain.handle('export:png', async (_e, clip, suggested) => {
+  ipcMain.handle('export:png', async (e, clip, suggested) => {
     const filePath = await askSavePath({
+      parent: BrowserWindow.fromWebContents(e.sender),
       title: '보드를 PNG로 내보내기',
       defaultPath: suggested ?? 'roadmap.png',
       filters: [{ name: 'PNG 이미지', extensions: ['png'] }],
     });
     if (!filePath) return { ok: false, error: null };
 
-    const wc = win.webContents;
+    const wc = e.sender;
     let attached = false;
     // 개발자 도구가 열려 있으면 CDP 디버거가 이미 붙어 있어 attach가 실패한다.
     // 잠시 닫았다가 캡처 후 다시 연다 (npm run dev로 켠 경우의 실패를 막는다).
@@ -570,8 +680,9 @@ function registerIpc() {
    * 보드 전체를 PDF 한 장으로. 페이지를 보드 크기에 맞춰 잘리지 않게 한다.
    * 로드맵을 A4로 쪼개면 읽을 수 없어서 단일 페이지로 뽑는다.
    */
-  ipcMain.handle('export:pdf', async (_e, size, suggested) => {
+  ipcMain.handle('export:pdf', async (e, size, suggested) => {
     const filePath = await askSavePath({
+      parent: BrowserWindow.fromWebContents(e.sender),
       title: '보드를 PDF로 내보내기',
       defaultPath: suggested ?? 'roadmap.pdf',
       filters: [{ name: 'PDF', extensions: ['pdf'] }],
@@ -581,7 +692,7 @@ function registerIpc() {
     try {
       const PX_PER_INCH = 96;
       const margin = 0.2;
-      const data = await win.webContents.printToPDF({
+      const data = await e.sender.printToPDF({
         printBackground: true,
         pageSize: {
           width: size.width / PX_PER_INCH + margin * 2,
@@ -597,8 +708,8 @@ function registerIpc() {
   });
 
   // JSON 파일로 반출 / 반입
-  ipcMain.handle('file:export', async (_e, json, suggested) => {
-    const { canceled, filePath } = await dialog.showSaveDialog(win, {
+  ipcMain.handle('file:export', async (e, json, suggested) => {
+    const { canceled, filePath } = await dialog.showSaveDialog(BrowserWindow.fromWebContents(e.sender) ?? win, {
       title: '로드맵 반출',
       defaultPath: suggested ?? 'roadmap.json',
       filters: [{ name: 'JSON', extensions: ['json'] }],
@@ -612,8 +723,8 @@ function registerIpc() {
     }
   });
 
-  ipcMain.handle('file:import', async () => {
-    const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+  ipcMain.handle('file:import', async (e) => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender) ?? win, {
       title: '로드맵 반입',
       properties: ['openFile'],
       filters: [{ name: 'JSON', extensions: ['json'] }],
@@ -652,22 +763,24 @@ app.on('window-all-closed', () => {
  * 닫기 전 저장 — 비고처럼 '칸에서 나갈 때' 저장하는 것은 창을 바로 닫으면 나가는 일이 없어 빠진다. 창을 닫거나 종료하기 전에
  * 렌더러에 쓰던 것을 저장하게 하고(app:flush), 끝났다는 알림(app:flushed)을 받은 뒤 닫는다. 렌더러가 멈췄으면 2초 뒤 그냥 닫는다.
  */
-let flushed = false;
-function flushRenderer(ms = 2000) {
+function flushWindow(w, ms = 2000) {
   return new Promise((resolve) => {
-    if (!win || win.isDestroyed()) { resolve(); return; }
-    const done = () => { clearTimeout(timer); ipcMain.removeListener('app:flushed', done); resolve(); };
+    if (!w || w.isDestroyed()) { resolve(); return; }
+    const id = w.webContents.id;
+    const onDone = (e) => { if (e.sender.id === id) done(); };
+    const done = () => { clearTimeout(timer); ipcMain.removeListener('app:flushed', onDone); resolve(); };
     const timer = setTimeout(done, ms);
-    ipcMain.on('app:flushed', done);
-    win.webContents.send('app:flush');
+    ipcMain.on('app:flushed', onDone);
+    w.webContents.send('app:flush');
   });
 }
-const needsFlush = () => !flushed && !SMOKE && !REPRO && win && !win.isDestroyed();
+const unflushed = () => (SMOKE || REPRO ? [] : [...winState.values()].filter((st) => !st.flushed && !st.win.isDestroyed()));
 
 app.on('before-quit', (e) => {
-  if (needsFlush()) {
+  const left = unflushed();
+  if (left.length) {
     e.preventDefault();
-    flushRenderer().then(() => { flushed = true; app.quit(); });
+    Promise.all(left.map((st) => flushWindow(st.win).then(() => { st.flushed = true; }))).then(() => app.quit());
     return;
   }
   try { db?.close(); } catch { /* noop */ }

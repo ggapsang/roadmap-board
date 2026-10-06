@@ -12,15 +12,21 @@
  * (줄 안에 입력 칸·체크박스가 있어 아무 데서나 끌면 글자 선택·클릭과 부딪친다).
  *
  * @param {HTMLElement} container 탭들을 담은 요소
- * @param {{ item: string, exclude?: string, handle?: string, axis?: 'x'|'y', onReorder: (from:number, to:number) => void }} o
+ * onDetach가 있으면(보드 탭줄) 탭을 탭 줄 밖으로(창 밖, 또는 탭 줄에서 아래위로 DETACH_PX 넘게) 끌어 놓았을 때 순서를 바꾸지
+ * 않고 onDetach(from, 화면 x, 화면 y)를 부른다 — 따로 창으로 빼거나 다른 창으로 옮긴다.
+ *
+ * @param {{ item: string, exclude?: string, handle?: string, axis?: 'x'|'y', onReorder: (from:number, to:number) => void,
+ *           onDetach?: (from:number, screenX:number, screenY:number) => void }} o
  *   item     탭 선택자(컨테이너의 자식)
  *   exclude  여기서 누르면 드래그를 시작하지 않는다(닫기 버튼 등)
  *   handle   있으면 여기서 눌렀을 때만 끈다
  *   to       '끌어낸 자리를 뺀' 뒤의 새 인덱스
  */
 const DRAG_SLOP = 5;
+/** 탭 줄에서 아래위로 이만큼(px) 넘게 끌면 탭 줄 밖 — 떼어 내기 */
+const DETACH_PX = 48;
 
-export function attachTabReorder(container, { item, exclude = null, handle = null, axis = 'x', onReorder }) {
+export function attachTabReorder(container, { item, exclude = null, handle = null, axis = 'x', onReorder, onDetach = null }) {
   const Y = axis === 'y';
   let swallowClick = false;
   container.addEventListener('click', (e) => {
@@ -59,9 +65,18 @@ export function attachTabReorder(container, { item, exclude = null, handle = nul
         mark.style.left = `${x - box.left + container.scrollLeft - 1}px`;
       }
     };
+    // 탭 줄 밖인가 — 창 밖이거나, 탭 줄에서 아래위로 DETACH_PX 넘게
+    const outside = (ev) => {
+      if (!onDetach) return false;
+      if (ev.clientX < 0 || ev.clientY < 0 || ev.clientX > innerWidth || ev.clientY > innerHeight) return true;
+      const r = container.getBoundingClientRect();
+      return ev.clientY < r.top - DETACH_PX || ev.clientY > r.bottom + DETACH_PX;
+    };
+    let away = false;
     const move = (ev) => {
       const cur = Y ? ev.clientY : ev.clientX;
-      if (!dragging && Math.abs(cur - start) < DRAG_SLOP) return;
+      const off = outside(ev);
+      if (!dragging && !off && Math.abs(cur - start) < DRAG_SLOP) return;
       if (!dragging) {
         dragging = true;
         tab.classList.add('dragging');
@@ -70,15 +85,26 @@ export function attachTabReorder(container, { item, exclude = null, handle = nul
         container.append(mark);
       }
       ev.preventDefault();
-      place(cur);
+      // 탭 줄 밖으로 나가면 '떼어 내기' — 놓을 자리 표시 대신 탭이 떨어져 나가는 모양
+      if (off !== away) { away = off; tab.classList.toggle('detaching', off); document.body.classList.toggle('detaching-tab', off); mark.hidden = off; }
+      if (!off) place(cur);
     };
-    const up = () => {
+    const up = (ev) => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', up);
       if (!dragging) return;
       mark.remove();
-      tab.classList.remove('dragging');
+      tab.classList.remove('dragging', 'detaching');
+      document.body.classList.remove('detaching-tab');
+      if (ev?.type === 'pointerup' && outside(ev)) {
+        container.classList.remove('reordering');
+        document.body.classList.remove('reordering-tabs');
+        swallowClick = true;
+        setTimeout(() => { swallowClick = false; }, 0);
+        onDetach(from, ev.screenX, ev.screenY);
+        return;
+      }
       container.classList.remove('reordering');
       document.body.classList.remove('reordering-tabs');
       swallowClick = true;

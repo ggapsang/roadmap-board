@@ -19,6 +19,9 @@
 .tab-drop{position:absolute;top:var(--u1);bottom:var(--u1);width:2px;border-radius:1px;
   background:var(--accent);pointer-events:none;z-index:2}
 body.reordering-tabs{user-select:none;cursor:grabbing}
+/* 탭을 탭 줄 밖으로 끌고 있다 — 놓으면 따로 창으로(다른 창 위면 그 창으로) */
+.tab.detaching{opacity:.25}
+body.detaching-tab{cursor:copy}
 /* 세로 목록(태스크)의 놓을 자리 — 가로줄 */
 .tab-drop.list-drop{top:auto;bottom:auto;left:0;right:0;width:auto;height:2px}
 .tab-name{overflow:hidden;text-overflow:ellipsis}

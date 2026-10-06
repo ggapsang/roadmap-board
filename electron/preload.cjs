@@ -33,6 +33,14 @@ contextBridge.exposeInMainWorld('roadmapDB', {
   graphData: (boardId) => call('graph:data', boardId ?? null),
   // 보기 메뉴의 보드 확대·축소(+1 · -1 · 0 원래대로) — 보드 배율은 렌더러가 정한다
   onBoardZoom: (cb) => ipcRenderer.on('view:board-zoom', (_e, dir) => cb(dir)),
+  // 창 — 탭을 끌어 따로 빼기·다른 창으로 옮기기. 한 보드는 한 창에만(claim이 거절하면 그 창이 앞으로 나온다)
+  claimBoard: (id) => ipcRenderer.invoke('board:claim', id),
+  reportTabs: (ids) => ipcRenderer.send('tabs:report', ids),
+  detachTab: (payload) => ipcRenderer.invoke('tab:detach', payload),
+  onTabActivate: (cb) => ipcRenderer.on('tab:activate', (_e, id) => cb(id)),
+  onTabAdopt: (cb) => ipcRenderer.on('tab:adopt', (_e, tab) => cb(tab)),
+  // 다른 창의 저장·합치기로 이 창의 보드 화면이 달라졌다(ids, null이면 전부)
+  onBoardsStale: (cb) => ipcRenderer.on('boards:stale', (_e, ids) => cb(ids)),
   // 창을 닫기 전 — 쓰던 것(비고 등)을 저장하고 저장이 끝나면 알린다
   onFlush: (cb) => ipcRenderer.on('app:flush', async () => {
     try { await cb(); } catch { /* 저장 실패해도 닫기는 진행 */ }
