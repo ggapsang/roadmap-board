@@ -33,8 +33,27 @@ export function attachBandEditing(gutM, { store, getOrigin, getScale, getTimelin
   const sortBands = (doc) => doc.bands.sort((a, b) =>
     (a.mode ?? '').localeCompare(b.mode ?? '') || a.from.localeCompare(b.from));
 
+  /** 날짜 없는 보드 — 칸마다 높이(display.slotRows). 묶기는 없다 */
+  const slotMode = () => !getTimeline().dated;
+  let slotResize = null;
+  const setSlotRow = (doc, p, scale) => {
+    const rows = { ...(doc.meta.display.slotRows ?? {}) };
+    if (scale == null || Math.abs(scale - 1) < 0.005) delete rows[p]; else rows[p] = Math.round(scale * 100) / 100;
+    doc.meta.display.slotRows = rows;
+  };
+
   gutM.addEventListener('pointerdown', (ev) => {
     if (store.readonly || ev.button !== 0) return;
+    if (slotMode()) {
+      if (!ev.target.classList.contains('band-resize')) return;
+      const cell = cellAt(ev.target);
+      if (!cell) return;
+      ev.preventDefault();
+      const p = Number(cell.dataset.slot);
+      slotResize = { p, y: ev.clientY, full: getScale().ppd, scale0: Number(store.meta.display?.slotRows?.[p]) || 1, began: false };
+      gutM.setPointerCapture(ev.pointerId);
+      return;
+    }
     if (!modeKey()) return;
 
     // 아래 가장자리를 잡으면 높이 조절. 묶은 구간이든 낱개 칸이든 된다 —
@@ -68,6 +87,18 @@ export function attachBandEditing(gutM, { store, getOrigin, getScale, getTimelin
   });
 
   gutM.addEventListener('pointermove', (ev) => {
+    if (slotResize) {
+      const delta = (ev.clientY - slotResize.y) / getZoom();     // 화면 px → 보드 px
+      if (!slotResize.began) {
+        if (Math.abs(delta) < 4) return;
+        store.begin('칸 높이');
+        slotResize.began = true;
+      }
+      const next = Math.min(BAND_SCALE.max, Math.max(BAND_SCALE.min, (slotResize.full * slotResize.scale0 + delta) / slotResize.full));
+      store.commit('칸 높이', (doc) => setSlotRow(doc, slotResize.p, next));
+      onChange();
+      return;
+    }
     if (resizing) {
       const delta = (ev.clientY - resizing.y) / getZoom();     // 화면 px → 보드 px
       if (!resizing.began) {
@@ -109,6 +140,11 @@ export function attachBandEditing(gutM, { store, getOrigin, getScale, getTimelin
   });
 
   gutM.addEventListener('pointerup', async () => {
+    if (slotResize) {
+      if (slotResize.began) store.end();
+      slotResize = null;
+      return;
+    }
     if (resizing) {
       if (resizing.began) store.end();
       resizing = null;
@@ -142,6 +178,8 @@ export function attachBandEditing(gutM, { store, getOrigin, getScale, getTimelin
   });
 
   gutM.addEventListener('pointercancel', () => {
+    if (slotResize?.began) store.end();
+    slotResize = null;
     if (resizing?.began) store.end();
     resizing = null;
     drag = null;
@@ -150,6 +188,14 @@ export function attachBandEditing(gutM, { store, getOrigin, getScale, getTimelin
 
   // 이름 바꾸기 / 높이 원래대로
   gutM.addEventListener('dblclick', async (ev) => {
+    if (slotMode()) {
+      // 손잡이(또는 칸)를 더블클릭하면 그 칸 높이를 원래대로
+      const cell = cellAt(ev.target);
+      if (!cell || store.meta.display?.slotRows?.[cell.dataset.slot] == null) return;
+      store.commit('칸 높이 원복', (doc) => setSlotRow(doc, Number(cell.dataset.slot), null));
+      onChange();
+      return;
+    }
     if (!modeKey()) return;
     const cell = cellAt(ev.target);
     const id = cell?.dataset.band;
@@ -178,6 +224,21 @@ export function attachBandEditing(gutM, { store, getOrigin, getScale, getTimelin
 
   // 우클릭 메뉴 — 빈 구간(세로축 날짜 칸) 삭제 / 접기, 묶은 구간 해제
   gutM.addEventListener('contextmenu', (ev) => {
+    if (slotMode()) {
+      const cell = cellAt(ev.target);
+      if (!cell) return;
+      ev.preventDefault();
+      const p = Number(cell.dataset.slot);
+      const tl = getTimeline();
+      const hasCards = store.items.some((it) => { const q = tl.pos(it); return q && q.s <= p && q.e >= p; });
+      const opts = [];
+      if (!hasCards) opts.push({ label: '이 칸 접기', action: () => { store.commit('칸 접기', (doc) => setSlotRow(doc, p, BAND_SCALE.fold)); onChange(); } });
+      if (store.meta.display?.slotRows?.[p] != null) {
+        opts.push({ label: '높이 원래대로', action: () => { store.commit('칸 높이 원복', (doc) => setSlotRow(doc, p, null)); onChange(); } });
+      }
+      if (opts.length) openCtxMenu(ev.clientX, ev.clientY, opts);
+      return;
+    }
     if (!modeKey()) return;
     const cell = cellAt(ev.target);
     if (!cell) return;

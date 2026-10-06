@@ -266,7 +266,7 @@ export class Board {
   #buildScale() {
     const tl = this.timeline;
     if (!tl.dated) {
-      this.scale = new SlotScale(this.totalDays, this.view.rowH, tl);
+      this.scale = new SlotScale(this.totalDays, this.view.rowH, tl, this.store.meta.display?.slotRows ?? {});
       return this.scale;
     }
     const mode = tl.mode;

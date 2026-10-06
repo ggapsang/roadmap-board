@@ -128,25 +128,56 @@ export class TimeScale {
 }
 
 /**
- * 칸 스케일 — 날짜 없는 보드. 한 칸 = 한 행(rowH). 구간 묶기·접기는 없다(바깥 칸이 없다).
+ * 칸 스케일 — 날짜 없는 보드. 한 칸 = 한 행(rowH) × 그 칸의 높이 배율(display.slotRows — 왼쪽 칸 아래 가장자리를 끌어 정한다).
+ * 구간 묶기는 없다(바깥 칸이 없다).
  */
 export class SlotScale {
   /**
    * @param {number} total 칸 수
-   * @param {number} rowH 한 칸 픽셀(확대 배율의 한 행 높이)
+   * @param {number} rowH 한 칸 기본 픽셀(확대 배율의 한 행 높이)
    * @param {object} timeline SlotTimeline
+   * @param {Object<string,number>} [rows] 칸 번호(0부터) → 높이 배율
    */
-  constructor(total, rowH, timeline) {
+  constructor(total, rowH, timeline, rows = {}) {
     this.totalDays = total;       // 인터페이스 이름을 맞춘다 — 여기선 칸 수
-    this.ppd = rowH;              // 위치 하나(칸)당 픽셀
+    this.ppd = rowH;              // 위치 하나(칸)당 기본 픽셀
     this.timeline = timeline;
-    this.height = total * rowH;
+    this.rows = rows ?? {};
+    // 칸마다 높이와 누적 위치
+    this.h = new Array(total);
+    this.top = new Array(total + 1);
+    this.top[0] = 0;
+    for (let i = 0; i < total; i += 1) {
+      this.h[i] = rowH * (Number(this.rows[i]) || 1);
+      this.top[i + 1] = this.top[i] + this.h[i];
+    }
+    this.height = this.top[total] ?? 0;
     this.segments = [{ from: 0, to: total, scale: 1, y: 0 }];
   }
-  y(p) { return Math.max(0, Math.min(this.totalDays, p)) * this.ppd; }
-  dayHeight() { return this.ppd; }
-  extent(p, n) { return Math.max(0, n) * this.ppd; }
-  dayAt(py) { return Math.max(0, py / this.ppd); }
+  y(p) {
+    const q = Math.max(0, Math.min(this.totalDays, p));
+    const i = Math.floor(q);
+    if (i >= this.totalDays) return this.height;
+    return this.top[i] + (q - i) * this.h[i];
+  }
+  dayHeight(p = 0) { return this.h[Math.floor(p)] ?? this.ppd; }
+  /** 칸 p부터 n칸의 픽셀 — 칸마다 높이를 탄다. 축 끝을 넘는 몫은 기본 높이로 */
+  extent(p, n) {
+    const end = p + Math.max(0, n);
+    const inAxis = Math.min(end, this.totalDays);
+    const h = inAxis > p ? this.y(inAxis) - this.y(p) : 0;
+    return h + Math.max(0, end - Math.max(p, this.totalDays)) * this.ppd;
+  }
+  dayAt(py) {
+    if (py <= 0) return 0;
+    if (py >= this.height) return this.totalDays + (py - this.height) / this.ppd;
+    let lo = 0, hi = this.totalDays - 1;
+    while (lo < hi) {                       // top[i] <= py < top[i+1] 인 칸
+      const mid = (lo + hi + 1) >> 1;
+      if (this.top[mid] <= py) lo = mid; else hi = mid - 1;
+    }
+    return lo + (py - this.top[lo]) / (this.h[lo] || this.ppd);
+  }
   topOf(item) { return this.y(this.timeline.pos(item)?.s ?? 0); }
   heightOf(item) {
     const p = this.timeline.pos(item) ?? { s: 0, e: 0 };

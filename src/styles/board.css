@@ -46,6 +46,10 @@ body.panel-open .cal{min-width:0}
 .gut-m b.merged{background:var(--bg-hover)}
 .gut-m b.merged u{color:var(--text-primary);font-weight:600}
 .gut-m b.picking{background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)}
+/* 날짜 없는 보드 — 칸마다 번호 칸(높이 손잡이). 행선은 옅게, 높이를 바꾼 칸은 묶은 구간처럼 살짝 */
+.gut-m b.slot{border-top-color:var(--grid-line);font-weight:500;font-variant-numeric:tabular-nums}
+.gut-m b.slot u{padding:var(--u1) 0}
+.gut-m b.slot.sized{background:var(--bg-hover)}
 .gut-w{position:relative;z-index:20}
 .gut-w s{position:absolute;left:0;right:var(--u2);text-align:right;text-decoration:none;
   font-size:11px;line-height:16px;color:var(--text-tertiary);font-variant-numeric:tabular-nums;padding-top:var(--u1)}
@@ -114,6 +118,7 @@ body.dragging-arrow, body.dragging-arrow *{cursor:grabbing !important;user-selec
   color:var(--text-tertiary);font-variant-numeric:tabular-nums;flex-wrap:wrap}
 .ev .meta .tag{color:var(--text-tertiary);font-size:calc(11px * var(--fs,1))}
 .ev .meta .tag::before{content:"· "}
+.ev .meta .tag:first-child::before{content:none}   /* 앞에 날짜가 없으면(날짜 없는 보드) 가운뎃점도 없다 */
 .ev .meta .tasks-chip{color:var(--text-tertiary);font-size:calc(11px * var(--fs,1));
   white-space:nowrap}
 .ev.short>.meta .tasks-chip{display:none}

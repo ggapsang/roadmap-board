@@ -306,6 +306,15 @@ export function normalize(doc) {
     ? (['day', 'week', 'month'].includes(display.slotUnit) ? display.slotUnit : 'week')
     : null;
   delete display.axis; delete display.axisDir;
+  // 날짜 없는 보드의 칸마다 높이 배율 — { 칸 번호(0부터): 배율 }. 1(기본)은 남기지 않는다. 달력 칸의 구간 높이와 같은 한도.
+  const rows = {};
+  for (const [k, v] of Object.entries(isObj(display.slotRows) ? display.slotRows : {})) {
+    const n = Number(v);
+    if (!/^\d+$/.test(k) || !Number.isFinite(n)) continue;
+    const sc = Math.min(BAND_SCALE.max, Math.max(BAND_SCALE.fold, n));
+    if (Math.abs(sc - 1) > 1e-6) rows[k] = Math.round(sc * 100) / 100;
+  }
+  display.slotRows = rows;
   doc.meta.display = display;
   const dated = display.dated;
 

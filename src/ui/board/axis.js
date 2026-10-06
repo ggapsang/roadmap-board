@@ -74,9 +74,23 @@ export function renderAxis({ lines, gutM, gutW, grid, origin, endDate, totalDays
     }
   };
 
-  // ── 날짜 없는 보드 — 칸 번호만. 바깥 칸이 없다.
+  // ── 날짜 없는 보드 — 바깥 칸이 없다. 왼쪽 칸에 칸 번호를 칸마다 두고, 아래 가장자리를 끌면 그 칸의 높이가 바뀐다
+  //    (달력 보드의 월 칸과 같은 손잡이 — bands.js). 묶기는 없다.
   if (!timeline.dated) {
-    for (let p = 0; p < totalDays; p += 1) line(scale.y(p), false, String(p + 1));
+    for (let p = 0; p < totalDays; p += 1) {
+      line(scale.y(p), false, null);
+      const top = scale.y(p);
+      const changed = scale.rows?.[p] != null;
+      gutM.append(el('b', {
+        className: changed ? 'slot sized' : 'slot',
+        style: { top: top + 'px', height: (scale.y(p + 1) - top) + 'px' },
+        dataset: { from: String(p), to: String(p + 1), slot: String(p), label: String(p + 1) },
+        title: '아래 가장자리를 끌면 이 칸의 높이를 조절합니다 · 더블클릭하면 원래대로',
+      }, [
+        el('u', { text: String(p + 1) }),
+        el('div.band-resize', { title: `${p + 1}번 칸 높이 — 끌어서 조절 · 더블클릭하면 원래대로` }),
+      ]));
+    }
     return;
   }
 

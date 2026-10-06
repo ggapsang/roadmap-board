@@ -28,8 +28,10 @@ export default {
             orgs: ['A'], tracks: [{ id: 't0', lab: '', name: '트랙 1' }], items: [] };
           const b2 = await r.adapter.createProject(doc, '칸 보드');
           await r.tabs.openBoard(b2); await sleep(300);
-          const out = { b2, dated: r.board.dated, gutNumbers: document.querySelector('.gut-w s')?.textContent === '1',
-            outer: document.querySelectorAll('.gut-m b').length, now: !!document.querySelector('.now') };
+          // 왼쪽 칸 — 칸마다 번호 칸(높이 손잡이). 달력의 바깥 칸(월 등)은 없다
+          const out = { b2, dated: r.board.dated, gutNumbers: document.querySelector('.gut-m b.slot u')?.textContent === '1',
+            outer: document.querySelectorAll('.gut-m b:not(.slot)').length, slotCells: document.querySelectorAll('.gut-m b.slot').length === r.board.totalDays,
+            now: !!document.querySelector('.now') };
           const t0 = r.store.tracks[0].id;
           const a = r.board.createItem(t0, 2);              // 3번 칸에 한 칸
           const b = r.board.createItem(t0, 4, 6);           // 5~7번 칸
@@ -39,6 +41,35 @@ export default {
           out.noSlotText = !/칸/.test(document.querySelector('.ev[data-id="' + b.id + '"]')?.textContent ?? '칸');
           out.forced = JSON.stringify([a.place.hd, a.place.x, a.place.w, b.place.hd]);
           out.forcedBtn = document.getElementById('i-fixedh').getAttribute('aria-pressed');
+          // 칸 높이 — 3번 칸 아래 가장자리를 한 칸만큼 끌면 그 칸만 두 배, 그 칸의 카드도 커진다. 되돌리기 · 다시 읽기 · 더블클릭 원복
+          {
+            document.querySelector('#pItem [data-close]')?.click(); await sleep(80);
+            const card = () => document.querySelector('.ev[data-id="' + a.id + '"]');
+            const h0 = card().getBoundingClientRect().height;
+            const cell = () => document.querySelector('.gut-m b.slot[data-slot="2"]');
+            const c0 = cell().getBoundingClientRect().height;
+            const hd = cell().querySelector('.band-resize'); const hb = hd.getBoundingClientRect();
+            const at = (y) => ({ bubbles: true, clientX: hb.left + hb.width / 2, clientY: y, button: 0, pointerId: 7 });
+            const gutM = document.getElementById('gutM');
+            hd.dispatchEvent(new PointerEvent('pointerdown', at(hb.top + 2)));
+            gutM.dispatchEvent(new PointerEvent('pointermove', at(hb.top + 2 + 10)));
+            gutM.dispatchEvent(new PointerEvent('pointermove', at(hb.top + 2 + c0)));
+            gutM.dispatchEvent(new PointerEvent('pointerup', at(hb.top + 2 + c0)));
+            await sleep(200);
+            const rows = r.store.meta.display.slotRows ?? {};
+            out.slotRow = { scale: rows['2'], only: Object.keys(rows).join(','), cell: Math.round(cell().getBoundingClientRect().height / c0 * 10) / 10,
+              cardGrew: card().getBoundingClientRect().height > h0 + c0 * 0.6,
+              otherSame: Math.round(document.querySelector('.gut-m b.slot[data-slot="5"]').getBoundingClientRect().height) === Math.round(c0) };
+            r.store.undo(); await sleep(150);
+            out.slotRow.undone = !r.store.meta.display.slotRows?.['2'];
+            r.store.redo(); await sleep(300);
+            r.tabs.markAllStale(); await r.tabs.reloadActive(); await sleep(250);
+            out.slotRow.reloaded = r.store.meta.display.slotRows?.['2'];
+            cell().querySelector('.band-resize').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+            await sleep(150);
+            out.slotRow.reset = !r.store.meta.display.slotRows?.['2'] && Math.round(cell().getBoundingClientRect().height) === Math.round(c0);
+            r.itemPanel.open(a.id); await sleep(150);
+          }
           out.slotsHidden = document.getElementById('i-dates').hidden && !document.getElementById('i-slots').hidden;
           out.a = a.id; out.b = b.id;
           window.__datelessShot = window.__datelessShot ?? null;
@@ -71,7 +102,10 @@ export default {
     }
     return dateless;
   },
-  check: (dateless) => (dateless?.dated === false && dateless?.gutNumbers === true && dateless?.outer === 0 && dateless?.now === false
+  check: (dateless) => (dateless?.dated === false && dateless?.gutNumbers === true && dateless?.outer === 0 && dateless?.slotCells === true
+      && dateless?.slotRow?.scale >= 1.8 && dateless?.slotRow?.scale <= 2.2 && dateless?.slotRow?.only === '2'
+      && dateless?.slotRow?.cell >= 1.8 && dateless?.slotRow?.cardGrew === true && dateless?.slotRow?.otherSame === true
+      && dateless?.slotRow?.undone === true && dateless?.slotRow?.reloaded === dateless?.slotRow?.scale && dateless?.slotRow?.reset === true && dateless?.now === false
       && dateless?.aSlot === '{"s":2,"len":1}' && dateless?.aDate == null && dateless?.label === '' && dateless?.noSlotText === true
       && dateless?.forced === '[1,0,1,3]' && dateless?.forcedBtn === 'true'
       && dateless?.slotsHidden === true && dateless?.reloaded === '{"s":4,"len":3}'
