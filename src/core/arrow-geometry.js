@@ -111,6 +111,19 @@ export function blockArrowPath(rawPoints, width, headScale = 2) {
   return 'M' + ring.map((p) => `${round(p.x)},${round(p.y)}`).join(' L') + ' Z';
 }
 
+/**
+ * 머리 없는 블록 화살표 — 몸통만(참조 선). 선행 화살표와 같은 굵기·모양에서 머리만 뺀 것.
+ * @returns {string|null} SVG path d
+ */
+export function blockBarPath(rawPoints, width) {
+  const pts = simplify(rawPoints);
+  if (pts.length < 2) return null;
+  const left = offsetSide(pts, width / 2);
+  const right = offsetSide(pts, -width / 2);
+  const ring = [...left, ...right.reverse()];
+  return 'M' + ring.map((p) => `${round(p.x)},${round(p.y)}`).join(' L') + ' Z';
+}
+
 function trianglePath(tip, dir, half, len) {
   const perp = { x: -dir.y, y: dir.x };
   const base = { x: tip.x - dir.x * len, y: tip.y - dir.y * len };

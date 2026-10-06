@@ -78,11 +78,10 @@ body.panel-open .cal{min-width:0}
 /* 카드에 커서를 올리면 그 카드에 닿는 화살표를 채워 칠한다(Board#linkHighlight) */
 .arrow.hl{fill:var(--accent);stroke:var(--accent)}
 /* 화살표 모양 고치기(더블클릭) — 고치는 화살표와 손잡이. 손잡이는 카드 위(떠 있는 편집 층) */
-/* 참조 — 화살표 없는 가는 선. 누르기 쉽게 넓은 투명 선(ref-hit)을 겹친다 */
-.ref-line{fill:none;stroke:var(--arrow-edge);stroke-width:1.5;stroke-linejoin:round;pointer-events:none}
-.ref-hit{fill:none;stroke:transparent;stroke-width:10;pointer-events:stroke;cursor:pointer}
-.ref-hit:hover + .ref-line{stroke:var(--accent)}
-.ref-line.selected{stroke:var(--accent);stroke-width:2.5}
+/* 참조 — 선행 화살표와 같은 모양에서 머리만 없다(같은 채움·테두리·굵기) */
+.ref-line{fill:var(--arrow-fill);stroke:var(--arrow-edge);stroke-width:1.25;stroke-linejoin:round;pointer-events:auto}
+.ref-line:hover{fill:var(--accent-soft);stroke:var(--accent)}
+.ref-line.selected{fill:var(--accent);stroke:var(--accent);stroke-width:2.5}
 /* 눌러 고른 화살표 — Delete로 지운다. 채움은 강조와 같고 테두리를 굵게 */
 .arrow.selected{fill:var(--accent);stroke:var(--accent);stroke-width:2.5}
 .arrow.editing{fill:var(--accent-soft);stroke:var(--accent);stroke-dasharray:4 2}

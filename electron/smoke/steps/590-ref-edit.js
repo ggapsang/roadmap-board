@@ -32,6 +32,10 @@ export default {
         const relC = refs.find((x) => x.to === c.id);
         const line = document.querySelector('.ref-line[data-rel="' + relC?.id + '"]');
         const noArrow = !!line && !document.querySelector('.arrow[data-rel="' + relC?.id + '"]');
+        // 선행 화살표와 같은 모양(채움·테두리·굵기)에서 머리만 없다 — 몸통 다각형(Z로 닫힘), 같은 계산된 스타일
+        const anyArrow = document.querySelector('.arrows .arrow');
+        const cs = (n) => n ? [getComputedStyle(n).fill, getComputedStyle(n).stroke, getComputedStyle(n).strokeWidth].join('|') : '';
+        const sameLook = !!anyArrow && cs(line) === cs(anyArrow) && /Z$/.test(line?.getAttribute('d') ?? '');
         const onlyOneLine = document.querySelectorAll('.ref-line').length === 1;
         const chips = [...document.querySelectorAll('#i-refs .combine-chip')].map((x) => x.textContent);
         // 저장 왕복 — 다시 읽어도 남는다, DB엔 type ref
@@ -57,7 +61,7 @@ export default {
         const wentCard = r.view.selectedItem === c.id;
         // 선을 눌러 Delete
         document.querySelector('#pItem [data-close]')?.click(); await sleep(100);
-        const hit = document.querySelector('.ref-hit[data-rel="' + relC.id + '"]');
+        const hit = document.querySelector('.ref-line[data-rel="' + relC.id + '"]');
         hit?.dispatchEvent(new MouseEvent('click', { bubbles: true })); await sleep(100);
         const selected = r.view.selectedRel === relC.id && document.querySelector('.ref-line[data-rel="' + relC.id + '"]')?.classList.contains('selected');
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true, cancelable: true })); await sleep(250);
@@ -66,7 +70,7 @@ export default {
         r.store.commit('스모크 원복', (doc) => { doc.relations = doc.relations.filter((x) => x.type !== 'ref'); });
         await sleep(300);
         const ids = { a: a.id, c: c.id, b2root: b2root.id, b2 };
-        return { graph, firstIsHere, made, noArrow, onlyOneLine, chips, kept, went, wentCard, selected, deleted, ids };
+        return { graph, firstIsHere, made, noArrow, sameLook, onlyOneLine, chips, kept, went, wentCard, selected, deleted, ids };
       })();
       const guard = new Promise((res) => setTimeout(() => res({ error: 'timeout' }), 20000));
       return Promise.race([run.catch((e) => ({ error: String(e && e.stack || e) })), guard]);
@@ -78,7 +82,7 @@ export default {
     console.log('[smoke] ref-edit ' + JSON.stringify(r1));
     return r1;
   },
-  check: (x) => x?.firstIsHere === true && x?.made === true && x?.noArrow === true && x?.onlyOneLine === true
+  check: (x) => x?.firstIsHere === true && x?.made === true && x?.noArrow === true && x?.sameLook === true && x?.onlyOneLine === true
     && x?.chips?.length === 2 && x?.kept === true && x?.went === true && x?.wentCard === true
     && x?.selected === true && x?.deleted === true && x?.dbLeft === 0
     && x?.graph?.n >= 2 && x?.graph?.noHead === true && x?.graph?.dashed === true,

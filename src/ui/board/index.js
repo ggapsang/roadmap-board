@@ -836,7 +836,7 @@ export class Board {
       // 열면 재렌더가 일어나 카드가 새로 그려지고 긁어 둔 선택이 날아간다.
       if (this.view.textSelect) return;
       // 화살표·참조 선을 누르면 그 관계를 고른다(Delete로 지운다)
-      const arrow = ev.target.closest?.('.arrow, .ref-hit');
+      const arrow = ev.target.closest?.('.arrow, .ref-line');
       if (arrow?.dataset.rel) { this.selectRel(arrow.dataset.rel); return; }
       if (this.view.selectedRel) this.selectRel(null);
       const card = ev.target.closest('.ev');
@@ -881,7 +881,7 @@ export class Board {
         ]);
         return;
       }
-      const refHit = ev.target.closest?.('.ref-hit');
+      const refHit = ev.target.closest?.('.ref-line');
       if (refHit?.dataset.rel) {
         ev.preventDefault();
         this.selectRel(refHit.dataset.rel);
