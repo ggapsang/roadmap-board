@@ -68,6 +68,18 @@ export default {
             cell().querySelector('.band-resize').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
             await sleep(150);
             out.slotRow.reset = !r.store.meta.display.slotRows?.['2'] && Math.round(cell().getBoundingClientRect().height) === Math.round(c0);
+            // 크기 강제 높이는 칸에 붙지 않는다 — 한 칸짜리 카드를 같은 칸 안에서 더 낮게(아래 가장자리를 칸의 40%만큼 위로)
+            const ca = card(), cr = ca.getBoundingClientRect(), grip = ca.querySelector('.grip');
+            const gr = grip.getBoundingClientRect();
+            const at2 = (y) => ({ bubbles: true, clientX: gr.left + gr.width / 2, clientY: y, button: 0, pointerId: 8 });
+            const grid = document.getElementById('grid');
+            grip.dispatchEvent(new PointerEvent('pointerdown', at2(gr.top + 2)));
+            grid.dispatchEvent(new PointerEvent('pointermove', at2(gr.top + 2 - c0 * 0.2)));
+            grid.dispatchEvent(new PointerEvent('pointermove', at2(gr.top + 2 - c0 * 0.4)));
+            grid.dispatchEvent(new PointerEvent('pointerup', at2(gr.top + 2 - c0 * 0.4)));
+            await sleep(200);
+            const it2 = r.store.item(a.id);
+            out.freeHeight = { hd: it2.place.hd, slot: JSON.stringify(it2.place.slot), shorter: card().getBoundingClientRect().height < cr.height - 5 };
             r.itemPanel.open(a.id); await sleep(150);
           }
           out.slotsHidden = document.getElementById('i-dates').hidden && !document.getElementById('i-slots').hidden;
@@ -105,6 +117,8 @@ export default {
   check: (dateless) => (dateless?.dated === false && dateless?.gutNumbers === true && dateless?.outer === 0 && dateless?.slotCells === true
       && dateless?.slotRow?.scale >= 1.8 && dateless?.slotRow?.scale <= 2.2 && dateless?.slotRow?.only === '2'
       && dateless?.slotRow?.cell >= 1.8 && dateless?.slotRow?.cardGrew === true && dateless?.slotRow?.otherSame === true
+      && dateless?.freeHeight?.hd > 0.4 && dateless?.freeHeight?.hd < 0.8 && dateless?.freeHeight?.slot === '{"s":2,"len":1}'
+      && dateless?.freeHeight?.shorter === true
       && dateless?.slotRow?.undone === true && dateless?.slotRow?.reloaded === dateless?.slotRow?.scale && dateless?.slotRow?.reset === true && dateless?.now === false
       && dateless?.aSlot === '{"s":2,"len":1}' && dateless?.aDate == null && dateless?.label === '' && dateless?.noSlotText === true
       && dateless?.forced === '[1,0,1,3]' && dateless?.forcedBtn === 'true'

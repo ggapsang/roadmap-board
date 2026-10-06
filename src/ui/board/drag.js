@@ -14,7 +14,10 @@
  * 레인 확장 때문에 컬럼 폭이 트랙마다 다르므로, 고정 폭으로 나눠 델타를 구하면
  * 폭이 넓은 트랙 위에서 커서와 카드가 어긋난다.
  */
-import { UNIT_DAYS } from '../../config/index.js';
+import { UNIT_DAYS, LAYOUT } from '../../config/index.js';
+
+/** 크기 강제 높이(hd)의 하한(위치 단위) — 0이면 카드가 사라진다. 화면에선 카드 최소 높이가 먼저 막는다 */
+const HD_MIN = 0.05;
 
 export function attachDrag(grid, {
   store, view, getScale, getTimeline, getZoom = () => 1, onDragEnd,
@@ -138,6 +141,24 @@ export function attachDrag(grid, {
       return;
     }
 
+    // 크기 강제의 아래 가장자리 — 세로 길이를 단위(일·주·칸)에 붙이지 않고 끈 만큼 늘리고 줄인다. 같은 칸·같은 주 안에서도
+    // 높이를 맞출 수 있게(2026-10-06 사용자). 시작(날짜·칸)은 그대로. 위치 단위의 소수로 저장해 배율·접힌 구간을 탄다.
+    if (drag.mode === 'size' && drag.hd0 != null) {
+      const dy = (ev.clientY - drag.y) / getZoom();
+      if (!drag.moved && Math.abs(dy) < 2) return;
+      if (!drag.moved) { store.begin('기간 조절'); drag.moved = true; }
+      const top = scale.y(drag.startDay);
+      const want = Math.max(LAYOUT.minCardHeight, scale.extent(drag.startDay, drag.hd0) + dy);
+      // 축 끝 너머는 기본 일당(칸당) 픽셀로 센다(extent와 같은 규칙)
+      const px = top + want;
+      const bottom = px >= scale.height ? scale.totalDays + (px - scale.height) / scale.ppd : scale.dayAt(px);
+      store.commit('드래그', () => {
+        const item = store.item(drag.id);
+        if (item) item.place.hd = Math.max(HD_MIN, Math.round((bottom - drag.startDay) * 100) / 100);
+      });
+      return;
+    }
+
     if (!dDays && !dTrack && !drag.moved) return;
 
     // 드래그 전체를 되돌리기 1단계로 묶는다 (기획안 §5)
@@ -172,19 +193,16 @@ export function attachDrag(grid, {
       } else if (drag.mode === 'size-top') {
         if (drag.hd0 != null) {
           // 크기 강제: 위 가장자리를 끌면 바닥(아래)은 고정하고 위로/아래로 늘고 줄인다.
+          // 바닥은 소수일 수 있다(아래 가장자리를 단위 없이 끈 높이) — 시작은 단위대로, 높이는 남은 만큼
           const bottom = drag.startDay + drag.hd0;
-          const newS = Math.max(0, Math.min(bottom - 1, tl.add(drag.startDay, n)));
+          const newS = Math.max(0, Math.min(Math.ceil(bottom) - 1, tl.add(drag.startDay, n)));
           tl.set(item, newS, Math.max(newS, drag.endDay));
-          item.place.hd = Math.max(1, bottom - newS);
+          item.place.hd = Math.max(HD_MIN, Math.round((bottom - newS) * 100) / 100);
         } else {
           // 보통 카드: 위쪽을 끌면 시작이 움직인다. 끝은 그대로.
           const s = Math.max(0, Math.min(drag.endDay, tl.add(drag.startDay, n)));
           tl.set(item, s, drag.endDay);
         }
-      } else if (drag.hd0 != null) {
-        // 세로 크기 강제 — 날짜(칸)는 그대로, 세로 길이(위치 단위)만 늘리고 줄인다
-        const bottom = endAdd(drag.startDay + drag.hd0 - 1, n) + 1;
-        item.place.hd = Math.max(1, Math.round(bottom - drag.startDay));
       } else {
         // 끝도 아래로는 막지 않는다 — 끌어 내리면 축이 늘어난다.
         tl.set(item, drag.startDay, Math.max(drag.startDay, endAdd(drag.endDay, n)));
