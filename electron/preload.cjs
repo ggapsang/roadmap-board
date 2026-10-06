@@ -33,6 +33,11 @@ contextBridge.exposeInMainWorld('roadmapDB', {
   graphData: (boardId) => call('graph:data', boardId ?? null),
   // 보기 메뉴의 보드 확대·축소(+1 · -1 · 0 원래대로) — 보드 배율은 렌더러가 정한다
   onBoardZoom: (cb) => ipcRenderer.on('view:board-zoom', (_e, dir) => cb(dir)),
+  // 창을 닫기 전 — 쓰던 것(비고 등)을 저장하고 저장이 끝나면 알린다
+  onFlush: (cb) => ipcRenderer.on('app:flush', async () => {
+    try { await cb(); } catch { /* 저장 실패해도 닫기는 진행 */ }
+    ipcRenderer.send('app:flushed');
+  }),
   eventAncestors: (id) => call('event:ancestors', id),
   // 휴지통 — 부모를 모두 잃은 이벤트. 영구 삭제·비우기
   listTrash: () => call('trash:list'),

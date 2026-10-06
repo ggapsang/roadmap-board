@@ -18,7 +18,8 @@ export class Store extends Emitter {
   #undo = [];
   #redo = [];
   #tx = null;          // 진행 중인 트랜잭션 {label, snapshot}
-  #group = null;       // 마지막 commit의 묶음 이름 — 같은 이름이 이어지면 되돌리기 한 단계로 합친다
+  #group = null;
+  #saving = Promise.resolve();       // 마지막 commit의 묶음 이름 — 같은 이름이 이어지면 되돌리기 한 단계로 합친다
   #adapter;
 
   constructor({ adapter, doc }) {
@@ -162,8 +163,11 @@ export class Store extends Emitter {
   toJSON(space = 1) { return JSON.stringify(this.#doc, null, space); }
 
   #persist() {
-    this.#adapter.save(this.#doc).catch((err) => {
+    this.#saving = this.#adapter.save(this.#doc).catch((err) => {
       this.emit('error', err instanceof Error ? err.message : String(err));
     });
   }
+
+  /** 마지막 저장이 끝날 때까지 — 창을 닫기 전에 기다린다 */
+  flush() { return this.#saving; }
 }

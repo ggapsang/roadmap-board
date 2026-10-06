@@ -138,6 +138,12 @@ function createWindow() {
   // Page.captureScreenshot(PNG 내보내기)이 응답하지 않는다.
   win.once('ready-to-show', () => { if (SMOKE) win.showInactive(); else win.show(); });
   win.loadURL('app://board/index.html');
+  // 창 닫기(X) — 쓰던 것을 저장하고 닫는다(아래 flushRenderer)
+  win.on('close', (e) => {
+    if (!needsFlush()) return;
+    e.preventDefault();
+    flushRenderer().then(() => { flushed = true; win.close(); });
+  });
   // Ctrl+휠은 렌더러가 받아 보드만 확대한다(src/main.js). 렌더러가 기본 동작을 막으므로 이 이벤트는 대개 안 오지만,
   // 오면(렌더러가 못 받은 경우) 같은 보드 확대로 보낸다. 창 전체 배율은 늘 100% — 0.2.3에서 저장했던 창 배율도 지운다.
   win.webContents.on('zoom-changed', (_e, direction) => boardZoom(win, direction === 'in' ? 1 : -1));
@@ -642,4 +648,27 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-app.on('before-quit', () => { try { db?.close(); } catch { /* noop */ } });
+/**
+ * 닫기 전 저장 — 비고처럼 '칸에서 나갈 때' 저장하는 것은 창을 바로 닫으면 나가는 일이 없어 빠진다. 창을 닫거나 종료하기 전에
+ * 렌더러에 쓰던 것을 저장하게 하고(app:flush), 끝났다는 알림(app:flushed)을 받은 뒤 닫는다. 렌더러가 멈췄으면 2초 뒤 그냥 닫는다.
+ */
+let flushed = false;
+function flushRenderer(ms = 2000) {
+  return new Promise((resolve) => {
+    if (!win || win.isDestroyed()) { resolve(); return; }
+    const done = () => { clearTimeout(timer); ipcMain.removeListener('app:flushed', done); resolve(); };
+    const timer = setTimeout(done, ms);
+    ipcMain.on('app:flushed', done);
+    win.webContents.send('app:flush');
+  });
+}
+const needsFlush = () => !flushed && !SMOKE && !REPRO && win && !win.isDestroyed();
+
+app.on('before-quit', (e) => {
+  if (needsFlush()) {
+    e.preventDefault();
+    flushRenderer().then(() => { flushed = true; app.quit(); });
+    return;
+  }
+  try { db?.close(); } catch { /* noop */ }
+});

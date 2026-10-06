@@ -28,6 +28,9 @@ const F = {
   end: 'i-end', org: 'i-org', note: 'i-note', slot: 'i-slot', slotLen: 'i-slotlen', alias: 'i-alias',
 };
 
+/** 비고를 치다가 이만큼(ms) 멈추면 저장한다 */
+const NOTE_AUTOSAVE_MS = 1000;
+
 const ALIGN_ICON = { top: ICONS.alignTop, middle: ICONS.alignMiddle, bottom: ICONS.alignBottom };
 const ALIGN_LABEL = { top: '위', middle: '가운데', bottom: '아래' };
 
@@ -83,6 +86,7 @@ export class ItemPanel {
   openTrack(id) {
     const track = this.store.track(id);
     if (!track) return;
+    this.flushNote();                  // 쓰던 비고는 그 이벤트에 먼저 저장(편집기 내용이 이 트랙 것으로 바뀌기 전에)
     this.view.selectedItem = null;
     this.view.selectedTrack = id;
     this.#setMode('track');
@@ -111,14 +115,13 @@ export class ItemPanel {
     this.panels.open('pItem');
   }
 
-  /** 트랙 속성 저장 — 제목·별칭·기간·비고 */
+  /** 트랙 속성 저장 — 제목·별칭·기간 (비고는 flushNote) */
   #applyTrack() {
     const track = this.track;
     if (!track) return;
     this.store.commit('트랙 편집', () => {
       track.name = $(F.title).value.trim() || track.name;
       track.alias = $(F.alias).value.trim() || null;
-      track.note = $(F.note).value;
       if (this.store.meta.display?.dated !== false) {
         const s = $(F.start).value || null;
         let e = $(F.end).value || s;
@@ -292,12 +295,39 @@ export class ItemPanel {
   #bindNote() {
     const ta = $(F.note);
     this.noteEditor = createNoteEditor($('i-note-editor'), {
-      onChange: (text) => { ta.value = text; },
-      onBlur: () => {
+      onChange: (text) => {
+        ta.value = text;
+        // 치다가 잠깐 멈추면 저장 — 창을 그대로 닫아도(편집기에서 안 나가도) 쓴 것이 남게. 쓰던 이벤트를 붙잡아 둔다
+        // (그사이 다른 카드를 열어도 그 카드에 쓰지 않게)
         const cur = this.item ?? this.track;
-        if (cur && ta.value !== (cur.note ?? '')) this.apply();
+        if (!cur) return;
+        this._noteTarget = cur.id;
+        this._noteDirty = true;
+        clearTimeout(this._noteTimer);
+        this._noteTimer = setTimeout(() => this.flushNote(), NOTE_AUTOSAVE_MS);
       },
+      // 편집기에서 나가면 남은 것을 저장하고, 다음에 들어와 쓰는 것은 새 되돌리기 단계
+      onBlur: () => { this.flushNote(); this._noteGroup = null; },
     });
+  }
+
+  /**
+   * 쓰던 비고를 지금 저장한다(기다리던 자동 저장을 당겨서). 같은 편집(편집기에 들어가서 나올 때까지)의 저장은
+   * 되돌리기 한 단계로 묶는다 — Ctrl+Z가 1초마다 끊기지 않게. 창을 닫기 전에도 부른다(src/main.js flush).
+   */
+  flushNote() {
+    clearTimeout(this._noteTimer);
+    this._noteTimer = null;
+    // 쓰고 아직 저장하지 않은 것이 있을 때만 — 되돌리기 뒤 패널을 다시 채울 때 옛 글로 덮어쓰지 않게
+    if (!this._noteDirty) return;
+    this._noteDirty = false;
+    const id = this._noteTarget;
+    if (!id) return;
+    const cur = this.store.item(id) ?? this.store.track(id);
+    const text = $(F.note).value;
+    if (!cur || text === (cur.note ?? '')) return;
+    this._noteGroup ??= `note:${id}:${Date.now()}`;
+    this.store.commit('비고', () => { cur.note = text; }, { group: this._noteGroup });
   }
 
   /** 저장된 탭 순서를 적용한다. 모르는 탭은 버리고, 저장 뒤 새로 생긴 탭은 제자리(뒤)에 둔다. */
@@ -323,6 +353,7 @@ export class ItemPanel {
   }
 
   open(id) {
+    this.flushNote();                  // 쓰던 비고는 그 이벤트에 먼저 저장(편집기 내용이 이 카드 것으로 바뀌기 전에)
     this.#setMode('item');
     this.view.selectedItem = id;
     this.view.selectedTrack = null;
@@ -1207,7 +1238,6 @@ export class ItemPanel {
         item.place.slot = { s, len };
       }
       item.og = $(F.org).value;
-      item.note = $(F.note).value;
       // 별칭 — 이 보드에서만 보이는 이름(배치 값). 비우면 없음(제목이 보인다)
       item.alias = $(F.alias).value.trim() || null;
     });

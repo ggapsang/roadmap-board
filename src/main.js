@@ -419,6 +419,14 @@ async function boot() {
   }
 
   // 개발자 도구에서 바로 만질 수 있게
+  // 창을 닫기 전(메인이 요청) — 커서가 있는 칸을 떠나게 해 그 칸의 저장(비고 편집기의 나갈 때 저장 등)을 부르고,
+  // 쓰던 비고를 당겨 저장한 뒤 마지막 저장이 DB에 닿을 때까지 기다린다.
+  window.roadmapDB?.onFlush?.(async () => {
+    document.activeElement?.blur?.();
+    itemPanel.flushNote();
+    await store.flush();
+  });
+
   Object.assign(globalThis, { __roadmap: { store, view, board, adapter, launcher, tabs, openProject, graphView, itemPanel } });
 }
 
