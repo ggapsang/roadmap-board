@@ -532,6 +532,7 @@ export class Board {
     // 카드가 붙은 뒤에야 offsetLeft/offsetTop이 확정된다
     drawArrows(this.arrowLayer, this.grid, this.store.items, this.store.relations, this.store.meta.display, this.store.meta.arrows ?? {}, this.#arrowForms());
     this.#linkHighlight(this._hoverId ?? null);
+    this.#markSelectedRel();
     this.#drawArrowHandles();
   }
 
@@ -594,7 +595,49 @@ export class Board {
   redrawArrows() {
     drawArrows(this.arrowLayer, this.grid, this.store.items, this.store.relations, this.store.meta.display, this.store.meta.arrows ?? {}, this.#arrowForms());
     this.#linkHighlight(this._hoverId ?? null);
+    this.#markSelectedRel();
     this.#drawArrowHandles();
+  }
+
+  /**
+   * 화살표 고르기 — 누르면 그 선행관계가 골라지고(테두리 강조) Delete로 지운다. 카드 선택과 함께 두지 않는다(Delete가 둘 중
+   * 무엇을 지울지 헷갈리지 않게) — 카드 편집 창은 닫는다. null이면 고른 것 없음.
+   */
+  selectRel(id) {
+    this.view.selectedRel = id ?? null;
+    if (id) {
+      this.view.selectedItem = null;
+      this.view.selectedTrack = null;
+      this.handlers.closePanel?.();
+    }
+    this.#markSelectedRel();
+  }
+
+  #markSelectedRel() {
+    const id = this.view.selectedRel;
+    let found = false;
+    for (const p of this.arrowLayer.querySelectorAll('.arrow')) {
+      const on = !!id && p.dataset.rel === id;
+      p.classList.toggle('selected', on);
+      if (on) found = true;
+    }
+    if (id && !found) this.view.selectedRel = null;      // 지워졌거나 안 보인다
+  }
+
+  /** 선행관계 지우기(화살표 Delete · 우클릭) — 이 보드의 고친 화살표 모양도 함께. 되돌리기 1단계 */
+  deleteRel(id) {
+    if (!id || this.store.readonly) return false;
+    const rel = this.store.relations.find((r) => r.id === id);
+    if (!rel) return false;
+    this.store.commit('선행관계 삭제', (doc) => {
+      doc.relations = (doc.relations ?? []).filter((r) => r.id !== id);
+      if (doc.meta.arrows?.[id]) { const next = { ...doc.meta.arrows }; delete next[id]; doc.meta.arrows = next; }
+    });
+    if (this._arrowEdit === id) this.endArrowEdit();
+    this.view.selectedRel = null;
+    const name = (x) => this.store.item(x)?.ti || '(제목 없음)';
+    toast(`선행관계를 지웠습니다 — ${name(rel.from)} → ${name(rel.to)} (Ctrl+Z로 되돌립니다)`);
+    return true;
   }
 
   /**
@@ -788,6 +831,10 @@ export class Board {
       // 텍스트 선택 모드에서는 패널을 열지 않는다.
       // 열면 재렌더가 일어나 카드가 새로 그려지고 긁어 둔 선택이 날아간다.
       if (this.view.textSelect) return;
+      // 화살표를 누르면 그 선행관계를 고른다(Delete로 지운다)
+      const arrow = ev.target.closest?.('.arrow');
+      if (arrow?.dataset.rel) { this.selectRel(arrow.dataset.rel); return; }
+      if (this.view.selectedRel) this.selectRel(null);
       const card = ev.target.closest('.ev');
       if (card) this.handlers.openItem(card.dataset.id);
     });
@@ -826,6 +873,7 @@ export class Board {
         openCtxMenu(ev.clientX, ev.clientY, [
           { label: '화살표 모양 고치기', action: () => this.editArrow(id) },
           { label: '자동 경로로 되돌리기', disabled: !this.store.meta.arrows?.[id], action: () => { this.resetArrow(id); this.endArrowEdit(); } },
+          { label: '선행관계 삭제', action: () => this.deleteRel(id) },
         ]);
         return;
       }

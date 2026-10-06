@@ -67,8 +67,9 @@ async function boot() {
     gutM: $('gutM'), gutW: $('gutW'),
     store, view,
     handlers: {
-      openItem: (id) => itemPanel.open(id),
-      openTrack: (id) => { itemPanel.openTrack(id); refresh(); },   // 트랙도 이벤트 — 트랙 편집(보드 설정은 도구 모음 '설정')
+      openItem: (id) => { view.selectedRel = null; itemPanel.open(id); },
+      openTrack: (id) => { view.selectedRel = null; itemPanel.openTrack(id); refresh(); },
+      closePanel: () => panels.close(),   // 트랙도 이벤트 — 트랙 편집(보드 설정은 도구 모음 '설정')
       addTrack: () => configPanel.add(),
     },
   });
@@ -299,7 +300,16 @@ async function boot() {
     if ((e.ctrlKey || e.metaKey) && e.key === '0') {
       e.preventDefault(); setFont(1); return;
     }
-    if (e.key === 'Escape') { panels.close(); return; }   // 고정 중이면 닫히지 않는다
+    if (e.key === 'Escape') {
+      if (view.selectedRel) { board.selectRel(null); return; }   // 고른 화살표부터 푼다
+      panels.close(); return;                                    // 고정 중이면 닫히지 않는다
+    }
+    // 고른 화살표(선행관계) 지우기 — Delete와 Backspace. 입력 칸에서는 안 먹는다
+    if ((e.key === 'Delete' || e.key === 'Backspace') && view.selectedRel && !typing) {
+      e.preventDefault();
+      board.deleteRel(view.selectedRel);
+      return;
+    }
     // 선택한 카드 삭제 — Delete와 Backspace(노트북·맥의 ⌫) 둘 다. 입력 칸에서는 안 먹는다.
     if ((e.key === 'Delete' || e.key === 'Backspace') && view.selectedItem && !typing) {
       e.preventDefault();

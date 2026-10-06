@@ -307,7 +307,8 @@ export class ItemPanel {
         this._noteTimer = setTimeout(() => this.flushNote(), NOTE_AUTOSAVE_MS);
       },
       // 편집기에서 나가면 남은 것을 저장하고, 다음에 들어와 쓰는 것은 새 되돌리기 단계
-      onBlur: () => { this.flushNote(); this._noteGroup = null; },
+      // 다른 프로그램으로 창을 옮긴 것(창 자체가 포커스를 잃음)은 편집을 끝낸 게 아니다 — 저장만 하고 되돌리기 묶음은 이어 간다
+      onBlur: () => { this.flushNote(); if (document.hasFocus()) this._noteGroup = null; },
     });
   }
 
@@ -539,42 +540,106 @@ export class ItemPanel {
   #renderDeps(item) {
     const box = $('i-deps');
     clear(box);
-    box.append(el('button.btn.outline.sm', { type: 'button', text: '편집', title: '선행관계설정 — 먼저 끝나야 하는 일정 고르기', on: { click: () => this.#openDepsPicker() } }));
-    const cur = this.store.relations.filter((r) => r.type === 'dep' && r.to === item.id).map((r) => r.from);
+    box.append(el('button.btn.outline.sm', { type: 'button', text: '편집', title: '선행관계설정 — 앞(먼저 끝나야 하는)·뒤(이 카드 다음) 카드 고르기', on: { click: () => this.#openDepsPicker() } }));
+    const deps = this.store.relations.filter((r) => r.type === 'dep');
     const list = el('div.combine-summary');
-    if (!cur.length) list.append(el('div.empty', { text: '선행 일정이 없습니다.' }));
-    for (const id of cur) {
-      list.append(el('div.combine-chip', {}, [
-        el('span.combine-chip-name', { text: this.store.item(id)?.ti || '(제목 없음)' }),
-        el('button.task-del', { type: 'button', title: '선행에서 빼기', on: { click: () => this.#toggleDep(id) } }, [icon(ICONS.close)]),
-      ]));
-    }
+    const group = (head, ids, dir) => {
+      list.append(el('div.pc-head', { text: `${head}${ids.length ? ` ${ids.length}` : ''}` }));
+      if (!ids.length) list.append(el('div.empty', { text: '없음' }));
+      for (const id of ids) {
+        list.append(el('div.combine-chip', {}, [
+          el('span.combine-chip-name', { text: this.store.item(id)?.ti || '(다른 보드 이벤트)' }),
+          el('button.task-del', { type: 'button', title: `${head}에서 빼기`, on: { click: () => this.#removeDep(id, dir) } }, [icon(ICONS.close)]),
+        ]));
+      }
+    };
+    group('선행', deps.filter((r) => r.to === item.id).map((r) => r.from), 'pred');
+    group('후행', deps.filter((r) => r.from === item.id).map((r) => r.to), 'succ');
     box.append(list);
   }
 
+  /** 선행관계설정 — 모자관계처럼 두 탭: 선행 설정(이 카드보다 먼저 끝나야 하는 카드들) · 후행 설정(이 카드 다음에 오는 카드들) */
   async #openDepsPicker() {
     const item = this.item;
     if (!item || this.store.readonly) return;
-    const checked = new Set(this.store.relations.filter((r) => r.type === 'dep' && r.to === item.id).map((r) => r.from));
-    const nodes = this.#boardTreeNodes({ self: item.id, exclude: new Set([item.id]) });
-    const result = await askTree({ title: '선행관계설정', message: '먼저 끝나야 하는 일정들(같은 보드)을 고르세요.', nodes, checked, select: 'multi' });
-    if (!result) return;
-    this.store.commit('선행 일정 변경', (doc) => {
-      doc.relations = (doc.relations ?? []).filter((r) => !(r.type === 'dep' && r.to === item.id));
-      for (const from of result) if (from !== item.id) doc.relations.push({ id: newId('r'), type: 'dep', from, to: item.id });
+    const deps = this.store.relations.filter((r) => r.type === 'dep');
+    const nodes = () => this.#boardTreeNodes({ self: item.id, exclude: new Set([item.id]) });
+    const res = await askTreeTabs({
+      title: '선행관계설정',
+      initial: 'pred',
+      tabs: [
+        {
+          key: 'pred', label: '선행 설정', select: 'multi', nodes: nodes(),
+          checked: new Set(deps.filter((r) => r.to === item.id).map((r) => r.from)),
+          message: '이 카드보다 먼저 끝나야 하는 카드들을 고릅니다(같은 보드). 화살표가 그 카드에서 이 카드로 옵니다.',
+          emptyText: '고를 카드가 없습니다.',
+        },
+        {
+          key: 'succ', label: '후행 설정', select: 'multi', nodes: nodes(),
+          checked: new Set(deps.filter((r) => r.from === item.id).map((r) => r.to)),
+          message: '이 카드가 끝나야 시작하는 카드들을 고릅니다(같은 보드). 화살표가 이 카드에서 그 카드로 갑니다.',
+          emptyText: '고를 카드가 없습니다.',
+        },
+      ],
+    });
+    if (!res) return;
+    this.#applyDeps(item, { pred: res.pred, succ: res.succ });
+  }
+
+  /**
+   * 이 카드의 선행·후행을 한 번에 바꾼다(되돌리기 1단계). 이 보드 카드와의 선행만 바꾸고, 다른 보드 이벤트와의 선행은 그대로 둔다.
+   * 그대로인 관계는 id를 지킨다(고친 화살표 모양이 남게). 선행이 돌고 돌면(순환) 바꾸지 않는다.
+   * @param {{pred?: Set<string>, succ?: Set<string>}} next  빠진 쪽은 그대로
+   */
+  #applyDeps(item, next) {
+    if (!item || this.store.readonly) return;
+    const onBoard = new Set(this.store.items.map((x) => x.id));
+    const rels = this.store.relations;
+    const keep = rels.filter((r) => {
+      if (r.type !== 'dep') return true;
+      if (next.pred && r.to === item.id && onBoard.has(r.from)) return next.pred.has(r.from);
+      if (next.succ && r.from === item.id && onBoard.has(r.to)) return next.succ.has(r.to);
+      return true;
+    });
+    const has = (from, to) => keep.some((r) => r.type === 'dep' && r.from === from && r.to === to);
+    const added = [];
+    for (const from of next.pred ?? []) if (from !== item.id && !has(from, item.id)) added.push({ id: newId('r'), type: 'dep', from, to: item.id });
+    for (const to of next.succ ?? []) if (to !== item.id && !has(item.id, to)) added.push({ id: newId('r'), type: 'dep', from: item.id, to });
+    const after = [...keep, ...added];
+    // 순환 검사 — 선행을 따라가다 제자리로 돌아오면 안 된다(앞뒤가 없어진다)
+    const out = new Map();
+    for (const r of after) if (r.type === 'dep') { if (!out.has(r.from)) out.set(r.from, []); out.get(r.from).push(r.to); }
+    const state = new Map();
+    const cyclic = (u) => {
+      state.set(u, 1);
+      for (const v of out.get(u) ?? []) {
+        if (state.get(v) === 1) return true;
+        if (!state.has(v) && cyclic(v)) return true;
+      }
+      state.set(u, 2);
+      return false;
+    };
+    for (const u of out.keys()) if (!state.has(u) && cyclic(u)) { toast('선행이 돌고 돌게 되어(순환) 적용하지 않았습니다', 'warn'); return; }
+    const removed = new Set(rels.filter((r) => !keep.includes(r)).map((r) => r.id));
+    if (!removed.size && !added.length) return;
+    this.store.commit('선행관계 설정', (doc) => {
+      doc.relations = [...(doc.relations ?? []).filter((r) => !removed.has(r.id)), ...added];
+      if (removed.size && doc.meta.arrows) {
+        const a = { ...doc.meta.arrows };
+        for (const id of removed) delete a[id];
+        doc.meta.arrows = a;
+      }
     });
     this.#renderDeps(item);
   }
 
-  #toggleDep(otherId) {
+  /** 요약의 X — 선행(pred) 또는 후행(succ)에서 하나 빼기 */
+  #removeDep(otherId, dir) {
     const item = this.item;
     if (!item) return;
-    const dep = (r) => r.type === 'dep' && r.from === otherId && r.to === item.id;
-    this.store.commit('선행 일정 변경', (doc) => {
-      if (doc.relations.some(dep)) doc.relations = doc.relations.filter((r) => !dep(r));
-      else doc.relations.push({ id: newId('r'), type: 'dep', from: otherId, to: item.id });
-    });
-    this.#renderDeps(item);
+    const deps = this.store.relations.filter((r) => r.type === 'dep');
+    if (dir === 'pred') this.#applyDeps(item, { pred: new Set(deps.filter((r) => r.to === item.id && r.from !== otherId).map((r) => r.from)) });
+    else this.#applyDeps(item, { succ: new Set(deps.filter((r) => r.from === item.id && r.to !== otherId).map((r) => r.to)) });
   }
 
   // ── 동일(합치기 작업) · 조합(구성) — docs/SYSTEM.md §7.1·§7.2 ──

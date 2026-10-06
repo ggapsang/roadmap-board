@@ -18,6 +18,8 @@ export class ViewState extends Emitter {
     this.boardZoom = 1;
     this.selectedItem = null;
     this.selectedTrack = null;
+    /** 눌러 고른 화살표(선행관계 id) — Delete로 지운다. 화면 상태라 저장·되돌리기와 무관 */
+    this.selectedRel = null;
     /** 카드 글자를 긁어 복사할 수 있는 모드. 켜면 드래그 이동이 멈춘다. */
     this.textSelect = false;
     /**
