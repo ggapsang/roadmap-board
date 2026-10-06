@@ -120,6 +120,40 @@ export function drawArrows(layer, grid, items, relations, display, arrows = {}, 
     path.append(makeTitle(rel.from, rel.to, items));
     group.append(path);
   }
+
+  // 참조 — 화살표 없는 선. 양 끝 카드가 이 보드에 다 그려졌을 때만(트랙·보드·다른 보드와의 참조는 편집 창 목록에서 본다).
+  // 선행처럼 다른 카드를 피해 경로를 고른다(카드 가장자리에서 시작 — 머리가 없다). 가는 선이라 누르기 쉽게 넓은 투명 선을 겹친다.
+  for (const rel of relations) {
+    if (rel.type !== 'ref') continue;
+    const from = box.get(rel.from);
+    const to = box.get(rel.to);
+    if (!from || !to) continue;
+    const obstacles = [...titleObstacles];
+    for (const [id, rect] of box) {
+      if (id === rel.from || id === rel.to || container.has(id)) continue;
+      obstacles.push({ id, ...rect });
+    }
+    const kept = forms?.get(rel.id);
+    const sameTrack = trackOf.get(rel.from) === trackOf.get(rel.to);
+    const r = routeBetweenKeyed(from, to, sameTrack, 0, obstacles, kept?.key ?? null);
+    forms?.set(rel.id, { key: r.key });
+    const d = 'M' + r.points.map((p) => `${Math.round(p.x * 10) / 10},${Math.round(p.y * 10) / 10}`).join(' L');
+    for (const cls of ['ref-hit', 'ref-line']) {
+      const path = document.createElementNS(NS, 'path');
+      path.setAttribute('d', d);
+      path.setAttribute('class', cls);
+      path.dataset.from = rel.from;
+      path.dataset.to = rel.to;
+      path.dataset.rel = rel.id;
+      if (cls === 'ref-hit') {
+        const title = document.createElementNS(NS, 'title');
+        const a = items.find((i) => i.id === rel.from), b = items.find((i) => i.id === rel.to);
+        title.textContent = `참조 · ${a?.ti ?? rel.from} — ${b?.ti ?? rel.to}`;
+        path.append(title);
+      }
+      group.append(path);
+    }
+  }
 }
 
 function makeTitle(fromId, toId, items) {

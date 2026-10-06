@@ -567,6 +567,8 @@ export function normalize(doc) {
 /** 관계 목록 정규화 — 종류 허용, 끝점 존재, 자기순환 금지, 중복 제거, 순환 금지 종류는 사이클 차단. */
 function normalizeRelations(doc, itemIds) {
   const acyclic = new Set(RELATION_TYPES.filter((r) => r.acyclic).map((r) => r.key));
+  const boardIds = new Set([...itemIds, ...(doc.tracks ?? []).map((t) => t.id)]);
+  for (const it of doc.items) for (const t of (Array.isArray(it.tasks) ? it.tasks : [])) if (t?.id) boardIds.add(t.id);
   const src = [];
   // 관계는 doc.relations에서 받는다. 단 포함(contain)은 item.parent가 authoritative라
   // 입력의 contain은 버리고 item.parent에서 다시 만든다(중복·불일치 방지).
@@ -599,7 +601,10 @@ function normalizeRelations(doc, itemIds) {
     const { from, to } = r;
     if (typeof from !== 'string' || typeof to !== 'string') continue;
     if (from === to) continue;
-    if (!itemIds.has(from) || !itemIds.has(to)) continue;   // 선행·포함은 양끝이 이 보드에
+    if (type === 'ref') {
+      // 참조 — 한쪽 끝이 이 보드의 이벤트(카드·트랙·태스크)면 다른 쪽은 어느 보드의 무엇이든(보드 자체 포함)
+      if (!boardIds.has(from) && !boardIds.has(to)) continue;
+    } else if (!itemIds.has(from) || !itemIds.has(to)) continue;   // 선행·포함은 양끝이 이 보드에
     const key = `${type}|${from}|${to}`;
     if (seen.has(key)) continue;
     if (acyclic.has(type) && reaches(type, to, from)) continue;   // from→to가 순환을 만들면 버린다

@@ -908,10 +908,13 @@ export class BoardRepository {
       (trackIndex.get(a.place.t) ?? 0) - (trackIndex.get(b.place.t) ?? 0) || a._o - b._o);
     items.forEach((it) => { delete it._o; });
 
-    // 관계: 선행(dep)은 양끝이 이 보드 카드인 것. 포함(contain)은 item.parent에서 파생.
+    // 관계: 선행(dep)은 양끝이 이 보드 카드인 것. 참조(ref)는 한쪽 끝이라도 이 보드 화면(루트·트랙·카드·태스크)에 있는 것 —
+    // 다른 쪽은 어느 보드의 무엇이든. 포함(contain)은 item.parent에서 파생.
     const relations = [];
-    for (const r of this.db.prepare("SELECT id, type, from_id, to_id FROM rel WHERE type = 'dep'").all()) {
-      if (homeTrack.has(r.from_id) && homeTrack.has(r.to_id)) relations.push({ id: r.id, type: r.type, from: r.from_id, to: r.to_id });
+    const shown = new Set([root, ...trackIds, ...homeTrack.keys(), ...v.tasks]);
+    for (const r of this.db.prepare("SELECT id, type, from_id, to_id FROM rel WHERE type IN ('dep', 'ref')").all()) {
+      const ok = r.type === 'dep' ? homeTrack.has(r.from_id) && homeTrack.has(r.to_id) : shown.has(r.from_id) || shown.has(r.to_id);
+      if (ok) relations.push({ id: r.id, type: r.type, from: r.from_id, to: r.to_id });
     }
     for (const it of items) {
       if (it.parent) relations.push({ id: `c_${it.id}`, type: 'contain', from: it.parent, to: it.id });
@@ -1044,12 +1047,20 @@ export class BoardRepository {
       if (addEdge(parent, child, 0, 1, n)) cOrd.set(parent, n + 1);
     }
 
-    // 관계 — 선행(dep)만. 포함(contain)은 item.parent에서 파생이라 안 넣는다. 동일은 합치기 '작업'이고
-    // 조합은 구성이라 관계가 아니다.
+    // 관계 — 선행(dep)·참조(ref). 포함(contain)은 item.parent에서 파생이라 안 넣는다. 동일은 합치기 '작업'이고
+    // 조합은 구성이라 관계가 아니다. 참조는 한쪽 끝만 이 보드 화면(루트·트랙·카드·태스크)이면 된다(트랙 id는 이벤트 id로).
     if (Array.isArray(doc.relations)) {
+      const end = (x) => (itemIds.has(x) ? x : docTrack.get(x) ?? x);
       for (const r of doc.relations) {
-        if (r?.type !== 'dep' || r.from === r.to || !itemIds.has(r.from) || !itemIds.has(r.to)) continue;
-        rels.set(r.id || `r_${r.from}_${r.to}`, { type: 'dep', from: r.from, to: r.to });
+        if (!r || r.from === r.to) continue;
+        if (r.type === 'dep') {
+          if (!itemIds.has(r.from) || !itemIds.has(r.to)) continue;
+          rels.set(r.id || `r_${r.from}_${r.to}`, { type: 'dep', from: r.from, to: r.to });
+        } else if (r.type === 'ref' && typeof r.from === 'string' && typeof r.to === 'string') {
+          const from = end(r.from), to = end(r.to);
+          if (from === to || (!events.has(from) && !events.has(to))) continue;
+          rels.set(r.id || `ref_${from}_${to}`, { type: 'ref', from, to });
+        }
       }
     } else {
       for (const it of items) {
@@ -1230,7 +1241,11 @@ export class BoardRepository {
     }
     for (const [id, b] of base.rels) {
       if (next.rels.has(id)) continue;
-      if (!next.events.has(b.from) || !next.events.has(b.to)) continue;
+      if (b.type === 'ref') {
+        // 참조 — 이 보드에 보이던 끝이 아직 다 보이면 사용자가 지운 것. 그 끝이 보드에서 빠졌으면 남긴다(보드에서 빼기 ≠ 이벤트 삭제)
+        const ends = [b.from, b.to].filter((e) => base.events.has(e));
+        if (!ends.length || !ends.every((e) => next.events.has(e))) continue;
+      } else if (!next.events.has(b.from) || !next.events.has(b.to)) continue;
       delRel.run(id);
       touched.relEnds.add(b.from).add(b.to);
     }

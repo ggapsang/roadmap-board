@@ -67,11 +67,13 @@ export const RELATION_TYPES = [
   { key: 'dep', label: '선행', acyclic: true },
   { key: 'contain', label: '포함', acyclic: true },   // 상위 일정 안에 든 카드. 지금은 item.parent가 렌더용 사본.
   // 동일=합치기 작업, 조합=구성(순서 없는 포함, doc.compose)이라 관계 타입이 아니다(docs/SYSTEM.md §7,
-  // docs/SAVE.md §5). 아래는 미구현 관계.
+  // docs/SAVE.md §5).
+  // 참조 — A가 B를 참고(순환 허용). 어느 보드의 무엇이든(카드·트랙·태스크·보드 자체) 잇는다 — 한쪽 끝만 이 보드에 있으면 된다.
+  // 보드엔 화살표 없는 선(양 끝 카드가 다 보일 때), 그래프엔 점선. 2026-10-06 사용자.
+  { key: 'ref', label: '참조', acyclic: false },
+  // 아래는 미구현 관계.
   // { key: 'merge', label: '합류' },   // 여러 → 하나 (트리)
   // { key: 'cause', label: '원인', acyclic: true },
-  // { key: 'join',  label: '합류' },
-  // { key: 'ref',   label: '참조' },
 ];
 export const RELATION_KEYS = RELATION_TYPES.map((r) => r.key);
 export const DEFAULT_RELATION = 'dep';
@@ -88,6 +90,8 @@ export const DEFAULT_RELATION = 'dep';
  * 방향 중력은 목표 좌표로 끌지 않고 **최소 간격(gap)에 못 미칠 때만** 벌린다(G-20).
  */
 export const GRAPH = {
+  /** 화살촉을 달지 않는 계열 — 참조는 방향 없이 잇는 선(점선) */
+  noArrow: ['ref'],
   /** 엣지 종류 → 계열 */
   typeFamily: { contain: 'contain', dep: 'flow', merge: 'flow', cause: 'cause', ref: 'ref' },
   /** 계열별 방향 중력(u·gap·strength·slider)과 스프링 세기 */

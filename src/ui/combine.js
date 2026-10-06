@@ -58,6 +58,41 @@ async function buildEventTree(adapter, { blocked = new Set(), withTasks = false 
 }
 
 /**
+ * 참조 고르기 — 모든 보드(이 보드 포함)의 보드 자체·트랙·카드·태스크를 트리로. 참조는 어느 것과도 이을 수 있다(순환 허용).
+ * 자기 자신만 고를 수 없다. 이 보드를 맨 위에.
+ * @returns {Promise<Set<string>|null>} 고른 이벤트 id들, 취소하면 null
+ */
+export async function pickRefs(adapter, selfId, checked) {
+  let events = [];
+  try { events = (await adapter?.listEvents?.()) ?? []; } catch { events = []; }
+  const cur = String(adapter?.projectId ?? '');
+  const onBoard = (e, bid) => String(e.boardIds ?? '').split(',').includes(bid);
+  const boards = events.filter((e) => e.kind === 'board')
+    .sort((a, b) => (String(a.boardId) === cur ? -1 : String(b.boardId) === cur ? 1 : 0));
+  const blocked = new Set([selfId]);
+  const nodes = [];
+  for (const b of boards) {
+    const bid = String(b.boardId ?? b.boardIds ?? '');
+    const trackNodes = [];
+    for (const tr of events.filter((e) => e.kind === 'track' && onBoard(e, bid))) {
+      let cards = [];
+      try { cards = (await adapter?.eventCards?.(tr.id, { withTasks: true })) ?? []; } catch { cards = []; }
+      trackNodes.push({ id: tr.id, label: tr.title || '(트랙)', sub: '트랙', checkable: !blocked.has(tr.id), children: nestByDepth(cards, blocked) });
+    }
+    nodes.push({
+      id: b.id, label: (b.title || '(프로젝트)') + (bid === cur ? ' (이 보드)' : ''), sub: '보드',
+      checkable: !blocked.has(b.id), children: trackNodes,
+    });
+  }
+  const result = await askTree({
+    title: '참조관계설정',
+    message: '이 이벤트가 참고하는 것들을 고릅니다 — 어느 보드의 보드 자체·트랙·카드·태스크든. 보드에서는 화살표 없는 선(양 끝 카드가 다 보일 때), 그래프에서는 점선으로 이어집니다.',
+    nodes, checked, select: 'multi',
+  });
+  return result instanceof Set ? result : (Array.isArray(result) ? new Set(result) : null);
+}
+
+/**
  * 다른 보드 트리 안에서도 고를 수 없는 것 — 자기 자신과 조상(모든 종류의 포함). 품으면 순환이다.
  * (같은 보드의 이벤트는 트리에 아예 없다.)
  */

@@ -59,7 +59,7 @@ export default {
           document.querySelector('#pItem .ptab[data-tab="rel"]').click();
           await sleep(300);
           const titles = [...document.querySelectorAll('#pItem .map-title')].map((h) => h.textContent.trim());
-          const btns = ['i-same', 'i-combine', 'i-parent', 'i-deps'].map((x) => document.querySelector('#' + x + ' > button.btn')?.textContent.trim());
+          const btns = ['i-same', 'i-combine', 'i-parent', 'i-deps', 'i-refs'].map((x) => document.querySelector('#' + x + ' > button.btn')?.textContent.trim());
           // 조합설정 팝업 — 현재 보드의 이벤트는 트리에 나오지 않는다(모순). 다른 보드를 하나 두고 본다.
           const other = await r.adapter.duplicateProject(r.adapter.projectId, '조합 후보 보드');
           document.querySelector('#i-combine > button.btn').click();
@@ -122,8 +122,8 @@ export default {
     && styleUi?.hiddenByDefault === true
     && styleUi?.noteShown === true
     && styleUi?.noteHidden === true
-    && JSON.stringify(styleUi?.titles) === JSON.stringify(['항등설정', '조합설정', '모자관계설정', '선행관계설정'])
-    && (styleUi?.btns ?? []).length === 4
+    && JSON.stringify(styleUi?.titles) === JSON.stringify(['항등설정', '조합설정', '모자관계설정', '선행관계설정', '참조관계설정'])
+    && (styleUi?.btns ?? []).length === 5
     && styleUi.btns.every((t) => t === '편집')
     && styleUi?.moved === true
     && styleUi?.stillOpen === true

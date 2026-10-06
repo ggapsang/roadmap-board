@@ -617,7 +617,7 @@ export class Board {
   #markSelectedRel() {
     const id = this.view.selectedRel;
     let found = false;
-    for (const p of this.arrowLayer.querySelectorAll('.arrow')) {
+    for (const p of this.arrowLayer.querySelectorAll('.arrow, .ref-line')) {
       const on = !!id && p.dataset.rel === id;
       p.classList.toggle('selected', on);
       if (on) found = true;
@@ -625,19 +625,22 @@ export class Board {
     if (id && !found) this.view.selectedRel = null;      // 지워졌거나 안 보인다
   }
 
-  /** 선행관계 지우기(화살표 Delete · 우클릭) — 이 보드의 고친 화살표 모양도 함께. 되돌리기 1단계 */
+  /** 관계 지우기(화살표·참조 선 Delete · 우클릭) — 선행이면 이 보드의 고친 화살표 모양도 함께. 되돌리기 1단계 */
   deleteRel(id) {
     if (!id || this.store.readonly) return false;
     const rel = this.store.relations.find((r) => r.id === id);
     if (!rel) return false;
-    this.store.commit('선행관계 삭제', (doc) => {
+    const kind = rel.type === 'ref' ? '참조' : '선행관계';
+    this.store.commit(`${kind} 삭제`, (doc) => {
       doc.relations = (doc.relations ?? []).filter((r) => r.id !== id);
       if (doc.meta.arrows?.[id]) { const next = { ...doc.meta.arrows }; delete next[id]; doc.meta.arrows = next; }
     });
     if (this._arrowEdit === id) this.endArrowEdit();
     this.view.selectedRel = null;
     const name = (x) => this.store.item(x)?.ti || '(제목 없음)';
-    toast(`선행관계를 지웠습니다 — ${name(rel.from)} → ${name(rel.to)} (Ctrl+Z로 되돌립니다)`);
+    toast(rel.type === 'ref'
+      ? `참조를 지웠습니다 — ${name(rel.from)} — ${name(rel.to)} (Ctrl+Z로 되돌립니다)`
+      : `선행관계를 지웠습니다 — ${name(rel.from)} → ${name(rel.to)} (Ctrl+Z로 되돌립니다)`);
     return true;
   }
 
@@ -832,8 +835,8 @@ export class Board {
       // 텍스트 선택 모드에서는 패널을 열지 않는다.
       // 열면 재렌더가 일어나 카드가 새로 그려지고 긁어 둔 선택이 날아간다.
       if (this.view.textSelect) return;
-      // 화살표를 누르면 그 선행관계를 고른다(Delete로 지운다)
-      const arrow = ev.target.closest?.('.arrow');
+      // 화살표·참조 선을 누르면 그 관계를 고른다(Delete로 지운다)
+      const arrow = ev.target.closest?.('.arrow, .ref-hit');
       if (arrow?.dataset.rel) { this.selectRel(arrow.dataset.rel); return; }
       if (this.view.selectedRel) this.selectRel(null);
       const card = ev.target.closest('.ev');
@@ -876,6 +879,13 @@ export class Board {
           { label: '자동 경로로 되돌리기', disabled: !this.store.meta.arrows?.[id], action: () => { this.resetArrow(id); this.endArrowEdit(); } },
           { label: '선행관계 삭제', action: () => this.deleteRel(id) },
         ]);
+        return;
+      }
+      const refHit = ev.target.closest?.('.ref-hit');
+      if (refHit?.dataset.rel) {
+        ev.preventDefault();
+        this.selectRel(refHit.dataset.rel);
+        openCtxMenu(ev.clientX, ev.clientY, [{ label: '참조 삭제', action: () => this.deleteRel(refHit.dataset.rel) }]);
         return;
       }
       const card = ev.target.closest('.ev');
@@ -1062,6 +1072,12 @@ export class Board {
     this.store.commit('일정 추가', (doc) => { doc.items.push(item); });
     this.handlers.openItem(item.id);
     return item;
+  }
+
+  /** 카드가 보이게 스크롤한다(참조 목록에서 그 카드로 갈 때) */
+  revealItem(id) {
+    const node = this.grid.querySelector(`.ev[data-id="${CSS.escape(id)}"]`);
+    node?.scrollIntoView({ block: 'center', inline: 'center' });
   }
 
   /** 오늘 위치로 스크롤 */

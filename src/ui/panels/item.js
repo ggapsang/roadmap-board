@@ -13,7 +13,7 @@ import { newId, ALIGNS } from '../../core/schema.js';
 import { STATUSES, ITEM_TYPES, FILLS, statusList } from '../../config/index.js';
 import { $, el, clear, icon, ICONS, editGroup } from '../dom.js';
 import { askConfirm, askChoice, askTree, askTreeTabs } from '../dialog.js';
-import { openCombinePicker, pickEventForMerge, composedOf } from '../combine.js';
+import { openCombinePicker, pickEventForMerge, composedOf, pickRefs } from '../combine.js';
 import { toast } from '../toast.js';
 import { openCtxMenu } from '../ctxmenu.js';
 import { attachTabReorder } from '../reorder.js';
@@ -41,8 +41,8 @@ function autogrow(node) {
 }
 
 export class ItemPanel {
-  constructor({ store, view, panels, adapter, openProject, reloadBoard, onChange }) {
-    Object.assign(this, { store, view, panels, adapter, openProject, reloadBoard, onChange });
+  constructor({ store, view, panels, adapter, openProject, reloadBoard, onChange, goToEvent }) {
+    Object.assign(this, { store, view, panels, adapter, openProject, reloadBoard, onChange, goToEvent });
     this._allEvents = [];          // 모든 보드의 이벤트 캐시 — 카드를 열 때마다 갱신하되 비우진 않는다
     this._extraEvents = new Map(); // 어느 보드 화면에도 없는 조합 대상의 본질(이름 표시용)
     this.#buildStatic();
@@ -110,6 +110,7 @@ export class ItemPanel {
     const subj = this.#subject();
     this.#renderSame(subj);
     this.#renderCombine();
+    this.#renderRefs();
     this.#loadCrossBoard(subj);
     this.#showTab(this._tab === 'task' ? 'attr' : (this._tab ?? 'attr'));
     this.panels.open('pItem');
@@ -398,6 +399,7 @@ export class ItemPanel {
     // 이름을 바꾸고 매핑 탭을 다시 열 때 "트랙이 안 뜬다"로 보이는 원인이라 비우지 않는다.
     if (!Array.isArray(this._allEvents)) this._allEvents = [];
     this.#renderDeps(item);
+    this.#renderRefs();
     this.#renderParents(item);
     this.#renderSame(this.#subject()); // 동일 후보 (자기 자신 항상 체크)
     this.#renderCombine();             // 조합 후보
@@ -640,6 +642,90 @@ export class ItemPanel {
     const deps = this.store.relations.filter((r) => r.type === 'dep');
     if (dir === 'pred') this.#applyDeps(item, { pred: new Set(deps.filter((r) => r.to === item.id && r.from !== otherId).map((r) => r.from)) });
     else this.#applyDeps(item, { succ: new Set(deps.filter((r) => r.from === item.id && r.to !== otherId).map((r) => r.to)) });
+  }
+
+  // ── 참조 — 어느 보드의 무엇이든(보드 자체·트랙·카드·태스크) 잇는다. 순환 허용. ──
+
+  /** 이 이벤트의 참조 상대 id들(양방향 — 내가 참고하는 것과 나를 참고하는 것) */
+  #refsOf(id) {
+    const out = [];
+    for (const r of this.store.relations) {
+      if (r.type !== 'ref') continue;
+      if (r.from === id) out.push({ other: r.to, rel: r.id });
+      else if (r.to === id) out.push({ other: r.from, rel: r.id });
+    }
+    return out;
+  }
+
+  /** 참조 상대의 이름·자리 — 이 보드 것은 문서에서, 다른 보드 것은 모든 보드 이벤트 목록에서 */
+  #refInfo(id) {
+    const it = this.store.item(id);
+    if (it) return { title: it.alias || it.ti, where: '이 보드 · 카드' };
+    const tr = this.store.track(id);
+    if (tr) return { title: tr.alias || tr.name, where: '이 보드 · 트랙' };
+    const ev = this.#eventInfo(id);
+    if (!ev) return { title: '(찾을 수 없는 이벤트)', where: '' };
+    const role = { board: '보드', track: '트랙', card: '카드', task: '태스크' }[ev.kind] ?? '이벤트';
+    const here = String(ev.boardIds ?? '').split(',').includes(String(this.adapter?.projectId ?? ''));
+    return { title: ev.title || '(제목 없음)', where: ev.kind === 'board' ? '보드' : `${here ? '이 보드' : (ev.boardNames || '다른 보드')} · ${role}` };
+  }
+
+  #renderRefs() {
+    const box = $('i-refs');
+    if (!box) return;
+    clear(box);
+    const subj = this.#subject();
+    if (!subj) return;
+    box.append(el('button.btn.outline.sm', { type: 'button', text: '편집', title: '참조관계설정 — 이 이벤트가 참고하는 것 고르기', on: { click: () => this.#openRefsPicker() } }));
+    const refs = this.#refsOf(subj.id);
+    const list = el('div.combine-summary');
+    if (!refs.length) list.append(el('div.empty', { text: '참조가 없습니다.' }));
+    for (const { other, rel } of refs) {
+      const info = this.#refInfo(other);
+      list.append(el('div.combine-chip', {}, [
+        el('button.combine-chip-name.linklike.ref-go', {
+          type: 'button', text: info.title, title: '그쪽으로 가기', dataset: { id: other },
+          on: { click: () => this.#goToRef(other) },
+        }),
+        el('em.muted', { text: info.where }),
+        el('button.task-del', { type: 'button', title: '참조에서 빼기', on: { click: () => this.#removeRef(rel) } }, [icon(ICONS.close)]),
+      ]));
+    }
+    box.append(list);
+  }
+
+  async #openRefsPicker() {
+    const subj = this.#subject();
+    if (!subj || this.store.readonly) return;
+    const cur = this.#refsOf(subj.id);
+    const picked = await pickRefs(this.adapter, subj.id, new Set(cur.map((x) => x.other)));
+    if (!picked) return;
+    const drop = new Set(cur.filter((x) => !picked.has(x.other)).map((x) => x.rel));
+    const have = new Set(cur.map((x) => x.other));
+    const add = [...picked].filter((id) => id !== subj.id && !have.has(id));
+    if (!drop.size && !add.length) return;
+    this.store.commit('참조관계 설정', (doc) => {
+      doc.relations = (doc.relations ?? []).filter((r) => !drop.has(r.id));
+      for (const to of add) doc.relations.push({ id: newId('r'), type: 'ref', from: subj.id, to });
+    });
+    this.#renderRefs();
+  }
+
+  #removeRef(relId) {
+    this.store.commit('참조 삭제', (doc) => { doc.relations = (doc.relations ?? []).filter((r) => r.id !== relId); });
+    this.#renderRefs();
+  }
+
+  /** 참조 상대로 가기 — 이 보드에 있으면 그 카드·트랙을 열고, 아니면 그 이벤트가 놓인 보드를 열어 거기서 */
+  async #goToRef(id) {
+    const ev = this.#eventInfo(id);
+    const cur = this.adapter?.projectId;
+    let boardId = cur;
+    if (!this.store.item(id) && !this.store.track(id) && ev) {
+      const ids = String(ev.boardIds ?? ev.boardId ?? '').split(',').map(Number).filter(Boolean);
+      boardId = ev.kind === 'board' ? Number(ev.boardId) : (ids.includes(cur) ? cur : ids[0] ?? cur);
+    }
+    await this.goToEvent?.(boardId, id);
   }
 
   // ── 동일(합치기 작업) · 조합(구성) — docs/SYSTEM.md §7.1·§7.2 ──
@@ -1235,6 +1321,7 @@ export class ItemPanel {
     }
     this.#renderSame(this.#subject());
     this.#renderCombine();
+    this.#renderRefs();
     if (this.item) this.#renderChildren(this.item);
   }
 

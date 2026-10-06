@@ -103,7 +103,7 @@ export default {
     && x?.attr?.title === true && x?.attr?.alias === true && x?.attr?.dates === true
     && x?.attr?.status === false && x?.attr?.note === true && x?.attr?.span === false && x?.noteSaved === true
     && x?.datesBefore === false && x?.stored === true && x?.headShows === true
-    && JSON.stringify(x?.maps) === JSON.stringify(['항등설정', '조합설정']) && x?.sameBtn === true
+    && JSON.stringify(x?.maps) === JSON.stringify(['항등설정', '조합설정', '참조관계설정']) && x?.sameBtn === true
     && x?.styleOnly === true && x?.filled === true && x?.undone === true && x?.persisted === true && x?.backToItem === true
     && x?.db?.alias === '별칭트랙' && x?.db?.fill === 'teal' && x?.db?.end === x?.e1 && x?.db?.title === x?.name0 + ' 편집' && x?.db?.note === '트랙 비고 **메모**',
 };

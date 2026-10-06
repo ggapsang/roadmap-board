@@ -210,7 +210,9 @@ export class GraphView {
     clear(this.gLinks); clear(this.gNodes); clear(this.gLabels); clear(this.gEdgeLabels);
     for (const l of links) {
       if (!vis.has(l.from) || !vis.has(l.to)) continue;
-      const p = svg('path', { class: `gv-link gv-f-${l.family}${l.inCycle ? ' gv-cycle' : ''}`, 'marker-end': `url(#gv-arrow-${l.family})` });
+      const p = svg('path', { class: `gv-link gv-f-${l.family}${l.inCycle ? ' gv-cycle' : ''}` });
+      // 참조(점선)는 방향 없이 잇는 선 — 화살촉을 달지 않는다
+      if (!GRAPH.noArrow?.includes(l.family)) p.setAttribute('marker-end', `url(#gv-arrow-${l.family})`);
       this.gLinks.append(p);
       this.linkEls.set(l.id, p);
     }
@@ -272,7 +274,7 @@ export class GraphView {
       if (!p) continue;
       p.classList.toggle('dim', !!f && !hot.has(l.id));
       p.classList.toggle('hl', hot.has(l.id));
-      p.setAttribute('marker-end', `url(#gv-arrow-${hot.has(l.id) ? 'hl' : l.family})`);
+      if (!GRAPH.noArrow?.includes(l.family)) p.setAttribute('marker-end', `url(#gv-arrow-${hot.has(l.id) ? 'hl' : l.family})`);
     }
     this.hot = hot;
     this.#labels(near);
