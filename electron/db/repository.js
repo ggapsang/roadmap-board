@@ -825,7 +825,11 @@ export class BoardRepository {
     const tracks = v.tracks.map((c) => {
       const ev = evById.get(c.child_id) ?? {};
       const d = dispBy.get(key(root, c.child_id)) ?? {};
-      return { id: c.child_id, lab: d.lab ?? '', name: ev.title ?? '', w: d.px_width ?? null };
+      // 트랙도 이벤트 — 기간(본질)과 이 보드에서의 별칭·채우기(표현)
+      return {
+        id: c.child_id, lab: d.lab ?? '', name: ev.title ?? '', w: d.px_width ?? null,
+        s: ev.start_date ?? null, e: ev.end_date ?? null, alias: d.alias ?? null, fill: d.fill ?? null,
+      };
     });
 
     // 카드 재구성
@@ -979,9 +983,11 @@ export class BoardRepository {
       const tid = tkey(t.id);
       docTrack.set(t.id, tid);
       parents.add(tid);
-      addEvent(tid, { title: t.name ?? '' }, { ...INSERT_DEFAULTS, start_date: meta.start, end_date: meta.end });
+      // 기간은 문서에 키가 있을 때만 쓴다(옛 문서·반입은 이벤트 날짜를 그대로 둔다). 새 트랙은 보드 기간으로 만든다.
+      const dates = 's' in t ? { start_date: t.s ?? null, end_date: t.e ?? t.s ?? null } : {};
+      addEvent(tid, { title: t.name ?? '', ...dates }, { ...INSERT_DEFAULTS, start_date: meta.start, end_date: meta.end });
       addEdge(root, tid, 0, 1, i);
-      disp.set(key(root, tid), dispRow(root, tid, { lab: t.lab ?? '', px_width: t.w ?? null }));
+      disp.set(key(root, tid), dispRow(root, tid, { lab: t.lab ?? '', px_width: t.w ?? null, alias: t.alias ?? null, fill: t.fill ?? null }));
     });
     const trackOf = (raw) => docTrack.get(raw) ?? tkey(raw);
     const trackSet = new Set(docTrack.values());

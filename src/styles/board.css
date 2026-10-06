@@ -20,6 +20,7 @@ body.panel-open .cal{min-width:0}
 .th{padding:var(--u2-5) var(--u3);border-left:1px solid var(--grid-line);display:flex;flex-direction:column;
   gap:var(--u1);cursor:pointer;position:relative}
 .th:hover{background:var(--bg-hover)}
+.th .th-dates{font-size:11px;line-height:16px;color:var(--text-secondary);font-variant-numeric:tabular-nums}
 .th .lab{font-size:11px;line-height:16px;color:var(--text-tertiary);font-weight:500;letter-spacing:.02em}
 .th .nm{font-size:13px;line-height:20px;font-weight:600;letter-spacing:-.01em;color:var(--text-primary)}
 .th.active .nm{color:var(--accent)}
@@ -334,6 +335,19 @@ body.reordering-col{cursor:grabbing!important;user-select:none}
 .ev[data-fill="blue"]{--fill:var(--fill-blue)}
 .ev[data-fill="purple"]{--fill:var(--fill-purple)}
 .ev[data-fill="pink"]{--fill:var(--fill-pink)}
+/* 트랙 칸 채우기(트랙 편집 › 스타일) — 머리와 그 아래 세로 띠 전체를 옅게. 카드는 그 위에 그대로 뜬다 */
+.col[data-fill="gray"],.th[data-fill="gray"]{--fill:var(--fill-gray)}
+.col[data-fill="red"],.th[data-fill="red"]{--fill:var(--fill-red)}
+.col[data-fill="yellow"],.th[data-fill="yellow"]{--fill:var(--fill-yellow)}
+.col[data-fill="green"],.th[data-fill="green"]{--fill:var(--fill-green)}
+.col[data-fill="teal"],.th[data-fill="teal"]{--fill:var(--fill-teal)}
+.col[data-fill="blue"],.th[data-fill="blue"]{--fill:var(--fill-blue)}
+.col[data-fill="purple"],.th[data-fill="purple"]{--fill:var(--fill-purple)}
+.col[data-fill="pink"],.th[data-fill="pink"]{--fill:var(--fill-pink)}
+.col[data-fill]{background:linear-gradient(var(--fill),var(--fill)),var(--surface-track)}
+.th[data-fill]{background:linear-gradient(var(--fill),var(--fill)),var(--bg-header)}
+.col[data-fill="hatch"]{background:repeating-linear-gradient(135deg,var(--fill-hatch) 0 1.5px,transparent 1.5px 12px),var(--surface-track)}
+.th[data-fill="hatch"]{background:repeating-linear-gradient(135deg,var(--fill-hatch) 0 1.5px,transparent 1.5px 12px),var(--bg-header)}
 /* 빗금(///) — 단색 overlay 대신 사선 무늬. 선 1.5px, 간격 12px로 듬성듬성(촘촘하면 글자가 안 읽힌다).
    면 색(--fill-base)은 다른 채우기와 같이 자리·hover·선택을 따른다. 상위 일정의 제목 바는 무늬 없이 면 색만(이름이 읽히게). */
 .ev[data-fill="hatch"][data-fill]{

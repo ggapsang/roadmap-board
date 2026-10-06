@@ -15,7 +15,7 @@ import {
   RELATION_TYPES, RELATION_KEYS, FILL_KEYS, SCALE_KEYS, SLOT_UNIT_OF, BAND_SCALE,
 } from '../config/index.js';
 
-export const SCHEMA_VERSION = 19;
+export const SCHEMA_VERSION = 20;
 
 /**
  * v0 = P0 시안 문서(version 필드 없음).
@@ -230,6 +230,18 @@ function v18_to_v19(doc) {
   return doc;
 }
 
+function v19_to_v20(doc) {
+  // 트랙도 이벤트로 편집한다 — 기간(s·e)·이 보드의 별칭·채우기. 옛 문서엔 없다: 기간은 키를 두지 않아(저장이 이벤트 날짜를
+  // 건드리지 않게) 다음에 DB에서 읽을 때 채워지고, 별칭·채우기는 없음(null)으로 시작한다.
+  for (const t of doc.tracks ?? []) {
+    if (!t || typeof t !== 'object') continue;
+    t.alias = t.alias ?? null;
+    t.fill = t.fill ?? null;
+  }
+  doc.version = 20;
+  return doc;
+}
+
 const MIGRATIONS = {
   0: v0_to_v1,
   1: v1_to_v2,
@@ -250,6 +262,7 @@ const MIGRATIONS = {
   16: v16_to_v17,
   17: v17_to_v18,
   18: v18_to_v19,
+  19: v19_to_v20,
 };
 
 export const ALIGNS = ['top', 'middle', 'bottom'];
@@ -334,12 +347,21 @@ export function normalize(doc) {
     while (seenTrack.has(id)) id = `${id}_`;
     seenTrack.add(id);
     const w = Number(t.w);
-    return {
+    const n = {
       ...t, id,
       lab: typeof t.lab === 'string' ? t.lab : '',
       name: typeof t.name === 'string' && t.name ? t.name : `트랙 ${i + 1}`,
       w: Number.isFinite(w) && w > 0 ? Math.min(1200, Math.max(80, w)) : null,
+      // 이 보드에서만 보이는 이름·트랙 칸 채우기(표현, 보드마다) — 카드의 별칭·채우기와 같은 값
+      alias: typeof t.alias === 'string' && t.alias.trim() ? t.alias.trim() : null,
+      fill: FILL_KEYS.includes(t.fill) ? t.fill : null,
     };
+    // 기간(본질, 선택) — 키가 있을 때만 다룬다. 키가 없으면(옛 문서·반입) 저장이 트랙 이벤트의 날짜를 건드리지 않는다.
+    if ('s' in t || 'e' in t) {
+      n.s = ISO.test(t.s) ? t.s : null;
+      n.e = n.s && ISO.test(t.e) && t.e >= n.s ? t.e : n.s;
+    }
+    return n;
   });
   if (!doc.tracks.length) {
     doc.tracks = [{ id: 't0', lab: '', name: '새 트랙 1' }];

@@ -11,7 +11,7 @@
  * 화살표는 DOM 좌표를 읽으므로 컬럼 폭이 확정된 뒤에 그려야 한다.
  * (P0 시안은 buildHead()를 drawArrows() 뒤에 호출해 한 프레임 어긋났다.)
  */
-import { parseDate, dayIndex } from '../../core/dates.js';
+import { parseDate, dayIndex, shortMD } from '../../core/dates.js';
 import { TimeScale, SlotScale } from '../../core/timescale.js';
 import { DateTimeline, SlotTimeline } from '../../core/timeline.js';
 import { computeLayout, gridTemplate } from '../../core/layout.js';
@@ -380,7 +380,29 @@ export class Board {
     return { s: top, e: top + Math.max(LAYOUT.minCardHeight, raw - LAYOUT.cardGap) };
   }
 
+  /**
+   * 트랙 머리 위쪽에 쓰는 기간 — 트랙도 이벤트라 기간이 있다. 보드 기간과 같으면(따로 정하지 않은 것 — 트랙을 만들 때 보드
+   * 기간이 들어간다) 쓰지 않는다. 날짜 없는 보드에선 쓰지 않는다.
+   */
+  #trackDates(t) {
+    if (!this.timeline.dated || !t.s) return '';
+    const e = t.e ?? t.s;
+    const m = this.store.meta;
+    if (t.s === m.start && e === m.end) return '';
+    return t.s === e ? shortMD(t.s) : `${shortMD(t.s)} – ${shortMD(e)}`;
+  }
+
+  /** 트랙 칸 채우기(스타일 탭) — 칸은 골격이 바뀔 때만 새로 만들므로 그릴 때마다 표시를 맞춘다 */
+  #syncColumnFill() {
+    for (const t of this.store.tracks) {
+      const col = this.columns.get(t.id);
+      if (!col) continue;
+      if (t.fill) col.dataset.fill = t.fill; else delete col.dataset.fill;
+    }
+  }
+
   #renderHead() {
+    this.#syncColumnFill();
     const template = gridTemplate(this.store.tracks, this._layout.trackLanes);
     this.grid.style.gridTemplateColumns = template;
     renderHead(this.head, {
@@ -389,6 +411,7 @@ export class Board {
       selectedTrack: this.view.selectedTrack,
       template,
       onSelect: (id) => { if (!this._suppressHeadClick) this.handlers.openTrack(id); },
+      dateLabel: (t) => this.#trackDates(t),
       onAddTrack: () => this.handlers.addTrack(),
       onResize: this.#trackResizer,
       onReorder: this.#trackReorder,

@@ -3,9 +3,10 @@ import { el, clear, button, ICONS } from '../dom.js';
 
 /**
  * @param {HTMLElement} head
- * @param {object} ctx {tracks, items, selectedTrack, template, onSelect, onAddTrack}
+ * @param {object} ctx {tracks, items, selectedTrack, template, onSelect, onAddTrack, dateLabel}
+ *   dateLabel(track) — 머리 위쪽에 쓸 트랙 기간(없으면 '')
  */
-export function renderHead(head, { tracks, items, selectedTrack, template, onSelect, onAddTrack, onResize, onReorder }) {
+export function renderHead(head, { tracks, items, selectedTrack, template, onSelect, onAddTrack, onResize, onReorder, dateLabel }) {
   head.style.gridTemplateColumns = template;
   clear(head);
   head.append(el('div.cnr'), el('div.cnr'));
@@ -14,8 +15,10 @@ export function renderHead(head, { tracks, items, selectedTrack, template, onSel
   for (const it of items) counts.set(it.place.t, (counts.get(it.place.t) ?? 0) + 1);
 
   for (const track of tracks) {
+    const dates = dateLabel?.(track) ?? '';
     const cell = el('div.th', {
-      dataset: { t: track.id },
+      dataset: track.fill ? { t: track.id, fill: track.fill } : { t: track.id },
+      title: track.alias ? `${track.alias} (${track.name})` : undefined,
       tabIndex: 0,
       className: track.id === selectedTrack ? 'th active' : 'th',
       on: {
@@ -26,8 +29,10 @@ export function renderHead(head, { tracks, items, selectedTrack, template, onSel
         keydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(track.id); } },
       },
     }, [
+      dates ? el('span.th-dates', { text: dates }) : null,
       el('span.lab', { text: track.lab || ' ' }),
-      el('span.nm', { text: track.name }),
+      // 별칭이 있으면 이 보드에선 별칭으로(제목은 툴팁)
+      el('span.nm', { text: track.alias || track.name }),
       el('span.cnt', { text: String(counts.get(track.id) ?? 0) }),
     ]);
 

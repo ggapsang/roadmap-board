@@ -53,7 +53,76 @@ export class ItemPanel {
     try { const ev = await this.adapter?.listEvents?.(); if (Array.isArray(ev)) this._allEvents = ev; } catch { /* 다음 열림에서 다시 시도 */ }
   }
 
-  get item() { return this.view.selectedItem ? this.store.item(this.view.selectedItem) : null; }
+  get item() { return this.mode !== 'track' && this.view.selectedItem ? this.store.item(this.view.selectedItem) : null; }
+
+  /** 트랙 모드에서 편집 중인 트랙 — 트랙도 이벤트라 같은 패널을 줄여서 쓴다(속성·매핑(항등·조합)·스타일(채우기)) */
+  get track() { return this.mode === 'track' && this.view.selectedTrack ? this.store.track(this.view.selectedTrack) : null; }
+
+  /** 지금 편집 중인 이벤트 — 카드 또는 트랙. 항등·조합은 둘 다 같은 길로 한다 */
+  #subject() {
+    const it = this.item;
+    if (it) return { id: it.id, name: it.ti, title: it.alias || it.ti, kind: 'item' };
+    const t = this.track;
+    return t ? { id: t.id, name: t.name, title: t.alias || t.name, kind: 'track' } : null;
+  }
+
+  /** 패널을 카드 모드 / 트랙 모드로 — 트랙 모드는 카드에만 있는 칸(.item-only)을 감춘다 */
+  #setMode(mode) {
+    this.mode = mode;
+    $('pItem').classList.toggle('track-mode', mode === 'track');
+    $('i-head').textContent = mode === 'track' ? '트랙 편집' : '일정 편집';
+    $('i-fill-desc').textContent = mode === 'track'
+      ? '트랙 칸 전체(머리와 아래 세로 띠)에 옅게 · 카드는 그대로 보입니다'
+      : '카드 면 색 · 왼쪽 상태 막대는 그대로 보입니다';
+  }
+
+  /**
+   * 트랙 편집 — 보드에서 트랙 머리를 눌렀을 때. 속성(제목·별칭·기간) · 매핑(항등설정·조합설정) · 스타일(채우기).
+   * 그 밖의 보드 설정(라벨·순서·삭제)은 보드 설정 패널에 그대로 있다.
+   */
+  openTrack(id) {
+    const track = this.store.track(id);
+    if (!track) return;
+    this.view.selectedItem = null;
+    this.view.selectedTrack = id;
+    this.#setMode('track');
+    $(F.title).value = track.name;
+    autogrow($(F.title));
+    $(F.alias).value = track.alias ?? '';
+    // 기간 — 날짜 없는 보드엔 없다(칸 위치는 카드의 배치라 트랙에는 없다)
+    const dated = this.store.meta.display?.dated !== false;
+    $('i-dates').hidden = !dated;
+    $('i-slots').hidden = true;
+    $(F.start).value = track.s ?? '';
+    $(F.end).value = track.e ?? '';
+    $('i-title-drop').hidden = true;
+    this.#syncFill(track.fill ?? '');
+    if (!Array.isArray(this._allEvents)) this._allEvents = [];
+    const subj = this.#subject();
+    this.#renderSame(subj);
+    this.#renderCombine();
+    this.#loadCrossBoard(subj);
+    this.#showTab(this._tab === 'task' ? 'attr' : (this._tab ?? 'attr'));
+    this.panels.open('pItem');
+  }
+
+  /** 트랙 속성 저장 — 제목·별칭·기간 */
+  #applyTrack() {
+    const track = this.track;
+    if (!track) return;
+    this.store.commit('트랙 편집', () => {
+      track.name = $(F.title).value.trim() || track.name;
+      track.alias = $(F.alias).value.trim() || null;
+      if (this.store.meta.display?.dated !== false) {
+        const s = $(F.start).value || null;
+        let e = $(F.end).value || s;
+        if (s && e < s) e = s;
+        track.s = s;
+        track.e = s ? e : null;
+      }
+    });
+    $(F.end).value = track.e ?? '';
+  }
 
   #buildStatic() {
     const type = $(F.type);
@@ -152,6 +221,13 @@ export class ItemPanel {
     // 절대 다른 이벤트로 전파·동기화하지 않는다. 제목으로 검색하면 기존 이벤트를 "같은
     // 이벤트로 연결" 후보로 드롭다운에 띄운다(동일 관계 추가).
     $(F.title).addEventListener('input', () => {
+      const track = this.track;
+      if (track) {
+        const v = $(F.title).value;
+        if (v.trim()) this.store.commit('트랙 이름', () => { track.name = v; }, { group: editGroup($(F.title)) });
+        autogrow($(F.title));
+        return;
+      }
       const item = this.item;
       if (!item) return;
       this.store.commit('제목 수정', () => { item.ti = $(F.title).value; }, { group: editGroup($(F.title)) });
@@ -167,6 +243,7 @@ export class ItemPanel {
       if (e.key === 'Escape' && open) { e.preventDefault(); $('i-title-drop').hidden = true; return; }
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
+        if (this.track) { $(F.title).blur(); return; }
         const m = open && this._dropIdx >= 0 ? this._dropMatches?.[this._dropIdx] : null;
         if (m) this.#confirmLink(m.id); else $(F.title).blur();
       }
@@ -233,10 +310,11 @@ export class ItemPanel {
       s.hidden = s.dataset.panel !== name;
     }
     // 매핑·상세 탭을 열 때마다 다른 보드 이벤트를 다시 읽어 최신 이름을 보여 준다(실시간 반영).
-    if ((name === 'rel' || name === 'task') && this.item) this.#loadCrossBoard(this.item);
+    if ((name === 'rel' || name === 'task') && this.#subject()) this.#loadCrossBoard(this.#subject());
   }
 
   open(id) {
+    this.#setMode('item');
     this.view.selectedItem = id;
     this.view.selectedTrack = null;
     const item = this.item;
@@ -280,11 +358,11 @@ export class ItemPanel {
     if (!Array.isArray(this._allEvents)) this._allEvents = [];
     this.#renderDeps(item);
     this.#renderParents(item);
-    this.#renderSame(item);            // 동일 후보 (자기 자신 항상 체크)
-    this.#renderCombine(item);         // 조합 후보
+    this.#renderSame(this.#subject()); // 동일 후보 (자기 자신 항상 체크)
+    this.#renderCombine();             // 조합 후보
     this.#renderTasks(item);
     this.#renderChildren(item);        // 상세 — 자기·동일·조합 카드
-    this.#loadCrossBoard(item);        // 모든 보드 이벤트 로드 → 후보·상세 갱신
+    this.#loadCrossBoard(this.#subject());   // 모든 보드 이벤트 로드 → 후보·상세 갱신
 
     // 탭은 초기화하지 않는다 — 스타일 탭을 보다가 다른 카드를 누르면 그 카드도 스타일 탭으로 연다.
     this.#showTab(this._tab ?? 'attr');
@@ -320,10 +398,22 @@ export class ItemPanel {
 
   /** 채우기 — 팔레트 key 또는 null(없음). 이 보드에서의 표현이라 place에 둔다. */
   #setFill(key) {
+    const track = this.track;
+    if (track) {
+      this.store.commit('트랙 채우기', () => { track.fill = key; });
+      this.#syncFill(key ?? '');
+      return;
+    }
     const item = this.item;
     if (!item) return;
     this.store.commit('채우기', () => { item.place.fill = key; });
     this.#syncStyle(item);
+  }
+
+  #syncFill(fill) {
+    for (const b of $('i-fill').querySelectorAll('.fill-sw')) {
+      b.setAttribute('aria-checked', String((b.dataset.fill || '') === fill));
+    }
   }
 
   /** 비고를 보드 카드에 보일지 (기본 숨김) */
@@ -336,10 +426,7 @@ export class ItemPanel {
   }
 
   #syncStyle(item) {
-    const fill = item.place?.fill ?? '';
-    for (const b of $('i-fill').querySelectorAll('.fill-sw')) {
-      b.setAttribute('aria-checked', String((b.dataset.fill || '') === fill));
-    }
+    this.#syncFill(item.place?.fill ?? '');
     const on = item.place?.showNote === true;
     for (const b of $('i-shownote').querySelectorAll('.seg-btn')) {
       b.setAttribute('aria-pressed', String((b.dataset.note === 'on') === on));
@@ -454,7 +541,7 @@ export class ItemPanel {
 
   /** 이 이벤트를 이루는 조합 대상 id들 (doc.compose). 공용 모듈에 위임. */
   #composedOf() {
-    return composedOf(this.store, this.item?.id);
+    return composedOf(this.store, this.#subject()?.id);
   }
 
   /** 조합 대상의 본질 — 모든 보드 이벤트 목록에 없으면(어느 보드 화면에도 없음) 따로 받아 둔 것 */
@@ -466,9 +553,10 @@ export class ItemPanel {
    * 동일(합치기) UI — 팝업 버튼. 누르면 다른 프로젝트의 이벤트를 트리로 펼쳐 하나 고르고, 본질을
    * 어느 쪽으로 남길지 물은 뒤 두 이벤트를 하나로 합친다. 인라인 목록이 아니다.
    */
-  #renderSame(item) {
+  #renderSame(subj) {
     const box = $('i-same');
     clear(box);
+    if (!subj) return;
     box.append(el('button.btn.outline.sm', {
       type: 'button', text: '편집', title: '항등설정 — 같은 이벤트로 합칠 대상 고르기',
       on: { click: () => this.#openMergePicker() },
@@ -476,9 +564,9 @@ export class ItemPanel {
     // 이 이벤트가 다른 보드 어디에 있는지(합쳐졌거나 여러 보드에 놓인 경우) + 항등 해제
     const places = el('div.same-places');
     box.append(places);
-    this.#renderPlaces(item.id, item.alias || item.ti, places);
+    this.#renderPlaces(subj.id, subj.title, places, subj.kind === 'item');
     // 제목 검색 드롭다운(합치기 후보) 재료 — 자기 자신 제외한 모든 보드 이벤트.
-    this._sameOptions = new Map((this._allEvents ?? []).filter((e) => e.id !== item.id).map((e) => [e.id, e]));
+    this._sameOptions = new Map((this._allEvents ?? []).filter((e) => e.id !== subj.id).map((e) => [e.id, e]));
   }
 
   /** 이 보드 말고 이 이벤트가 놓인 곳 — [{boardId, boardName, role, path}] */
@@ -491,9 +579,9 @@ export class ItemPanel {
   static ROLE = { board: '보드', track: '트랙', card: '카드', task: '태스크' };
 
   /** 항등설정 아래 — 다른 보드의 자리 목록(누르면 그 보드로) + 항등 해제 버튼 */
-  async #renderPlaces(eventId, title, box) {
+  async #renderPlaces(eventId, title, box, canSplit = true) {
     const others = await this.#otherPlaces(eventId);
-    if (this.item?.id !== eventId || !box.isConnected) return;        // 그사이 다른 카드를 열었다
+    if (this.#subject()?.id !== eventId || !box.isConnected) return;  // 그사이 다른 카드를 열었다
     box.replaceChildren();
     if (!others.length) { box.append(el('div.empty', { text: '다른 보드에는 없습니다.' })); return; }
     box.append(el('div.pc-head', { text: `다른 보드에도 있습니다 (${others.length})` }));
@@ -506,6 +594,8 @@ export class ItemPanel {
         el('em.muted', { text: `${ItemPanel.ROLE[p.role] ?? p.role}${p.path.length ? ' · ' + p.path.join(' › ') : ''}` }),
       ]));
     }
+    // 항등 해제는 카드·태스크만(트랙을 떼어 내면 안에 든 카드 전부가 복제된다 — 트랙은 아직 지원하지 않는다)
+    if (!canSplit) return;
     box.append(el('button.btn.outline.sm.same-split', {
       type: 'button', text: '항등 해제 — 이 보드만 따로',
       title: '이 보드의 카드를 다른 이벤트로 떼어 냅니다(안에 든 것도 복제, 화살표는 보이는 보드별로)',
@@ -572,16 +662,16 @@ export class ItemPanel {
 
   /** 동일 팝업 → 대상 하나 고르면 본질 선택 후 합친다. */
   async #openMergePicker() {
-    const item = this.item;
-    if (!item || this.store.readonly) return;
-    await this.#mergeFrom(item.id, item.ti);
+    const subj = this.#subject();
+    if (!subj || this.store.readonly) return;
+    await this.#mergeFrom(subj.id, subj.name);
   }
 
   /**
    * 조합(구성) UI — 팝업 버튼 + 이 이벤트를 이루는 것 요약(읽기 전용). 해제는 요약이 아니라 팝업에서
    * 체크를 풀어서 한다(조합은 둘 이상의 묶음이라 요약에서 하나씩 빼면 규칙이 깨진다).
    */
-  #renderCombine(item) {
+  #renderCombine() {
     const box = $('i-combine');
     clear(box);
     box.append(el('button.btn.outline.sm', {
@@ -604,10 +694,12 @@ export class ItemPanel {
 
   /** 조합 트리 팝업 — 체크한 이벤트들로 이 이벤트를 이룬다(구성, 둘 이상). */
   async #openCombinePicker() {
-    const item = this.item;
-    if (!item) return;
-    const changed = await openCombinePicker(this.store, this.adapter, item.id);
-    if (changed) { this.#renderCombine(item); this.#renderChildren(item); }
+    const subj = this.#subject();
+    if (!subj) return;
+    const changed = await openCombinePicker(this.store, this.adapter, subj.id);
+    if (!changed) return;
+    this.#renderCombine();
+    if (this.item) this.#renderChildren(this.item);
   }
 
   /**
@@ -1020,10 +1112,11 @@ export class ItemPanel {
   }
 
   /** 다른 보드의 이벤트(카드·트랙·프로젝트)를 받아 동일·조합 후보·구성 일정을 갱신. */
-  async #loadCrossBoard(item) {
+  async #loadCrossBoard(subj) {
+    if (!subj) return;
     let events = null;
     try { events = await this.adapter?.listEvents?.(); } catch { events = null; }
-    if (this.item?.id !== item.id) return;
+    if (this.#subject()?.id !== subj.id) return;
     // 새로 받았을 때만 갈아끼운다. 실패·미지원이면 이전 목록을 지키고 빈 목록으로 만들지
     // 않는다 — 한 번 삐끗해도 동일·조합의 다른 보드 트랙들이 사라지지 않게.
     if (Array.isArray(events)) this._allEvents = events;
@@ -1033,11 +1126,11 @@ export class ItemPanel {
     const unknown = [...this.#composedOf()].filter((id) => !known.has(id) && !this._extraEvents.has(id));
     if (unknown.length) {
       try { for (const e of (await this.adapter?.eventsById?.(unknown)) ?? []) this._extraEvents.set(e.id, e); } catch { /* 이름 없이 둔다 */ }
-      if (this.item?.id !== item.id) return;
+      if (this.#subject()?.id !== subj.id) return;
     }
-    this.#renderSame(item);
-    this.#renderCombine(item);
-    this.#renderChildren(item);
+    this.#renderSame(this.#subject());
+    this.#renderCombine();
+    if (this.item) this.#renderChildren(this.item);
   }
 
   /**
@@ -1088,6 +1181,7 @@ export class ItemPanel {
 
   /** 속성 탭의 단순 입력 → 문서. 관계·별칭은 각 리스트가 직접 반영한다. */
   apply() {
+    if (this.track) { this.#applyTrack(); return; }
     const item = this.item;
     if (!item) return;
 

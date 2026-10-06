@@ -68,7 +68,7 @@ async function boot() {
     store, view,
     handlers: {
       openItem: (id) => itemPanel.open(id),
-      openTrack: (id) => configPanel.open(id),
+      openTrack: (id) => { itemPanel.openTrack(id); refresh(); },   // 트랙도 이벤트 — 트랙 편집(보드 설정은 도구 모음 '설정')
       addTrack: () => configPanel.add(),
     },
   });
@@ -158,7 +158,11 @@ async function boot() {
    * 보드 설정은 다시 그린다. 패널은 열 때 한 번 채우는 구조라 그냥 두면 되돌리기 전 값이 남아 보인다.
    */
   function syncPanelsToDoc() {
-    if (panels.current === 'pItem') {
+    if (panels.current === 'pItem' && itemPanel.mode === 'track') {
+      const id = view.selectedTrack;
+      if (id && store.track(id)) itemPanel.openTrack(id);
+      else panels.close({ force: true });
+    } else if (panels.current === 'pItem') {
       const id = view.selectedItem;
       if (id && store.item(id)) itemPanel.open(id);
       else panels.close({ force: true });   // 되돌려서 그 일정이 없어졌다 — 고정해 둔 패널도 닫는다

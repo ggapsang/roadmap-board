@@ -406,3 +406,6 @@ body.panel-open{--panel-w:var(--panel-size)}
 .same-place-board{font-size:13px;font-weight:500}
 .same-place em{font-size:11px;font-style:normal}
 .same-split{margin-top:var(--u2);align-self:flex-start}
+
+/* 트랙 편집 — 같은 편집 패널을 트랙 모드로(트랙도 이벤트). 제목·별칭·기간, 항등·조합, 채우기만 */
+#pItem.track-mode .item-only{display:none!important}
