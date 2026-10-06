@@ -29,7 +29,7 @@ export default {
           const { dateAt } = await import('./src/core/dates.js');
           const sc = document.getElementById('scroll'), grid = document.getElementById('grid');
           const col = grid.querySelector('.col');
-          // 만들기 — 빈 칸을 찾아 누른다(카드 위는 끌기라). 누른 자리의 날짜 = 새 일정 시작
+          // 만들기 — 빈 칸을 찾아 누른다(카드 위는 끌기라). 누른 자리의 날짜 = 새 이벤트 시작
           const n0 = r.store.items.length;
           let made = null;
           for (let d = 3; d < r.board.totalDays - 10 && !made; d += 5) {

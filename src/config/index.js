@@ -171,7 +171,7 @@ export const LAYOUT = {
   pointCardHeight: 24,
   /** 제목 글자를 줄일 수 있는 하한(px). 이보다 작으면 읽히지 않는다 — 대신 다른 정보를 먼저 숨긴다 */
   minTitleFont: 9,
-  // 새 일정 기본 길이는 눈금 모드가 정한다(SCALE_MODES.newUnit).
+  // 새 이벤트 기본 길이는 눈금 모드가 정한다(SCALE_MODES.newUnit).
 };
 
 /**
@@ -203,7 +203,7 @@ export const DEFAULT_DISPLAY = {
 
 /**
  * 세로축 눈금 모드 (docs/SCALE.md §3). outer=바깥 칸(구간 묶기 단위), inner=안쪽 칸,
- * row=한 행(줌 높이)이 뜻하는 날 수(일당 픽셀 = 줌 높이 / row), step=드래그 정밀도, newUnit=새 일정 길이.
+ * row=한 행(줌 높이)이 뜻하는 날 수(일당 픽셀 = 줌 높이 / row), step=드래그 정밀도, newUnit=새 이벤트 길이.
  * 시·분은 아직 없다 — 생기면 여기에 모드를 더한다.
  */
 export const SCALE_MODES = {

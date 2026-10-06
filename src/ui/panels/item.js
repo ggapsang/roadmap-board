@@ -1279,7 +1279,7 @@ export class ItemPanel {
     copy.tasks = (Array.isArray(item.tasks) ? item.tasks : []).map((t) => ({ ...t, id: newId('k') }));
     this.store.commit('일정 복제', (doc) => {
       doc.items.push(copy);
-      // 원본으로 들어오던 '선행'만 복제본에도 (같은 선행을 가진 새 일정). 동일/기타는 제외.
+      // 원본으로 들어오던 '선행'만 복제본에도 (같은 선행을 가진 새 이벤트). 동일/기타는 제외.
       const incoming = (doc.relations ?? []).filter((r) => r.to === item.id && r.type === 'dep');
       for (const r of incoming) doc.relations.push({ id: newId('r'), type: 'dep', from: r.from, to: copy.id });
     });

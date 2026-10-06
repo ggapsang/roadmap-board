@@ -1004,7 +1004,7 @@ export class Board {
     const item = {
       id: newId('e'),
       s: null, e: null,
-      ti: '새 일정', ty: DEFAULT_TYPE, st: DEFAULT_STATUS,
+      ti: '새 이벤트', ty: DEFAULT_TYPE, st: DEFAULT_STATUS,
       og: this.store.orgs[0], pg: 0, dp: [], note: '',
       place: { t: trackId, sp: 1, align: 'middle', showNote: false, hd: null, x: null, w: null, slot: null },
     };

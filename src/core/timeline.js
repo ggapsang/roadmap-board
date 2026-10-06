@@ -10,7 +10,7 @@
  *   snap(p)            정밀도 단위(step)의 시작으로 맞춘다
  *   add(p, n)          step n개만큼 옮긴 위치(월은 달력 산술 — 말일 보정)
  *   steps(p0, p1)      p0 → p1 사이의 step 개수
- *   newEnd(s)          새 일정 기본 길이의 끝(포함)
+ *   newEnd(s)          새 이벤트 기본 길이의 끝(포함)
  *   isPoint(item)      점 마일스톤인가(시작 = 끝)
  *   label(item)        카드에 쓰는 위치 글자('10.05 – 10.20' 또는 '칸 3–5')
  * 순수 계산이다. DOM을 모른다.
@@ -64,7 +64,7 @@ export class DateTimeline {
     this.dated = true;
     this.origin = origin;
     this.mode = modeOf(display);
-    // '눈금 없음' 보기: 한 칸 = 전환 전 안쪽 단위(slotUnit). 정밀도·새 일정도 그 단위.
+    // '눈금 없음' 보기: 한 칸 = 전환 전 안쪽 단위(slotUnit). 정밀도·새 이벤트도 그 단위.
     const slot = this.mode.key === 'none' ? (display?.slotUnit ?? 'week') : null;
     this.slotUnit = slot;
     this.step = slot ?? this.mode.step;
@@ -87,7 +87,7 @@ export class DateTimeline {
 
   steps(p0, p1) { return unitsBetween(this.#date(p0), this.#date(p1), this.step); }
 
-  /** 새 일정: s부터 기본 길이(newUnit 하나) — 끝은 포함 */
+  /** 새 이벤트: s부터 기본 길이(newUnit 하나) — 끝은 포함 */
   newEnd(s) { return this.#idx(addUnits(this.#date(s), this.newUnit, 1)) - 1; }
 
   isPoint(item) { return item.ty === 'ms' && item.s === item.e; }

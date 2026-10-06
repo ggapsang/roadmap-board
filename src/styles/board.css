@@ -160,7 +160,7 @@ body.dragging-arrow, body.dragging-arrow *{cursor:grabbing !important;user-selec
 .ev.dim{opacity:.28}
 .ev.hit{box-shadow:0 0 0 2px var(--warning-500)}
 
-/* 빈 곳을 끌어 새 일정을 만들 때의 미리보기 고스트 (구글 캘린더식).
+/* 빈 곳을 끌어 새 이벤트을 만들 때의 미리보기 고스트 (구글 캘린더식).
    생성은 CTA 성격이라 Accent를 쓴다. */
 .create-preview{position:absolute;left:var(--u1);right:var(--u1);
   border:1.5px dashed var(--accent);border-radius:var(--r-card);

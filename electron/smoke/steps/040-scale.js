@@ -17,11 +17,11 @@ export default {
       const out = { options: sel.options.length, defaultMode: r.store.meta.display.scale };
       const tl = () => r.board.timeline;
       const span = (p) => tl().newEnd(p) - p + 1;
-      // 주-일: 왼쪽 칸 = 주, 한 행 = 하루(행 높이 그대로), 새 일정 1일, 드래그 1일
+      // 주-일: 왼쪽 칸 = 주, 한 행 = 하루(행 높이 그대로), 새 이벤트 1일, 드래그 1일
       await pick('week-day');
       out.weekDay = { outer: /월 \\d주/.test(gutLabels()[0] ?? ''), ppd: r.board.scale.ppd === r.view.weekHeight,
         newLen: span(10), step: tl().step };
-      // 분기-월: 왼쪽 칸 = 분기, 새 일정 1개월, 드래그 1주
+      // 분기-월: 왼쪽 칸 = 분기, 새 이벤트 1개월, 드래그 1주
       await pick('quarter-month');
       const p0 = r.board.timeline.pos(r.store.items.find((i) => !i.parent)).s;
       out.quarter = { outer: /분기/.test(gutLabels()[0] ?? ''), newLen: span(0), step: tl().step,
