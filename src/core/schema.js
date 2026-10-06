@@ -356,6 +356,8 @@ export function normalize(doc) {
       alias: typeof t.alias === 'string' && t.alias.trim() ? t.alias.trim() : null,
       fill: FILL_KEYS.includes(t.fill) ? t.fill : null,
     };
+    // 비고(본질) — 키가 있을 때만. 없으면 저장이 트랙 이벤트의 비고를 건드리지 않는다(기간과 같은 까닭)
+    if ('note' in t) n.note = typeof t.note === 'string' ? t.note : '';
     // 기간(본질, 선택) — 키가 있을 때만 다룬다. 키가 없으면(옛 문서·반입) 저장이 트랙 이벤트의 날짜를 건드리지 않는다.
     if ('s' in t || 'e' in t) {
       n.s = ISO.test(t.s) ? t.s : null;

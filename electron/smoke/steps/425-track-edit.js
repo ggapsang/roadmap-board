@@ -21,6 +21,11 @@ export default {
         const tabs = [...document.querySelectorAll('#pItem .ptab')].filter((b) => b.offsetParent !== null).map((b) => b.dataset.tab).sort().join(',');
         document.querySelector('#pItem .ptab[data-tab="attr"]').click(); await sleep(60);
         const attr = { title: shown('#i-title'), alias: shown('#i-alias'), dates: shown('#i-start'), status: shown('#i-status'), note: shown('#i-note-editor'), span: shown('#i-span') };
+        // 비고 — 보드에 보이지 않아도 쓸 수 있다(편집기에서 나갈 때 저장)
+        const ed = r.itemPanel.noteEditor, v = ed.view;
+        v.focus(); v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: '트랙 비고 **메모**' } });
+        v.contentDOM.dispatchEvent(new FocusEvent('blur')); v.contentDOM.blur(); await sleep(150);
+        const noteSaved = r.store.track(id).note === '트랙 비고 **메모**';
         const datesBefore = !!document.querySelector('.th[data-t="' + id + '"] .th-dates');   // 보드 기간과 같다 — 안 쓴다
         // 제목 · 별칭 · 기간
         const title = document.getElementById('i-title');
@@ -61,14 +66,15 @@ export default {
         await sleep(300);
         r.tabs.markAllStale(); await r.tabs.reloadActive(); await sleep(300);
         const t2 = r.store.track(id);
-        const persisted = t2?.alias === '별칭트랙' && t2?.fill === 'teal' && t2?.s === meta.start && t2?.e === e1 && t2?.name === name0 + ' 편집';
+        const persisted = t2?.alias === '별칭트랙' && t2?.fill === 'teal' && t2?.s === meta.start && t2?.e === e1 && t2?.name === name0 + ' 편집'
+          && t2?.note === '트랙 비고 **메모**';
         // 카드를 누르면 다시 일정 편집(모든 칸)
         const card = r.store.items.find((x) => !x.parent && x.ty !== 'ms');
         document.querySelector('.col [data-id="' + card.id + '"]').click(); await sleep(250);
         const backToItem = document.getElementById('i-head').textContent === '일정 편집' && !document.getElementById('pItem').classList.contains('track-mode')
           && [...document.querySelectorAll('#pItem .ptab')].filter((b) => b.offsetParent !== null).length === 4;
         document.querySelector('#pItem [data-close]').click(); await sleep(80);
-        return { id, head, panelOpen, active, tabs, attr, datesBefore, stored, headShows: !!headShows, maps, sameBtn, styleOnly, filled, undone, persisted, backToItem, name0, e1 };
+        return { id, head, panelOpen, active, tabs, attr, noteSaved, datesBefore, stored, headShows: !!headShows, maps, sameBtn, styleOnly, filled, undone, persisted, backToItem, name0, e1 };
       })();
       const guard = new Promise((res) => setTimeout(() => res({ error: 'timeout' }), 15000));
       return Promise.race([run.catch((e) => ({ error: String(e && e.stack || e) })), guard]);
@@ -76,16 +82,16 @@ export default {
     // DB — 트랙 이벤트의 기간(본질), 이 보드 배치의 별칭·채우기(표현)
     if (r1 && !r1.error) {
       const root = db.prepare('SELECT root_event_id AS r FROM board WHERE id = ?').get(opened.opened)?.r;
-      const ev = db.prepare('SELECT title, start_date, end_date FROM event WHERE id = ?').get(r1.id)
-        ?? db.prepare("SELECT title, start_date, end_date FROM event WHERE id LIKE ?").get('track:%:' + r1.id);
+      const ev = db.prepare('SELECT title, start_date, end_date, note FROM event WHERE id = ?').get(r1.id)
+        ?? db.prepare("SELECT title, start_date, end_date, note FROM event WHERE id LIKE ?").get('track:%:' + r1.id);
       const d = db.prepare('SELECT alias, fill FROM disp WHERE parent_id = ? AND child_id LIKE ?').get(root, '%' + r1.id);
-      r1.db = { title: ev?.title, end: ev?.end_date, alias: d?.alias, fill: d?.fill };
+      r1.db = { title: ev?.title, end: ev?.end_date, note: ev?.note, alias: d?.alias, fill: d?.fill };
     }
     // 원복 — 이름·별칭·기간·채우기
     await target.webContents.executeJavaScript(`(async () => {
       const r = window.__roadmap;
       const t = r.store.track(${JSON.stringify(r1?.id ?? '')});
-      if (t) r.store.commit('스모크 원복', () => { t.name = ${JSON.stringify(r1?.name0 ?? '')} || t.name; t.alias = null; t.fill = null; t.s = r.store.meta.start; t.e = r.store.meta.end; });
+      if (t) r.store.commit('스모크 원복', () => { t.name = ${JSON.stringify(r1?.name0 ?? '')} || t.name; t.alias = null; t.fill = null; t.note = ''; t.s = r.store.meta.start; t.e = r.store.meta.end; });
       await new Promise((res) => setTimeout(res, 300));
       return true;
     })()`);
@@ -95,9 +101,9 @@ export default {
   check: (x) => x?.head === '트랙 편집' && x?.panelOpen === true && x?.active === true
     && x?.tabs === 'attr,disp,rel'
     && x?.attr?.title === true && x?.attr?.alias === true && x?.attr?.dates === true
-    && x?.attr?.status === false && x?.attr?.note === false && x?.attr?.span === false
+    && x?.attr?.status === false && x?.attr?.note === true && x?.attr?.span === false && x?.noteSaved === true
     && x?.datesBefore === false && x?.stored === true && x?.headShows === true
     && JSON.stringify(x?.maps) === JSON.stringify(['항등설정', '조합설정']) && x?.sameBtn === true
     && x?.styleOnly === true && x?.filled === true && x?.undone === true && x?.persisted === true && x?.backToItem === true
-    && x?.db?.alias === '별칭트랙' && x?.db?.fill === 'teal' && x?.db?.end === x?.e1 && x?.db?.title === x?.name0 + ' 편집',
+    && x?.db?.alias === '별칭트랙' && x?.db?.fill === 'teal' && x?.db?.end === x?.e1 && x?.db?.title === x?.name0 + ' 편집' && x?.db?.note === '트랙 비고 **메모**',
 };

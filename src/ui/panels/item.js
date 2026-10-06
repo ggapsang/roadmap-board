@@ -95,6 +95,11 @@ export class ItemPanel {
     $('i-slots').hidden = true;
     $(F.start).value = track.s ?? '';
     $(F.end).value = track.e ?? '';
+    // 비고 — 트랙도 이벤트라 비고(본질)를 쓸 수 있다. 보드에는 보이지 않는다
+    $(F.note).value = track.note ?? '';
+    const ed = this.noteEditor;
+    if (ed && !(ed.view.hasFocus && this._noteFor === track.id)) ed.setValue(track.note ?? '', { resetHistory: this._noteFor !== track.id });
+    this._noteFor = track.id;
     $('i-title-drop').hidden = true;
     this.#syncFill(track.fill ?? '');
     if (!Array.isArray(this._allEvents)) this._allEvents = [];
@@ -106,13 +111,14 @@ export class ItemPanel {
     this.panels.open('pItem');
   }
 
-  /** 트랙 속성 저장 — 제목·별칭·기간 */
+  /** 트랙 속성 저장 — 제목·별칭·기간·비고 */
   #applyTrack() {
     const track = this.track;
     if (!track) return;
     this.store.commit('트랙 편집', () => {
       track.name = $(F.title).value.trim() || track.name;
       track.alias = $(F.alias).value.trim() || null;
+      track.note = $(F.note).value;
       if (this.store.meta.display?.dated !== false) {
         const s = $(F.start).value || null;
         let e = $(F.end).value || s;
@@ -287,7 +293,10 @@ export class ItemPanel {
     const ta = $(F.note);
     this.noteEditor = createNoteEditor($('i-note-editor'), {
       onChange: (text) => { ta.value = text; },
-      onBlur: () => { if (this.item && ta.value !== (this.item.note ?? '')) this.apply(); },
+      onBlur: () => {
+        const cur = this.item ?? this.track;
+        if (cur && ta.value !== (cur.note ?? '')) this.apply();
+      },
     });
   }
 

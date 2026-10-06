@@ -77,7 +77,7 @@ src/               렌더러 (프레임워크 없음, ES 모듈)
     markdown.js        마크다운 → DOM(카드 위 비고) — textContent만, 링크는 http·https·mailto만
     help.js            도움말 팝업 — docs/HELP.md를 읽어 그린다(작은 마크다운 변환, textContent만). F1·첫 화면 ?
     board/             축 · 헤더 · 카드 · 화살표 · 드래그
-    panels/            일정 편집(속성·매핑·스타일·상세 — 트랙 머리를 누르면 같은 패널의 트랙 모드: 제목·별칭·기간·항등·조합·채우기,
+    panels/            일정 편집(속성·매핑·스타일·상세 — 트랙 머리를 누르면 같은 패널의 트랙 모드: 제목·별칭·기간·비고·항등·조합·채우기,
                        .item-only는 숨김) · 보드 설정(트랙·조직·상태·표시) · 데이터
     dialog.js          인앱 팝업 — 전부 끌어 옮길 수 있다(makeMovable), 막을 눌렀다 떼야 닫힌다(closeOnScrim)
 ```
