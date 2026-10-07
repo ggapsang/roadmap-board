@@ -10,13 +10,13 @@
 .crumb:hover{background:var(--bg-hover);color:var(--text-primary)}
 .crumb:last-of-type{color:var(--text-primary);font-weight:600}
 .crumb-sep{color:var(--text-tertiary);font-size:12px}
-/* 평소엔 내용 폭대로(제목이 짤리지 않게). 오른쪽 패널이 열려 본문이 좁아지면
-   내용 폭 강제를 풀어 컬럼이 함께 좁아지게 한다 — 가로 스크롤 대신 축소. */
+/* 내용 폭대로 — 트랙 칸은 최소 폭(LAYOUT.minTrackWidth) 밑으로 줄지 않고, 창에 안 들어가면 가로로 스크롤한다(오른쪽 패널이
+   열려도 같다). 왼쪽 날짜 축(gut-m·gut-w)과 그 위 머리 모서리는 가로로 넘겨도 제자리(sticky). */
 .cal{min-width:max-content}
-body.panel-open .cal{min-width:0}
 .head{display:grid;position:sticky;top:0;z-index:30;background:var(--bg-header);
   border-bottom:1px solid var(--border-default)}
-.head .cnr{border-right:1px solid var(--border-subtle)}
+.head .cnr{border-right:1px solid var(--border-subtle);position:sticky;left:0;z-index:2;background:var(--bg-header)}
+.head .cnr + .cnr{left:var(--gut-m)}
 .th{padding:var(--u2-5) var(--u3);border-left:1px solid var(--grid-line);display:flex;flex-direction:column;
   gap:var(--u1);cursor:pointer;position:relative}
 .th:hover{background:var(--bg-hover)}
@@ -34,7 +34,7 @@ body.panel-open .cal{min-width:0}
 /* 일반 날짜는 아주 약하게, 월 경계만 한 단계 강하게 (가이드 5/8) */
 .lines i{position:absolute;left:var(--gut-m);right:0;border-top:1px solid var(--grid-line);display:block}
 .lines i.m{border-top:1px solid var(--grid-line-strong)}
-.gut-m{position:relative;z-index:21;border-right:1px solid var(--border-subtle);background:var(--bg-canvas)}
+.gut-m{position:sticky;left:0;z-index:21;border-right:1px solid var(--border-subtle);background:var(--bg-canvas)}
 .gut-m{cursor:ns-resize}
 .gut-m b{position:absolute;left:0;right:0;border-top:1px solid var(--grid-line-strong);
   user-select:none;
@@ -50,7 +50,10 @@ body.panel-open .cal{min-width:0}
 .gut-m b.slot{border-top-color:var(--grid-line);font-weight:500;font-variant-numeric:tabular-nums}
 .gut-m b.slot u{padding:var(--u1) 0}
 .gut-m b.slot.sized{background:var(--bg-hover)}
-.gut-w{position:relative;z-index:20}
+/* 가로로 넘기면 카드가 이 아래로 지나간다 — 면을 깔고, 행선은 칸 안에 따로 긋는다(.lines는 면에 가린다) */
+.gut-w{position:sticky;left:var(--gut-m);z-index:20;background:var(--bg-canvas)}
+.gut-w i{position:absolute;left:0;right:0;border-top:1px solid var(--grid-line);pointer-events:none}
+.gut-w i.m{border-top-color:var(--grid-line-strong)}
 .gut-w s{position:absolute;left:0;right:var(--u2);text-align:right;text-decoration:none;
   font-size:11px;line-height:16px;color:var(--text-tertiary);font-variant-numeric:tabular-nums;padding-top:var(--u1)}
 /* 트랙 사이에 강한 세로선을 쓰지 않는다. 여백과 아주 약한 선으로 가른다 */

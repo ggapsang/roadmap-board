@@ -153,6 +153,11 @@ export const LAYOUT = {
   /** 레인 n개인 트랙의 컬럼 폭 계수 = 1 + GROWTH*(n-1), 상한 MAX (기획안 §4) */
   laneGrowth: 0.55,
   laneWidthMax: 2.4,
+  /**
+   * 트랙 칸 최소 폭(px, 겹친 줄이 하나일 때 — 줄이 많으면 laneGrowth만큼 더). 트랙이 많아 창에 안 들어가면 칸을 이보다 좁히지 않고
+   * 보드를 가로로 스크롤한다(2026-10-07 사용자). 폭을 정한 트랙(w)은 그 폭 그대로. tokens.css --colmin과 같은 값.
+   */
+  minTrackWidth: 196,
   /** 카드 최소 높이(px) */
   minCardHeight: 28,
   /**

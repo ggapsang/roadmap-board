@@ -33,7 +33,8 @@ export default {
           const n0 = r.store.items.length;
           let made = null;
           for (let d = 3; d < r.board.totalDays - 10 && !made; d += 5) {
-            sc.scrollTop = Math.max(0, r.board.scale.y(d) * z - 200); await sleep(30);
+            // 가로로도 스크롤된다(확대하면 보드가 창보다 넓다) — 첫 트랙이 보이게 맨 왼쪽으로
+            sc.scrollLeft = 0; sc.scrollTop = Math.max(0, r.board.scale.y(d) * z - 200); await sleep(30);
             const cr = col.getBoundingClientRect();
             const y = cr.top + (r.board.scale.y(d) + r.board.scale.dayHeight(d) / 2) * z, x = cr.left + 6;
             const hit = document.elementFromPoint(x, y);

@@ -68,6 +68,7 @@ export function renderAxis({ lines, gutM, gutW, grid, origin, endDate, totalDays
   let lastLabelY = -Infinity;
   const line = (y, strong, text) => {
     lines.append(el('i', { className: strong ? 'm' : '', style: { top: y + 'px' } }));
+    gutW.append(el('i', { className: strong ? 'm' : '', style: { top: y + 'px' } }));   // 날짜 칸 안의 행선(가로로 넘겨도 제자리)
     if (text != null && y - lastLabelY >= 14) {
       gutW.append(el('s', { text, style: { top: y + 'px' } }));
       lastLabelY = y;

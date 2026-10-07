@@ -149,12 +149,11 @@ export function laneWidthFactor(lanes) {
 export function gridTemplate(tracks, trackLanes) {
   const cols = tracks
     .map((t) => {
-      // 지정 너비 트랙도 minmax(0, Npx) — 자리가 넉넉하면 Npx를 다 쓰고, 패널이 열려
-      // 좁아지면 함께 줄어든다(가로 스크롤 대신 축소). 자동 너비 트랙은 남는 공간을
-      // 비율(f)로 나눠 채운다. 어느 쪽이든 최소 0이라 본문이 늘 오른쪽 패널에 맞춰 준다.
-      if (t.w) return `minmax(0,${t.w}px)`;
-      const f = laneWidthFactor(trackLanes.get(t.id) ?? 1).toFixed(2);
-      return `minmax(0,${f}fr)`;
+      // 폭을 정한 트랙은 그 폭 그대로. 자동 폭 트랙은 남는 공간을 비율(f)로 나눠 채우되 최소 폭(LAYOUT.minTrackWidth × f)
+      // 밑으로는 줄이지 않는다 — 트랙이 많아 창(패널이 열리면 더 좁은)에 안 들어가면 보드가 가로로 스크롤된다(2026-10-07 사용자).
+      if (t.w) return `${t.w}px`;
+      const factor = laneWidthFactor(trackLanes.get(t.id) ?? 1);
+      return `minmax(${Math.round(LAYOUT.minTrackWidth * factor)}px,${factor.toFixed(2)}fr)`;
     })
     .join(' ');
   return `var(--gut-m) var(--gut-w) ${cols} var(--u10)`;
