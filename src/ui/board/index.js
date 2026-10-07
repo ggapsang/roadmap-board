@@ -601,16 +601,12 @@ export class Board {
   }
 
   /**
-   * 화살표 고르기 — 누르면 그 선행관계가 골라지고(테두리 강조) Delete로 지운다. 카드 선택과 함께 두지 않는다(Delete가 둘 중
-   * 무엇을 지울지 헷갈리지 않게) — 카드 편집 창은 닫는다. null이면 고른 것 없음.
+   * 화살표 고르기 — 누르면 그 관계가 골라지고(강조) Delete로 지운다(Delete는 고른 화살표가 먼저 — src/main.js). 열린 편집 창은
+   * 그대로 둔다 — 닫으면 보드 폭이 바뀌어 화살표 자리가 옮겨지고, 이어 누른 두 번째 클릭(더블클릭 = 모양 고치기)이 빗나간다.
+   * 다시 그리지 않고 표시만 바꾼다. null이면 고른 것 없음.
    */
   selectRel(id) {
     this.view.selectedRel = id ?? null;
-    if (id) {
-      this.view.selectedItem = null;
-      this.view.selectedTrack = null;
-      this.handlers.closePanel?.();
-    }
     this.#markSelectedRel();
   }
 
@@ -837,7 +833,17 @@ export class Board {
       if (this.view.textSelect) return;
       // 화살표·참조 선을 누르면 그 관계를 고른다(Delete로 지운다)
       const arrow = ev.target.closest?.('.arrow, .ref-line');
-      if (arrow?.dataset.rel) { this.selectRel(arrow.dataset.rel); return; }
+      if (arrow?.dataset.rel) {
+        const id = arrow.dataset.rel;
+        // 같은 화살표를 곧 다시 누르면 더블클릭 — 모양 고치기. 첫 클릭(고르기)이 다시 그리기를 부르면 화살표 요소가 바뀌어
+        // 브라우저가 dblclick을 안 보내는 때가 있어 직접 센다(우클릭 '화살표 모양 고치기'는 그대로)
+        const now = performance.now();
+        const again = this._lastArrowClick?.id === id && now - this._lastArrowClick.t < 450;
+        this._lastArrowClick = { id, t: now };
+        if (again && arrow.classList.contains('arrow')) { this.editArrow(id); return; }
+        this.selectRel(id);
+        return;
+      }
       if (this.view.selectedRel) this.selectRel(null);
       const card = ev.target.closest('.ev');
       if (card) this.handlers.openItem(card.dataset.id);

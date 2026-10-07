@@ -69,7 +69,7 @@ async function boot() {
     handlers: {
       openItem: (id) => { view.selectedRel = null; itemPanel.open(id); },
       openTrack: (id) => { view.selectedRel = null; itemPanel.openTrack(id); refresh(); },
-      closePanel: () => panels.close(),   // 트랙도 이벤트 — 트랙 편집(보드 설정은 도구 모음 '설정')
+      closePanel: () => { if (panels.current) panels.close(); },   // 트랙도 이벤트 — 트랙 편집(보드 설정은 도구 모음 '설정')
       addTrack: () => configPanel.add(),
     },
   });

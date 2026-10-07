@@ -38,7 +38,7 @@ export default {
         // 화살표를 눌러 고르고 Delete — 선행관계가 지워진다(카드는 그대로)
         const path = () => document.querySelector('.arrows .arrow[data-rel="' + made?.id + '"]');
         path()?.dispatchEvent(new MouseEvent('click', { bubbles: true })); await sleep(120);
-        const selected = r.view.selectedRel === made?.id && path()?.classList.contains('selected') && !r.view.selectedItem;
+        const selected = r.view.selectedRel === made?.id && path()?.classList.contains('selected');
         const nItems = r.store.items.length;
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true, cancelable: true })); await sleep(200);
         const deleted = !deps().some((d) => d.id === made?.id) && !path() && r.store.items.length === nItems && r.view.selectedRel === null;
