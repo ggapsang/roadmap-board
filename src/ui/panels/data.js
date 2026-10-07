@@ -2,6 +2,7 @@
  * 데이터 패널 — 표시 기간, JSON 반출/반입, 변경 이력, 초기화.
  * 변경 이력 섹션은 SQLite(Electron)에서만 나타난다.
  */
+import { exportMemos, exportJsonText } from '../export.js';
 import { SEED } from '../../config/seed.js';
 import { prepare, reidentify } from '../../core/schema.js';
 import { $, el, clear, button } from '../dom.js';
@@ -23,6 +24,7 @@ export class DataPanel {
     $('d-reset').addEventListener('click', () => this.#reset());
 
     $('d-export').addEventListener('click', () => this.#exportFile());
+    $('d-memos').addEventListener('change', (e) => exportMemos.set(e.target.checked));
     $('d-import').addEventListener('click', () => this.#importFile());
   }
 
@@ -128,7 +130,7 @@ export class DataPanel {
   // ── 파일 반출입 (Electron) ──────────────────────────────
 
   async #exportFile() {
-    const json = this.store.toJSON(2);
+    const json = exportJsonText(this.store);          // 메모는 '메모 포함'일 때만
     const name = `roadmap-${new Date().toISOString().slice(0, 10)}.json`;
 
     if (this.adapter.exportJson) {

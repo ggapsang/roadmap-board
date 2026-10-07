@@ -1,4 +1,5 @@
 /** 툴바 — 검색, 확대 배율, 패널 열기, 되돌리기/다시실행, 테마, 인쇄. */
+import { exportMemos, syncExportMemos } from './export.js';
 import { ZOOM_LEVELS } from '../config/index.js';
 import { $, el, clear } from './dom.js';
 import { toggleTheme } from './theme.js';
@@ -52,6 +53,9 @@ export function initToolbar({ store, view, actions }) {
   $('ex-png').addEventListener('click', () => { closeMenu(); actions.exportPng(); });
   $('ex-pdf').addEventListener('click', () => { closeMenu(); actions.exportPdf(); });
   $('ex-print').addEventListener('click', () => { closeMenu(); window.print(); });
+  // 메모 함께 내보내기 — 켜고 끄는 동안 메뉴는 열어 둔다
+  $('ex-memos').addEventListener('click', (e) => { e.stopPropagation(); exportMemos.set(!exportMemos.get()); });
+  syncExportMemos();
   $('btnTheme').addEventListener('click', () => { toggleTheme(); actions.redrawArrows(); });
 
   $('btnUndo').addEventListener('click', () => {

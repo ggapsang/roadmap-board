@@ -54,3 +54,6 @@
   background:none;border:0;border-radius:var(--u1);color:var(--text-secondary);
   font-size:13px;cursor:pointer;white-space:nowrap}
 .menu-pop button:hover{background:var(--bg-hover);color:var(--text-primary)}
+.menu-pop .menu-sep{height:1px;margin:var(--u1) 0;background:var(--border-subtle)}
+.menu-pop button[role="menuitemcheckbox"]::before{content:"";display:inline-block;width:var(--u4)}
+.menu-pop button[role="menuitemcheckbox"][aria-checked="true"]::before{content:"✓"}

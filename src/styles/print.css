@@ -8,6 +8,9 @@
 /* 내보내기 중 — 보드 전체가 잘리지 않고 펼쳐지도록 제약을 푼다.
    PDF는 인쇄 경로를 타므로 @media print와 같은 것들을 숨긴다. */
 body.exporting{overflow:visible;height:auto}
+/* 메모(포스트잇)를 빼고 내보내기 — PNG(화면 캡처)·PDF·인쇄(print 매체) 모두 */
+body.exporting.no-memo-export .memos{display:none!important}
+@media print{ body.no-memo-export .memos{display:none!important} }
 body.exporting .tabbar,
 body.exporting .bar,
 body.exporting .panel,

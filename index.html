@@ -69,6 +69,8 @@
       <button type="button" role="menuitem" id="ex-png">PNG 이미지로</button>
       <button type="button" role="menuitem" id="ex-pdf">PDF로</button>
       <button type="button" role="menuitem" id="ex-print">인쇄…</button>
+      <div class="menu-sep" role="separator"></div>
+      <button type="button" role="menuitemcheckbox" id="ex-memos" aria-checked="true" title="PNG·PDF·인쇄·JSON 반출에 메모(포스트잇)를 담을지">메모 함께 내보내기</button>
     </div>
   </div>
   <button class="btn" id="btnData" type="button">
@@ -307,6 +309,7 @@
       <button class="btn outline" id="d-export" type="button">JSON 반출</button>
       <button class="btn outline" id="d-import" type="button">JSON 반입</button>
     </div>
+    <div class="fld"><label class="chk"><input type="checkbox" id="d-memos" checked> JSON 반출에 메모 포함 <span class="muted desc">(도구 모음 내보내기의 '메모 함께 내보내기'와 같은 설정)</span></label></div>
 
     <div class="sect">JSON 직접 편집</div>
     <textarea class="json" id="d-json" spellcheck="false" aria-label="문서 JSON"></textarea>

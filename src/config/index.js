@@ -142,6 +142,9 @@ export const FILLS = [
 ];
 export const FILL_KEYS = FILLS.map((f) => f.key);
 
+/** 메모(포스트잇) — 새 메모 크기와 끌어 줄이고 늘릴 수 있는 범위(px). 메모는 이벤트가 아니다(보드 표시) */
+export const MEMO = { w: 220, h: 140, min: 80, max: 1600 };
+
 /** 카드마다 글자 크기(스타일 탭) — 보드 글자 크기에 곱하는 배율. 한 번에 step씩 */
 export const CARD_FONT = { min: 0.6, max: 2.5, step: 0.1 };
 

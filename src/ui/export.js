@@ -8,6 +8,38 @@
 import { $ } from './dom.js';
 import { toast } from './toast.js';
 
+/**
+ * 내보내기에 메모(포스트잇)를 담을지 — PNG·PDF·인쇄·JSON 반출이 같은 값을 쓴다. 이 PC에 기억한다(보는 사람의 편의 설정이라
+ * 문서에 두지 않는다). 기본은 담는다.
+ */
+const MEMO_PREF = 'wolfpack.export.memos';
+export const exportMemos = {
+  get() { try { return localStorage.getItem(MEMO_PREF) !== '0'; } catch { return true; } },
+  set(on) {
+    try { localStorage.setItem(MEMO_PREF, on ? '1' : '0'); } catch { /* 저장 못 해도 이번엔 쓴다 */ }
+    this.on = !!on;
+    syncExportMemos();
+  },
+};
+
+/** 메뉴 체크·데이터 패널 체크·body 표식(인쇄·PDF·PNG에서 메모를 숨기는 CSS)을 값에 맞춘다 */
+export function syncExportMemos() {
+  const on = exportMemos.on ?? exportMemos.get();
+  exportMemos.on = on;
+  document.body.classList.toggle('no-memo-export', !on);
+  document.getElementById('ex-memos')?.setAttribute('aria-checked', String(on));
+  const box = document.getElementById('d-memos');
+  if (box) box.checked = on;
+}
+
+/** JSON 반출 글 — 메모를 빼라면 meta.memos를 걷어 낸다(메모는 보드 표시 값이라 빼도 이벤트·관계는 그대로) */
+export function exportJsonText(store, { memos = exportMemos.on ?? exportMemos.get() } = {}) {
+  if (memos || !(store.meta.memos ?? []).length) return store.toJSON(2);
+  const doc = JSON.parse(store.toJSON(0));
+  delete doc.meta.memos;
+  return JSON.stringify(doc, null, 2);
+}
+
 /** 내보내는 동안 보드를 펼치고, 끝나면 되돌린다. */
 async function withExpandedBoard(fn) {
   const body = document.body;
@@ -33,7 +65,9 @@ async function withExpandedBoard(fn) {
     // 맨 뒤 빈 구간을 담지 않도록 마지막 카드 아래까지만 자른다 — 내보내기 여백이
     // 줄고, 매우 큰 보드에서 캡처가 (이미지 크기 한계로) 실패하는 것도 막는다.
     let contentBottom = 0;
-    for (const c of cal.querySelectorAll('.ev')) {
+    // 메모를 담으면 메모 아래 끝까지(카드보다 아래 붙인 메모가 잘리지 않게)
+    const boxes = (exportMemos.on ?? exportMemos.get()) ? '.ev, .memo' : '.ev';
+    for (const c of cal.querySelectorAll(boxes)) {
       const b = c.getBoundingClientRect().bottom - rect.top;
       if (b > contentBottom) contentBottom = b;
     }
@@ -43,7 +77,7 @@ async function withExpandedBoard(fn) {
     // 고정했을 때 남는 빈 공간은 보드 내용이 아니다. +1은 마지막 트랙을 닫는 세로선.
     // 카드가 트랙 밖으로 삐져나온 경우(크기 강제)에도 잘리지 않게 카드 오른쪽 끝도 본다.
     let contentRight = 0;
-    for (const c of cal.querySelectorAll('.body > .col, .ev')) {
+    for (const c of cal.querySelectorAll(`.body > .col, ${boxes}`)) {
       const r = c.getBoundingClientRect().right - rect.left;
       if (r > contentRight) contentRight = r;
     }

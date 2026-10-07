@@ -39,6 +39,7 @@ export const AREAS = {
   launcher: ['src/ui/launcher.js', 'src/ui/trash.js', 'src/ui/help.js', 'src/ui/theme.js', 'docs/HELP.md', 'src/styles/launcher.css'],
   graph: ['src/core/graph.js', 'src/ui/graph.js', 'src/styles/graph.css'],
   db: ['electron/db/', 'src/core/storage.js'],
+  memo: ['src/ui/board/memos.js'],
 };
 
 /** 모든 단계가 기대는 공용 코드 — 여기를 고치면 전부 돈다 */

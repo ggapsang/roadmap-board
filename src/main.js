@@ -128,11 +128,11 @@ async function boot() {
   } : null;
   tabs = new BoardTabs({
     mount: $('tabbar'), launcher, graph: graphView, openProject, adoptCached,
-    getDoc: () => store.doc,
+    getDoc: () => { board.memos.finishEdit(); return store.doc; },   // 떠나기 전 쓰던 메모를 이 보드에 저장
     boardName: () => store.meta.name,
     win: bridge,
     // 떼어 내기 전 — 쓰던 비고 등을 저장하고 DB에 닿을 때까지(새 창이 그 보드를 읽는다)
-    beforeDetach: async () => { document.activeElement?.blur?.(); itemPanel.flushNote(); await store.flush(); },
+    beforeDetach: async () => { document.activeElement?.blur?.(); itemPanel.flushNote(); board.memos.finishEdit(); await store.flush(); },
   });
   window.roadmapDB?.onTabActivate?.((id) => tabs.showBoard(id));
   window.roadmapDB?.onTabAdopt?.((tab) => tabs.adopt(tab));
@@ -232,6 +232,7 @@ async function boot() {
     store.adopt(doc);
     view.selectedItem = null;
     view.selectedTrack = null;
+    view.selectedMemo = null;
     view.focus = null;                 // 새 프로젝트를 열면 펼침(드릴다운) 초기화
     view.orgFilter.clear();
     view.query = '';
@@ -330,8 +331,16 @@ async function boot() {
       e.preventDefault(); setFont(1); return;
     }
     if (e.key === 'Escape') {
+      if (board.memos.editing) { board.memos.finishEdit(); return; }   // 쓰던 메모를 마친다
+      if (view.selectedMemo) { board.memos.select(null); return; }
       if (view.selectedRel) { board.selectRel(null); return; }   // 고른 화살표부터 푼다
       panels.close(); return;                                    // 고정 중이면 닫히지 않는다
+    }
+    // 고른 메모 지우기 — 메모는 이벤트가 아니라 휴지통 없이 바로 지운다(되돌리기로 살린다)
+    if ((e.key === 'Delete' || e.key === 'Backspace') && view.selectedMemo && !typing) {
+      e.preventDefault();
+      board.memos.remove(view.selectedMemo);
+      return;
     }
     // 고른 화살표(선행관계) 지우기 — Delete와 Backspace. 입력 칸에서는 안 먹는다
     if ((e.key === 'Delete' || e.key === 'Backspace') && view.selectedRel && !typing) {
@@ -469,6 +478,7 @@ async function boot() {
   window.roadmapDB?.onFlush?.(async () => {
     document.activeElement?.blur?.();
     itemPanel.flushNote();
+    board.memos.finishEdit();
     await store.flush();
   });
 

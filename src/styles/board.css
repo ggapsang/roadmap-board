@@ -366,3 +366,24 @@ body.reordering-col{cursor:grabbing!important;user-select:none}
 .ev[data-fill="hatch"][data-fill]{
   background:repeating-linear-gradient(135deg,var(--fill-hatch) 0 1.5px,transparent 1.5px 12px),var(--fill-base)}
 .ev.container[data-fill="hatch"]>.t{background:var(--fill-base)}
+
+/* ── 메모(포스트잇) — 이벤트가 아니다, 보드 표시(ui/board/memos.js). 카드·화살표 위(z:19), 왼쪽 날짜 축(20·21)·오늘선(22) 아래.
+   보드 위에 떠 있는 층이라 그림자를 준다(규약 4 — 떠 있는 계층). 색은 채우기 토큰(노랑) */
+.memos{position:absolute;inset:0;z-index:19;pointer-events:none}
+.memo{position:absolute;pointer-events:auto;display:flex;flex-direction:column;
+  background:linear-gradient(var(--fill-yellow),var(--fill-yellow)),var(--surface-card);
+  border:1px solid var(--border-subtle);border-radius:var(--u1);box-shadow:var(--shadow-pop);
+  color:var(--text-primary);font-size:calc(12px * var(--fs,1));line-height:1.5;cursor:grab;overflow:hidden;outline:none}
+.memo.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent),var(--shadow-pop)}
+.memo.editing{cursor:auto;border-color:var(--accent)}
+.memo-body{flex:1;min-height:0;overflow:auto;padding:var(--u2) var(--u3)}
+.memo-empty{color:var(--text-tertiary)}
+.memo-editor{flex:1;min-height:0;overflow:hidden}
+.memo-editor .cm-editor{height:100%;font-size:inherit;color:var(--text-primary)}
+.memo-editor .cm-editor.cm-focused{outline:none}
+.memo-editor .cm-scroller{font-family:inherit;line-height:1.5;padding:var(--u2) 0}
+.memo-editor .cm-content{padding:0 var(--u3);caret-color:var(--text-primary)}
+.memo-editor .cm-placeholder{color:var(--text-tertiary)}
+.memo-grip{position:absolute;right:0;bottom:0;width:var(--u3);height:var(--u3);cursor:nwse-resize;
+  background:linear-gradient(135deg,transparent 50%,var(--border-default) 50%)}
+body.dragging-memo,body.dragging-memo *{cursor:grabbing!important;user-select:none}

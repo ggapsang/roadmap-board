@@ -27,6 +27,7 @@ import { renderCard, fitTitle } from './card.js';
 import { createArrowLayer, drawArrows } from './arrows.js';
 import { anchorPoint, anchorFromPoint, elbowRoute, overrideFromRoute } from '../../core/arrow-geometry.js';
 import { attachDrag } from './drag.js';
+import { MemoLayer } from './memos.js';
 
 export class Board {
   /**
@@ -42,6 +43,7 @@ export class Board {
     this.handlers = handlers;          // {openItem, openTrack, addTrack}
     this.columns = new Map();
     this.arrowLayer = createArrowLayer();
+    this.memos = new MemoLayer({ grid, store, view, board: () => this });
     this._layout = { placement: new Map(), trackLanes: new Map() };
 
     this.#attachEvents();
@@ -431,7 +433,7 @@ export class Board {
       timeline: tl,
     });
 
-    for (const node of this.grid.querySelectorAll('.col,.pad,.now,.arrows')) node.remove();
+    for (const node of this.grid.querySelectorAll('.col,.pad,.now,.arrows,.memos')) node.remove();
     this.columns.clear();
 
     for (const track of this.store.tracks) {
@@ -441,6 +443,7 @@ export class Board {
     }
     this.grid.append(el('div.pad'));
     this.grid.append(this.arrowLayer);
+    this.grid.append(this.memos.layer);
 
     // 오늘선 — 날짜를 보이는 눈금에서만. 눈금 없음은 날짜 표시를 걷어 낸 보기다.
     if (tl.dated && tl.mode.key !== 'none') {
@@ -536,6 +539,8 @@ export class Board {
     this.#linkHighlight(this._hoverId ?? null);
     this.#markSelectedRel();
     this.#drawArrowHandles();
+    // 메모(포스트잇) — 컬럼 폭이 정해진 뒤에 자리를 잰다
+    this.memos.draw();
   }
 
   /** 각 트랙 컬럼의 실제 너비(px) */
@@ -832,6 +837,7 @@ export class Board {
       // 텍스트 선택 모드에서는 패널을 열지 않는다.
       // 열면 재렌더가 일어나 카드가 새로 그려지고 긁어 둔 선택이 날아간다.
       if (this.view.textSelect) return;
+      if (this.view.selectedMemo) this.memos.select(null);     // 메모 밖을 누르면 메모 고르기를 푼다(메모 클릭은 메모 층이 막는다)
       // 화살표·참조 선을 누르면 그 관계를 고른다(Delete로 지운다)
       const arrow = ev.target.closest?.('.arrow, .ref-line');
       if (arrow?.dataset.rel) {
@@ -909,7 +915,8 @@ export class Board {
       }
       const card = ev.target.closest('.ev');
       const col = ev.target.closest('.col');
-      if (!card && !col) return;
+      const pad = ev.target.closest('.pad');
+      if (!card && !col && !pad) return;
       ev.preventDefault();
       const opts = [];
       if (card) {
@@ -919,6 +926,11 @@ export class Board {
       if (col) {
         const at = this.timeline.snap(Math.max(0, Math.floor(this.scale.dayAt((ev.clientY - col.getBoundingClientRect().top) / this.zoom))));
         opts.push({ label: '여기에 붙여넣기', disabled: !this._clip, action: () => this.#pasteEvent(col.dataset.t, at) });
+      }
+      // 빈 곳 — 메모(포스트잇) 붙이기. 메모는 이벤트가 아니다(보드 표시)
+      if (!card) {
+        const { clientX, clientY } = ev;
+        opts.push({ label: '메모 붙이기', action: () => this.memos.create(clientX, clientY) });
       }
       if (opts.length) openCtxMenu(ev.clientX, ev.clientY, opts);
     });

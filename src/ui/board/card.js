@@ -18,6 +18,7 @@ const ALIGN_CSS = { top: 'flex-start', middle: 'center', bottom: 'flex-end' };
  *               한 칸을 차지한 최상위 막대도 칸 안에서 폭을 줄일 수 있다.
  *               (트랙 걸침 sp는 편집 패널에서 정한다.)
  *   최상위 점 마일스톤 — 오른쪽만. 트랙 걸침을 칸 단위로 늘린다(표식이라 폭 개념이 없다).
+ *               단 사이즈 수동 설정이면 막대처럼 좌우 가장자리(x/w).
  */
 function addHorizontalGrips(node, { span = false } = {}) {
   if (span) {
@@ -122,7 +123,11 @@ export function renderCard(item, ctx) {
     // 상위 일정 안에 든 마일스톤은 형제와 레인을 나눠 갖는다.
     // 최상위 점 마일스톤만 트랙 폭을 가로지른다.
     const laned = ctx.laned ?? placement.has(item.id);
-    if (spanBox) {
+    if (forced && !parent) {
+      // 사이즈 수동 설정 — 점 마일스톤도 좌·우 가장자리로 폭(x/w)을 잡는다(켜 놓고 폭이 안 바뀌던 것, 2026-10-08 사용자).
+      // 높이는 표식 그대로(한 줄).
+      setBox(node);
+    } else if (spanBox) {
       node.style.left = `${spanBox.left + 8}px`;
       node.style.width = `${Math.max(24, spanBox.width - 16)}px`;
     } else if (laned) {
@@ -137,8 +142,8 @@ export function renderCard(item, ctx) {
       el('span.meta', { text: where }),
     );
     node.title = tip(item.alias ? `${item.alias} (별칭 · 제목: ${item.ti})` : item.ti, whereFull, item.og);
-    // 최상위 점 마일스톤만 트랙 걸침 손잡이. 상위에 든 것은 폭 손잡이. 사본(echo)은 손잡이 없음.
-    if (!echo) addHorizontalGrips(node, { span: !parent });
+    // 최상위 점 마일스톤은 트랙 걸침 손잡이 — 사이즈 수동 설정이면 폭 손잡이(x/w). 상위에 든 것은 폭 손잡이. 사본(echo)은 손잡이 없음.
+    if (!echo) addHorizontalGrips(node, { span: !parent && !forced });
     return node;
   }
 

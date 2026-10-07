@@ -12,10 +12,10 @@
 import {
   STATUS_KEYS, DEFAULT_STATUS, TYPE_KEYS, DEFAULT_TYPE,
   DEFAULT_ORGS, DEFAULT_DISPLAY, DISPLAY_LIMITS,
-  RELATION_TYPES, RELATION_KEYS, FILL_KEYS, SCALE_KEYS, SLOT_UNIT_OF, BAND_SCALE, CARD_FONT,
+  RELATION_TYPES, RELATION_KEYS, FILL_KEYS, SCALE_KEYS, SLOT_UNIT_OF, BAND_SCALE, CARD_FONT, MEMO,
 } from '../config/index.js';
 
-export const SCHEMA_VERSION = 22;
+export const SCHEMA_VERSION = 23;
 
 /**
  * v0 = P0 시안 문서(version 필드 없음).
@@ -256,6 +256,13 @@ function v21_to_v22(doc) {
   return doc;
 }
 
+function v22_to_v23(doc) {
+  // 메모(포스트잇) — 보드 표시 값. 이벤트가 아니다. 옛 문서엔 없다
+  if (doc.meta && typeof doc.meta === 'object') doc.meta.memos = doc.meta.memos ?? [];
+  doc.version = 23;
+  return doc;
+}
+
 const MIGRATIONS = {
   0: v0_to_v1,
   1: v1_to_v2,
@@ -279,6 +286,7 @@ const MIGRATIONS = {
   19: v19_to_v20,
   20: v20_to_v21,
   21: v21_to_v22,
+  22: v22_to_v23,
 };
 
 export const ALIGNS = ['top', 'middle', 'bottom'];
@@ -571,6 +579,30 @@ export function normalize(doc) {
   }
   doc.meta.arrows = arrows;
 
+  // ── 메모(포스트잇) — 보드 표시 값, 이벤트가 아니다. 자리 = 날짜(+그날 안 비율 dy) 또는 칸(slot) · 트랙 + 칸 폭 비율(x),
+  //    크기 = px. 없는 트랙이면 첫 트랙으로. 같은 id는 하나만
+  const memoTracks = new Set(doc.tracks.map((t) => t.id));
+  const num = (v, lo, hi, d) => { const n = Number(v); return v != null && Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
+  const r3 = (v) => Math.round(v * 1000) / 1000;
+  const memoIds = new Set();
+  doc.meta.memos = (Array.isArray(doc.meta.memos) ? doc.meta.memos : []).filter(isObj).map((m) => {
+    let id = typeof m.id === 'string' && m.id ? m.id : newId('m');
+    if (memoIds.has(id)) id = newId('m');
+    memoIds.add(id);
+    const date = ISO.test(m.date || '') ? m.date : null;
+    return {
+      id,
+      text: typeof m.text === 'string' ? m.text : '',
+      date,
+      dy: date ? r3(num(m.dy, 0, 0.999, 0)) : 0,
+      slot: date ? null : r3(num(m.slot, 0, 1e6, 0)),
+      track: memoTracks.has(m.track) ? m.track : (doc.tracks[0]?.id ?? null),
+      x: r3(num(m.x, -20, 20, 0)),
+      w: Math.round(num(m.w, MEMO.min, MEMO.max, MEMO.w)),
+      h: Math.round(num(m.h, MEMO.min, MEMO.max, MEMO.h)),
+    };
+  });
+
   doc.version = SCHEMA_VERSION;
   return { doc, warnings };
 }
@@ -733,6 +765,8 @@ export function reidentify(doc, { only = null } = {}) {
   const tmap = new Map();
   for (const t of doc.tracks ?? []) { if (!pick(t.id)) continue; const nu = fresh('t'); tmap.set(t.id, nu); t.id = nu; }
   const tto = (id) => tmap.get(id) ?? id;
+  // 메모(보드 표시)의 트랙도 함께 옮긴다
+  for (const m of Array.isArray(doc.meta?.memos) ? doc.meta.memos : []) if (m && typeof m === 'object' && m.track) m.track = tto(m.track);
 
   const taskMap = new Map();                   // 같은 태스크가 여러 카드에 있으면 같은 새 id로
   for (const it of doc.items ?? []) {
