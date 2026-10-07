@@ -24,8 +24,6 @@
 .th .lab{font-size:11px;line-height:16px;color:var(--text-tertiary);font-weight:500;letter-spacing:.02em}
 .th .nm{font-size:13px;line-height:20px;font-weight:600;letter-spacing:-.01em;color:var(--text-primary)}
 .th.active .nm{color:var(--accent)}
-.th .cnt{position:absolute;right:var(--u3);top:var(--u2-5);font-size:11px;color:var(--text-tertiary);
-  font-variant-numeric:tabular-nums}
 .th.active{box-shadow:inset 0 -3px 0 var(--accent)}
 .addcol{border-left:1px solid var(--grid-line);display:flex;align-items:flex-start;justify-content:center;padding-top:var(--u2-5)}
 

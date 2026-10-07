@@ -11,8 +11,6 @@ export function renderHead(head, { tracks, items, selectedTrack, template, onSel
   clear(head);
   head.append(el('div.cnr'), el('div.cnr'));
 
-  const counts = new Map();
-  for (const it of items) counts.set(it.place.t, (counts.get(it.place.t) ?? 0) + 1);
 
   for (const track of tracks) {
     const dates = dateLabel?.(track) ?? '';
@@ -33,7 +31,6 @@ export function renderHead(head, { tracks, items, selectedTrack, template, onSel
       el('span.lab', { text: track.lab || ' ' }),
       // 별칭이 있으면 이 보드에선 별칭으로(제목은 툴팁)
       el('span.nm', { text: track.alias || track.name }),
-      el('span.cnt', { text: String(counts.get(track.id) ?? 0) }),
     ]);
 
     // 너비 조절 손잡이 — 트랙 이름이 길거나 일정이 많을 때 넓혀 쓴다
