@@ -847,7 +847,8 @@ export class ItemPanel {
   /** 아무 이벤트(카드·태스크)에서 합치기 고르기 → 본질 선택 → 합치기 */
   async #mergeFrom(selfId, selfTitle) {
     if (!selfId || this.store.readonly) return;
-    const targetId = await pickEventForMerge(this.adapter, selfId);
+    // 트랙은 보드와도 합칠 수 있다(카드·태스크는 아직 아니다 — 2026-10-07 사용자 보류)
+    const targetId = await pickEventForMerge(this.adapter, selfId, { boards: this.#subject()?.kind === 'track' && this.#subject()?.id === selfId });
     if (targetId) await this.#confirmMerge(targetId, selfId, selfTitle);
   }
 

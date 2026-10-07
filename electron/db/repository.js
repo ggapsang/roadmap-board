@@ -348,6 +348,9 @@ export class BoardRepository {
       `).run(name, copy.meta.start, copy.meta.end, copy.version ?? 1);
 
       const id = Number(info.lastInsertRowid);
+      // 보드 번호는 지운 보드의 것을 다시 쓸 수 있고, 루트·트랙 id는 번호로 만든다(board:N, track:N:…). 같은 번호의 옛 보드가 합치기로
+      // 없앤 id 기억(#merged)이 남아 있으면 새 보드의 루트·트랙이 '없앤 것'으로 막혀 만들어지지 않는다 — 그 기억을 지운다.
+      for (const k of [...this.#merged.keys()]) if (k === `board:${id}` || k.startsWith(`track:${id}:`)) this.#merged.delete(k);
       const previous = this.boardId;
       const freshBefore = new Set(this.#created.keys());
       this.boardId = id;
@@ -366,11 +369,29 @@ export class BoardRepository {
   }
 
   /** 삭제 전 확인용 — 이 보드에만 담겨 함께 지워질 카드 수와, 다른 곳에도 담겨 남는 카드 수. */
+  /**
+   * 보드를 지울 때 함께 지울 이벤트 — 루트와 그 안에만 든 것. 단 루트가 다른 곳에도 놓였으면(트랙과 항등설정해 다른 보드의
+   * 트랙이기도 하면) 루트는 남기고 **이 보드 쪽 가지**(루트가 구성으로 품은 트랙들과 그 안에만 든 것)만 지운다 — 루트의 다른 자식
+   * (그 트랙의 카드들)은 이 보드와 무관한 형제 가지라 따라 지우지 않는다(2026-10-08 사용자: 합친 노드에서 1세대 자식들이 각자 갈라진다).
+   */
+  #boardDoomed(root) {
+    const parentsOfRoot = this.db.prepare('SELECT 1 FROM containment WHERE child_id = ? LIMIT 1').get(root);
+    if (!parentsOfRoot) return this.#closure(new Set([root]));
+    const boardSide = new Set(this.db.prepare('SELECT child_id FROM containment WHERE parent_id = ? AND compose = 1').all(root).map((r) => r.child_id));
+    const out = this.#closure(new Set([root]), (c) => boardSide.has(c) || !this.#isChildOf(root, c));
+    out.delete(root);
+    return out;
+  }
+
+  #isChildOf(parent, child) {
+    return !!this.db.prepare('SELECT 1 FROM containment WHERE parent_id = ? AND child_id = ?').get(parent, child);
+  }
+
   deletePreview(id) {
     const b = this.db.prepare('SELECT root_event_id FROM board WHERE id = ?').get(id);
     if (!b?.root_event_id) return { items: 0, shared: 0 };
     const v = this.#view(b.root_event_id, this.#childMap());
-    const doomed = this.#closure(new Set([b.root_event_id]));
+    const doomed = this.#boardDoomed(b.root_event_id);
     let items = 0; let shared = 0;
     for (const c of v.cards) { if (doomed.has(c)) items += 1; else shared += 1; }
     return { items, shared };
@@ -384,7 +405,7 @@ export class BoardRepository {
   deleteProject(id) {
     const del = this.db.transaction(() => {
       const b = this.db.prepare('SELECT root_event_id FROM board WHERE id = ?').get(id);
-      if (b?.root_event_id) this.#purge(this.#closure(new Set([b.root_event_id])));
+      if (b?.root_event_id) this.#purge(this.#boardDoomed(b.root_event_id));
       this.db.prepare('DELETE FROM org  WHERE board_id = ?').run(id);
       this.db.prepare('DELETE FROM band WHERE board_id = ?').run(id);
       this.db.prepare('DELETE FROM board WHERE id = ?').run(id);
@@ -490,6 +511,8 @@ export class BoardRepository {
       disp: this.db.prepare('SELECT * FROM disp WHERE parent_id IN (?,?) OR child_id IN (?,?)').all(...affected, ...affected),
       rel: this.db.prepare('SELECT * FROM rel WHERE from_id IN (?,?) OR to_id IN (?,?)').all(...affected, ...affected),
       board: this.db.prepare('SELECT id FROM board WHERE root_event_id = ?').all(dropId).map((b) => b.id),
+      // 보드 이름(목록에 보이는 이름) — 루트가 합쳐지면 남는 본질의 제목으로 맞추고, 되돌리면 원래대로
+      boardNames: this.db.prepare('SELECT id, name FROM board WHERE root_event_id IN (?,?)').all(keepId, dropId),
     };
     const insCont = this.db.prepare('INSERT OR IGNORE INTO containment (parent_id,child_id,ordered,compose,ord) VALUES (?,?,?,?,?)');
     const insDispRow = this.db.prepare('INSERT OR IGNORE INTO disp (parent_id,child_id,pos_x,pos_w,pos_y,height_days,align,show_note,alias,lab,px_width,fill,slot_start,slot_len) VALUES (@parent_id,@child_id,@pos_x,@pos_w,@pos_y,@height_days,@align,@show_note,@alias,@lab,@px_width,@fill,@slot_start,@slot_len)');
@@ -521,6 +544,8 @@ export class BoardRepository {
         else this.db.prepare('UPDATE rel SET from_id=?, to_id=? WHERE id=?').run(from, to, rr.id);
       }
       this.db.prepare('UPDATE board SET root_event_id=? WHERE root_event_id=?').run(keepId, dropId);
+      // 보드 이름 = 루트 이벤트 제목(renameProject와 같은 규칙) — 트랙과 보드를 합치면 남긴 본질의 제목이 보드 이름이 된다
+      this.db.prepare('UPDATE board SET name=? WHERE root_event_id=?').run(keepEv.title, keepId);
       // 사라지는 이벤트 제거. 본질은 keepId 것을 남긴다(이미 keep에 있음). 단 남는 쪽이 태스크로 만든 이벤트(type 'task')고
       // 상대가 카드면 유형은 카드 것을 쓴다 — 'task'는 놓인 역할이지 기간/마일스톤 같은 본질 유형이 아니다.
       if (keepEv.type === 'task' && dropEv.type && dropEv.type !== 'task') {
@@ -558,6 +583,7 @@ export class BoardRepository {
       const insRel = this.db.prepare('INSERT OR REPLACE INTO rel (id,type,from_id,to_id) VALUES (?,?,?,?)');
       for (const r of s.rel) insRel.run(r.id, r.type, r.from_id, r.to_id);
       for (const bid of (s.board ?? [])) this.db.prepare('UPDATE board SET root_event_id=? WHERE id=?').run(s.dropId, bid);
+      for (const bn of (s.boardNames ?? [])) this.db.prepare('UPDATE board SET name=? WHERE id=?').run(bn.name, bn.id);
     });
     try { run(); } catch (e) { return { ok: false, rejected: String(e.message || e) }; }
     this.#merged.delete(s.dropId);

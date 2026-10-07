@@ -36,7 +36,7 @@ function nestByDepth(flat, blocked) {
  * 현재 보드에도 놓인 이벤트(합치기로 공유된 것)는 트리에서 뺀다 — 이미 이 보드의 그래프 안이다.
  * blocked는 보이되 고를 수 없다.
  */
-async function buildEventTree(adapter, { blocked = new Set(), withTasks = false } = {}) {
+async function buildEventTree(adapter, { blocked = new Set(), withTasks = false, boards: boardsPickable = false } = {}) {
   let events = [];
   try { events = (await adapter?.listEvents?.()) ?? []; } catch { events = []; }
   const curBoard = String(adapter?.projectId ?? '');
@@ -52,7 +52,8 @@ async function buildEventTree(adapter, { blocked = new Set(), withTasks = false 
       try { cards = (await adapter?.eventCards?.(tr.id, { withTasks })) ?? []; } catch { cards = []; }
       trackNodes.push({ id: tr.id, label: tr.title || '(트랙)', sub: '트랙', checkable: !blocked.has(tr.id), children: nestByDepth(cards.filter((c) => !here.has(c.id)), blocked) });
     }
-    nodes.push({ id: b.id, label: b.title || '(프로젝트)', sub: '프로젝트', checkable: false, children: trackNodes });
+    // 보드(프로젝트) 줄은 묶음 제목 — 트랙의 항등설정에서만 고를 수 있다(트랙 ↔ 보드, 2026-10-08 사용자)
+    nodes.push({ id: b.id, label: b.title || '(프로젝트)', sub: '프로젝트', checkable: boardsPickable && !blocked.has(b.id), children: trackNodes });
   }
   return nodes;
 }
@@ -130,12 +131,15 @@ export async function openCombinePicker(store, adapter, eventId) {
  * 동일(합치기) 트리 팝업 — 이 이벤트와 하나로 합칠 다른 보드 이벤트 하나를 고른다.
  * @returns {Promise<string|null>} 고른 이벤트 id, 취소하면 null
  */
-export async function pickEventForMerge(adapter, selfId) {
-  // 항등설정은 태스크도 된다 — 카드 아래 태스크까지 펼친다(태스크도 이벤트다)
-  const nodes = await buildEventTree(adapter, { blocked: new Set([selfId]), withTasks: true });
+export async function pickEventForMerge(adapter, selfId, { boards = false } = {}) {
+  // 항등설정은 태스크도 된다 — 카드 아래 태스크까지 펼친다(태스크도 이벤트다). 트랙이면 보드 자체도 고를 수 있다 — 합치면 그 노드에서
+  // 트랙 쪽 카드들과 보드 쪽 트랙들이 각자 1세대 자식으로 갈라진다(서로 잇지 않는다).
+  const nodes = await buildEventTree(adapter, { blocked: new Set([selfId]), withTasks: true, boards });
   const result = await askTree({
     title: '항등설정 — 같은 이벤트로 합치기',
-    message: '이 이벤트와 하나로 합칠 다른 프로젝트의 이벤트(트랙·카드·태스크)를 하나 고르세요. 합치면 본질을 어느 쪽으로 남길지 다시 묻습니다.',
+    message: boards
+      ? '이 트랙과 하나로 합칠 다른 프로젝트의 이벤트(보드·트랙·카드·태스크)를 하나 고르세요. 보드와 합치면 이 트랙이 곧 그 보드가 됩니다 — 이 트랙의 카드와 그 보드의 트랙은 따로 놓이고 서로 잇지 않습니다. 합치면 본질을 어느 쪽으로 남길지 다시 묻습니다.'
+      : '이 이벤트와 하나로 합칠 다른 프로젝트의 이벤트(트랙·카드·태스크)를 하나 고르세요. 합치면 본질을 어느 쪽으로 남길지 다시 묻습니다.',
     nodes, select: 'single',
   });
   return typeof result === 'string' ? result : null;
