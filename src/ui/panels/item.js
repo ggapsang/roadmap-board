@@ -10,7 +10,7 @@
  */
 import { shortMD, dayIndex, parseDate, inclusiveDays } from '../../core/dates.js';
 import { newId, ALIGNS } from '../../core/schema.js';
-import { STATUSES, ITEM_TYPES, FILLS, statusList } from '../../config/index.js';
+import { STATUSES, ITEM_TYPES, FILLS, CARD_FONT, statusList } from '../../config/index.js';
 import { $, el, clear, icon, ICONS, editGroup } from '../dom.js';
 import { askConfirm, askChoice, askTree, askTreeTabs } from '../dialog.js';
 import { openCombinePicker, pickEventForMerge, composedOf, pickRefs } from '../combine.js';
@@ -168,6 +168,11 @@ export class ItemPanel {
     }
     pal.querySelectorAll('.fill-sw').forEach((b) =>
       b.addEventListener('click', () => this.#setFill(b.dataset.fill || null)));
+
+    // 글자 크기 — 이 카드만(보드 글자 크기에 곱한다). 가운데는 100%로
+    for (const b of $('i-font').querySelectorAll('.seg-btn')) {
+      b.addEventListener('click', () => this.#stepFont(Number(b.dataset.step)));
+    }
 
     // 비고 표시 — 숨김(기본) / 카드에 표시
     const nb = $('i-shownote');
@@ -468,8 +473,22 @@ export class ItemPanel {
     if (on && !(item.note ?? '').trim()) toast('비고가 비어 있습니다 — 속성 탭에서 비고를 쓰면 카드에 보입니다');
   }
 
+  /** 이 카드 글자 크기 — dir: -1 작게 · +1 크게 · 0 100%로 */
+  #stepFont(dir) {
+    const item = this.item;
+    if (!item || this.store.readonly) return;
+    const cur = item.place?.fs ?? 1;
+    let next = dir === 0 ? 1 : Math.round((cur + dir * CARD_FONT.step) * 100) / 100;
+    next = Math.min(CARD_FONT.max, Math.max(CARD_FONT.min, next));
+    if (next === cur) return;
+    this.store.commit('카드 글자 크기', () => { item.place.fs = next === 1 ? null : next; });
+    this.#syncStyle(item);
+  }
+
   #syncStyle(item) {
     this.#syncFill(item.place?.fill ?? '');
+    const fs = item.place?.fs ?? 1;
+    $('i-font-val').textContent = `${Math.round(fs * 100)}%`;
     const on = item.place?.showNote === true;
     for (const b of $('i-shownote').querySelectorAll('.seg-btn')) {
       b.setAttribute('aria-pressed', String((b.dataset.note === 'on') === on));

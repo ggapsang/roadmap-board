@@ -142,6 +142,9 @@ export const FILLS = [
 ];
 export const FILL_KEYS = FILLS.map((f) => f.key);
 
+/** 카드마다 글자 크기(스타일 탭) — 보드 글자 크기에 곱하는 배율. 한 번에 step씩 */
+export const CARD_FONT = { min: 0.6, max: 2.5, step: 0.1 };
+
 /** 행 높이(1주) 프리셋. px/일 = weekHeight / 7 */
 export const ZOOM_LEVELS = [
   { weekHeight: 40, label: '축소' },

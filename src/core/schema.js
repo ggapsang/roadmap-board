@@ -12,10 +12,10 @@
 import {
   STATUS_KEYS, DEFAULT_STATUS, TYPE_KEYS, DEFAULT_TYPE,
   DEFAULT_ORGS, DEFAULT_DISPLAY, DISPLAY_LIMITS,
-  RELATION_TYPES, RELATION_KEYS, FILL_KEYS, SCALE_KEYS, SLOT_UNIT_OF, BAND_SCALE,
+  RELATION_TYPES, RELATION_KEYS, FILL_KEYS, SCALE_KEYS, SLOT_UNIT_OF, BAND_SCALE, CARD_FONT,
 } from '../config/index.js';
 
-export const SCHEMA_VERSION = 21;
+export const SCHEMA_VERSION = 22;
 
 /**
  * v0 = P0 시안 문서(version 필드 없음).
@@ -249,6 +249,13 @@ function v20_to_v21(doc) {
   return doc;
 }
 
+function v21_to_v22(doc) {
+  // 카드마다 글자 크기(place.fs, 보드 글자 크기에 곱하는 배율) — 옛 문서엔 없다(1)
+  for (const it of doc.items ?? []) if (it?.place && typeof it.place === 'object') it.place.fs = it.place.fs ?? null;
+  doc.version = 22;
+  return doc;
+}
+
 const MIGRATIONS = {
   0: v0_to_v1,
   1: v1_to_v2,
@@ -271,6 +278,7 @@ const MIGRATIONS = {
   18: v18_to_v19,
   19: v19_to_v20,
   20: v20_to_v21,
+  21: v21_to_v22,
 };
 
 export const ALIGNS = ['top', 'middle', 'bottom'];
@@ -484,6 +492,9 @@ export function normalize(doc) {
       hd: (typeof hd === 'number' && hd > 0) ? Math.max(0.05, Math.round(hd * 100) / 100) : null,
       // 크기 강제 카드의 위쪽 여백(위치 단위, 시작 칸·날짜 안에서 윗변이 내려온 만큼). 크기 강제일 때만, 0이면 없음(null)
       oy: (typeof hd === 'number' && hd > 0 && Number(pl.oy) > 0) ? Math.round(Number(pl.oy) * 100) / 100 : null,
+      // 그 카드의 글자 크기 배율(보드 글자 크기에 곱한다) — CARD_FONT 범위, 1이면 없음(null)
+      fs: (() => { const v = Number(pl.fs); if (!Number.isFinite(v) || pl.fs == null) return null;
+        const c = Math.round(Math.min(CARD_FONT.max, Math.max(CARD_FONT.min, v)) * 100) / 100; return c === 1 ? null : c; })(),
       x: ratio(pl.x ?? it.x),
       // 가로 폭 비율. 1 = 한 칸. **크기 강제로 여러 트랙에 걸치면 w>1이 될 수 있다**(sp만큼).
       // 1로 잘라 버리면 걸친 카드가 데이터 적용·재정규화 때 한 칸으로 쪼그라든다. 트랙 수까지 허용.

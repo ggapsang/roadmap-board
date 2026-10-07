@@ -71,6 +71,8 @@ export function renderCard(item, ctx) {
   if (match === false) node.classList.add('dim');
   if (echo) node.classList.add('echo');                   // 떨어진 트랙에 같은 카드가 따로 표시된 사본
   if (item.place?.fill) node.dataset.fill = item.place.fill;   // 스타일 탭 '채우기' (색은 토큰이 정한다)
+  // 글자 크기 = 보드 글자 크기 × 이 카드 배율(스타일 탭). 카드마다 직접 정한다 — 상위 카드 안에 든 카드가 상위의 배율을 물려받지 않게
+  node.style.setProperty('--fs', String((ctx.fontScale ?? 1) * (item.place?.fs ?? 1)));
 
   const { lane = 0, lanes = 1 } = ctx.laneInfo ?? placement.get(item.id) ?? {};
 

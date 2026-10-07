@@ -489,6 +489,7 @@ export class Board {
 
       const common = {
         ...ctx,
+        fontScale: this.store.meta.display?.fontScale ?? 1,
         match: this.view.matches(item),
         parent,
         hasChildren: (childrenOf.get(item.id) ?? []).length > 0,
