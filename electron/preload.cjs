@@ -35,6 +35,8 @@ contextBridge.exposeInMainWorld('roadmapDB', {
   onBoardZoom: (cb) => ipcRenderer.on('view:board-zoom', (_e, dir) => cb(dir)),
   // 창 — 탭을 끌어 따로 빼기·다른 창으로 옮기기. 한 보드는 한 창에만(claim이 거절하면 그 창이 앞으로 나온다)
   claimBoard: (id) => ipcRenderer.invoke('board:claim', id),
+  // Alt+클릭(선행관계 잇기)을 썼다 — 이어 Alt를 뗄 때 창 메뉴로 초점이 넘어가지 않게(메인이 그 Alt 떼기를 삼킨다)
+  altUsed: () => ipcRenderer.send('input:alt-used'),
   reportTabs: (ids) => ipcRenderer.send('tabs:report', ids),
   detachTab: (payload) => ipcRenderer.invoke('tab:detach', payload),
   onTabActivate: (cb) => ipcRenderer.on('tab:activate', (_e, id) => cb(id)),

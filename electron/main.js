@@ -190,6 +190,13 @@ function createWindow(open = null) {
     flushWindow(w).then(() => { st.flushed = true; if (!w.isDestroyed()) w.close(); });
   });
   const win0 = w;                            // 아래는 이 창에 대한 설정
+  // Alt+클릭(선행관계 잇기) 뒤 Alt를 떼면 Windows에선 창 메뉴로 초점이 넘어간다 — 렌더러가 Alt+클릭을 알리면(input:alt-used)
+  // 그 Alt 떼기는 삼킨다. 그냥 Alt만 눌렀다 떼면(메뉴 열기) 그대로 둔다.
+  w.webContents.on('before-input-event', (e, input) => {
+    if (input.key !== 'Alt') return;
+    if (input.type === 'keyDown') { if (!input.isAutoRepeat) st.altUsed = false; return; }   // 누르고 있는 동안 반복되는 keyDown은 무시
+    if (input.type === 'keyUp' && st.altUsed) { st.altUsed = false; e.preventDefault(); }
+  });
   // Ctrl+휠은 렌더러가 받아 보드만 확대한다(src/main.js). 렌더러가 기본 동작을 막으므로 이 이벤트는 대개 안 오지만,
   // 오면(렌더러가 못 받은 경우) 같은 보드 확대로 보낸다. 창 전체 배율은 늘 100% — 0.2.3에서 저장했던 창 배율도 지운다.
   win0.webContents.on('zoom-changed', (_e, direction) => boardZoom(win0, direction === 'in' ? 1 : -1));
@@ -575,6 +582,7 @@ function registerIpc() {
     stateOf(e)?.boards.add(id);
     return { ok: true };
   });
+  ipcMain.on('input:alt-used', (e) => { const st = stateOf(e); if (st) st.altUsed = true; });
   // 이 창의 탭에 열린 보드들(탭을 열고 닫을 때마다)
   ipcMain.on('tabs:report', (e, ids) => {
     const st = stateOf(e);

@@ -38,6 +38,7 @@ export function attachDrag(grid, {
   grid.addEventListener('pointerdown', (ev) => {
     if (store.readonly || ev.button !== 0) return;
     if (view.textSelect) return;      // 텍스트 선택 모드에서는 이동하지 않는다
+    if (ev.altKey) return;            // Alt+클릭은 선행관계 잇기(Board) — 끌지 않는다
     const card = ev.target.closest('.ev');
     if (!card) return;
     const item = store.item(card.dataset.id);

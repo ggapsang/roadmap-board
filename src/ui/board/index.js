@@ -846,6 +846,13 @@ export class Board {
       }
       if (this.view.selectedRel) this.selectRel(null);
       const card = ev.target.closest('.ev');
+      // Alt+클릭 — 지금 고른 카드(선행) → 누른 카드(후행) 선행관계를 잇는다(이미 있으면 푼다). 고른 카드가 없으면 그냥 고른다.
+      if (card && ev.altKey && this.view.selectedItem && this.view.selectedItem !== card.dataset.id) {
+        ev.preventDefault();
+        window.roadmapDB?.altUsed?.();
+        this.toggleDep(this.view.selectedItem, card.dataset.id);
+        return;
+      }
       if (card) this.handlers.openItem(card.dataset.id);
     });
 
@@ -1083,6 +1090,42 @@ export class Board {
     this.store.commit('일정 추가', (doc) => { doc.items.push(item); });
     this.handlers.openItem(item.id);
     return item;
+  }
+
+  /**
+   * 선행관계 잇기·풀기 — from(선행) → to(후행). Alt+클릭 단축(지금 고른 카드가 선행). 이미 있으면 푼다. 선행이 돌고 돌게 되면
+   * (to에서 선행을 따라 from에 닿으면) 잇지 않는다. 되돌리기 1단계. 고른 카드(선행)는 그대로 고른 채 — 이어서 여러 후행을 잇는다.
+   */
+  toggleDep(from, to) {
+    if (this.store.readonly || !from || !to || from === to) return false;
+    if (!this.store.item(from) || !this.store.item(to)) return false;
+    const deps = this.store.relations.filter((r) => r.type === 'dep');
+    const name = (x) => this.store.item(x)?.ti || '(제목 없음)';
+    const had = deps.find((r) => r.from === from && r.to === to);
+    if (had) {
+      this.store.commit('선행관계 풀기', (doc) => {
+        doc.relations = (doc.relations ?? []).filter((r) => r.id !== had.id);
+        if (doc.meta.arrows?.[had.id]) { const a = { ...doc.meta.arrows }; delete a[had.id]; doc.meta.arrows = a; }
+      });
+      toast(`선행관계를 풀었습니다 — ${name(from)} → ${name(to)}`);
+    } else {
+      // to에서 선행을 따라가 from에 닿으면 순환
+      const next = new Map();
+      for (const r of deps) { if (!next.has(r.from)) next.set(r.from, []); next.get(r.from).push(r.to); }
+      const seen = new Set([to]);
+      const stack = [to];
+      while (stack.length) {
+        const n = stack.pop();
+        if (n === from) { toast('선행이 돌고 돌게 되어(순환) 잇지 않았습니다', 'warn'); return false; }
+        for (const m of next.get(n) ?? []) if (!seen.has(m)) { seen.add(m); stack.push(m); }
+      }
+      this.store.commit('선행관계 잇기', (doc) => {
+        doc.relations = [...(doc.relations ?? []), { id: newId('r'), type: 'dep', from, to }];
+      });
+      toast(`선행관계를 이었습니다 — ${name(from)} → ${name(to)} (Alt+클릭으로 풉니다)`);
+    }
+    this.handlers.openItem(from);      // 편집 창(선행 카드)의 선행·후행 목록도 새로
+    return true;
   }
 
   /** 카드가 보이게 스크롤한다(참조 목록에서 그 카드로 갈 때) */
