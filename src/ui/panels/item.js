@@ -1022,14 +1022,38 @@ export class ItemPanel {
     if (!item.parent) list.append(el('div.empty', { text: '없음 (트랙에 직접)' }));
     else list.append(chip(this.store.item(item.parent)?.ti || '(제목 없음)', '부모에서 빼기', () => this.#applyParentChild(item, { parent: null })));
     const kids = this.store.items.filter((x) => x.parent === item.id);
-    list.append(el('div.pc-head', { text: `자식${kids.length ? ` ${kids.length}` : ''}` }));
+    const hidden = new Set(this.store.meta.hidden ?? []);
+    const nHidden = kids.filter((k) => hidden.has(k.id)).length;
+    list.append(el('div.pc-head', { text: `자식${kids.length ? ` ${kids.length}` : ''}${nHidden ? ` · 이 보드에서 숨김 ${nHidden}` : ''}` }));
     if (!kids.length) list.append(el('div.empty', { text: '없음' }));
     for (const k of kids) {
-      list.append(chip(k.ti || '(제목 없음)', '자식에서 빼기', () => {
+      const row = chip(k.ti || '(제목 없음)', '자식에서 빼기', () => {
         this.#applyParentChild(item, { children: new Set(kids.filter((x) => x.id !== k.id).map((x) => x.id)) });
-      }));
+      });
+      // 눈 — 이 보드에서만 숨기기·보이기. 모자관계(포함)는 그대로라 다른 보드에서는 보인다
+      const off = hidden.has(k.id);
+      row.classList.toggle('pc-hidden', off);
+      row.prepend(el('button.task-del.pc-eye', {
+        type: 'button',
+        title: off ? '이 보드에서 다시 보이기' : '이 보드에서 숨기기 — 모자관계는 그대로, 다른 보드에서는 보입니다',
+        attrs: { 'aria-pressed': String(off), 'aria-label': off ? '보이기' : '숨기기' },
+        on: { click: () => this.#toggleHiddenChild(item, k.id) },
+      }, [icon(off ? ICONS.eyeOff : ICONS.eye)]));
+      list.append(row);
     }
     box.append(list);
+  }
+
+  /** 하위 카드를 이 보드에서 숨기기·보이기 — 보드 표시 값(meta.hidden). 관계는 고치지 않는다 */
+  #toggleHiddenChild(item, childId) {
+    if (this.store.readonly) return;
+    const off = (this.store.meta.hidden ?? []).includes(childId);
+    this.store.commit(off ? '자식 보이기' : '자식 숨기기', (doc) => {
+      const s = new Set(doc.meta.hidden ?? []);
+      if (off) s.delete(childId); else s.add(childId);
+      doc.meta.hidden = [...s];
+    });
+    this.#renderParents(item);
   }
 
   /** 이 카드가 놓인 트랙들 — 모자관계 후보는 이 트랙 안의 카드뿐이다(하위 카드면 상위의 트랙). */

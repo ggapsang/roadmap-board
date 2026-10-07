@@ -287,6 +287,9 @@ body.panel-open{--panel-w:var(--panel-size)}
 .combine-summary .empty{font-size:12px;line-height:18px;font-weight:400;color:var(--text-tertiary)}
 .combine-summary .pc-head{font-size:11px;line-height:16px;font-weight:600;color:var(--text-secondary);margin-top:var(--u1)}
 .combine-chip-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 모자관계설정 — 이 보드에서 숨긴 자식(눈). 흐리게 */
+.combine-chip.pc-hidden .combine-chip-name{color:var(--text-tertiary)}
+.pc-eye[aria-pressed="true"]{color:var(--text-tertiary)}
 
 /* ── 휴지통 팝업 (첫 화면) — docs/SAVE.md §7 ─────────────── */
 .trash-dlg h2{display:flex;align-items:baseline;gap:var(--u2)}

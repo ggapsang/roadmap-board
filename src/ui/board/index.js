@@ -362,10 +362,35 @@ export class Board {
   #computeLayout() {
     // 펼침(드릴다운)이면 focus의 자식이 최상위가 되고 자손만 보인다.
     this._scope = this.#focusScope();
-    const visible = (i) => this.view.isVisible(i) && (this._scope === null || this._scope.has(i.id));
+    this._hidden = this.#hiddenSet();
+    const visible = (i) => this.view.isVisible(i) && !this._hidden.has(i.id) && (this._scope === null || this._scope.has(i.id));
     this._layout = computeLayout(
       this.store.tracks, this.store.items, this.timeline, visible, this.focus, (i) => this.#pixelExtent(i),
     );
+  }
+
+  /**
+   * 이 보드에서 숨긴 하위 카드(모자관계설정의 눈, meta.hidden)와 그 안에 든 것 — 포함은 그대로, 그리지만 않는다.
+   * 다른 보드에서는 보인다(보드 표시 값).
+   */
+  #hiddenSet() {
+    const marked = new Set(this.store.meta.hidden ?? []);
+    const out = new Set();
+    if (!marked.size) return out;
+    for (const it of this.store.items) {
+      let cur = it;
+      let guard = 0;
+      while (cur && guard++ < 256) {
+        if (marked.has(cur.id)) { out.add(it.id); break; }
+        cur = cur.parent ? this.store.item(cur.parent) : null;
+      }
+    }
+    return out;
+  }
+
+  /** 숨기지 않은 자식이 있는가(다 숨겼으면 보통 카드로 그린다) */
+  hasShownChildren(id) {
+    return this.store.items.some((i) => i.parent === id && !this._hidden?.has(i.id));
   }
 
   /**
@@ -484,6 +509,7 @@ export class Board {
     const focus = this.focus;
     for (const item of ordered) {
       if (!this.view.isVisible(item)) continue;
+      if (this._hidden?.has(item.id)) continue;                  // 이 보드에서 숨긴 하위 카드(관계는 그대로)
       if (this._scope && !this._scope.has(item.id)) continue;   // 펼침 범위 밖은 숨긴다
 
       // 펼쳐 들어간 이벤트(focus)의 직속 자식은 최상위처럼 트랙 컬럼에 놓는다.
@@ -495,7 +521,7 @@ export class Board {
         fontScale: this.store.meta.display?.fontScale ?? 1,
         match: this.view.matches(item),
         parent,
-        hasChildren: (childrenOf.get(item.id) ?? []).length > 0,
+        hasChildren: (childrenOf.get(item.id) ?? []).some((k) => !this._hidden?.has(k.id)),
       };
 
       // 자식 카드: 상위 카드 안에 한 장.
@@ -881,8 +907,7 @@ export class Board {
       const card = ev.target.closest('.ev');
       if (!card) return;
       const id = card.dataset.id;
-      const hasChildren = this.store.items.some((i) => i.parent === id);
-      if (hasChildren) { ev.stopPropagation(); this.view.setFocus(id); }
+      if (this.hasShownChildren(id)) { ev.stopPropagation(); this.view.setFocus(id); }
     });
 
     this.#attachCreate();

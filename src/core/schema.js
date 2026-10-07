@@ -15,7 +15,7 @@ import {
   RELATION_TYPES, RELATION_KEYS, FILL_KEYS, SCALE_KEYS, SLOT_UNIT_OF, BAND_SCALE, CARD_FONT, MEMO,
 } from '../config/index.js';
 
-export const SCHEMA_VERSION = 23;
+export const SCHEMA_VERSION = 24;
 
 /**
  * v0 = P0 시안 문서(version 필드 없음).
@@ -263,6 +263,13 @@ function v22_to_v23(doc) {
   return doc;
 }
 
+function v23_to_v24(doc) {
+  // 이 보드에서 숨긴 하위 카드 — 보드 표시 값(포함 관계는 그대로). 옛 문서엔 없다
+  if (doc.meta && typeof doc.meta === 'object') doc.meta.hidden = doc.meta.hidden ?? [];
+  doc.version = 24;
+  return doc;
+}
+
 const MIGRATIONS = {
   0: v0_to_v1,
   1: v1_to_v2,
@@ -287,6 +294,7 @@ const MIGRATIONS = {
   20: v20_to_v21,
   21: v21_to_v22,
   22: v22_to_v23,
+  23: v23_to_v24,
 };
 
 export const ALIGNS = ['top', 'middle', 'bottom'];
@@ -603,6 +611,11 @@ export function normalize(doc) {
     };
   });
 
+  // ── 이 보드에서 숨긴 하위 카드(모자관계설정의 눈) — 보드 표시 값. 포함(모자관계)은 그대로 두고 그리지만 않는다.
+  //    이 보드에 있는 하위 카드(parent가 있는 것)만, 한 번씩
+  const childIds = new Set(doc.items.filter((i) => i.parent).map((i) => i.id));
+  doc.meta.hidden = [...new Set((Array.isArray(doc.meta.hidden) ? doc.meta.hidden : []).filter((id) => childIds.has(id)))];
+
   doc.version = SCHEMA_VERSION;
   return { doc, warnings };
 }
@@ -765,6 +778,7 @@ export function reidentify(doc, { only = null } = {}) {
   const tmap = new Map();
   for (const t of doc.tracks ?? []) { if (!pick(t.id)) continue; const nu = fresh('t'); tmap.set(t.id, nu); t.id = nu; }
   const tto = (id) => tmap.get(id) ?? id;
+  // 숨긴 하위 카드(보드 표시)도 새 id로 — 카드 id가 정해진 뒤 아래에서
   // 메모(보드 표시)의 트랙도 함께 옮긴다
   for (const m of Array.isArray(doc.meta?.memos) ? doc.meta.memos : []) if (m && typeof m === 'object' && m.track) m.track = tto(m.track);
 
@@ -782,6 +796,7 @@ export function reidentify(doc, { only = null } = {}) {
     }
   }
   const any = (id) => tto(taskMap.get(id) ?? to(id));
+  if (Array.isArray(doc.meta?.hidden)) doc.meta.hidden = doc.meta.hidden.map(to);
   // 없던 필드는 만들지 않는다 — 정규화 전 옛 문서(선행이 item.dp에 있음)를 그대로 넘겨받을 수 있다.
   if (Array.isArray(doc.relations)) {
     doc.relations = doc.relations.map((r) => ({ ...r, id: only ? r.id : fresh('r'), from: to(r.from), to: to(r.to) }));

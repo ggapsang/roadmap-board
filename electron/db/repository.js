@@ -815,6 +815,7 @@ export class BoardRepository {
     if (boardMeta.statusLabels) metaExtra.statusLabels = boardMeta.statusLabels;
     if (boardMeta.arrows) metaExtra.arrows = boardMeta.arrows;     // 사용자가 고친 화살표 모양(보드 표시)
     if (boardMeta.memos) metaExtra.memos = boardMeta.memos;        // 메모(포스트잇) — 보드 표시, 이벤트가 아니다
+    if (boardMeta.hidden) metaExtra.hidden = boardMeta.hidden;     // 이 보드에서 숨긴 하위 카드 — 표시만(포함은 그대로)
 
     const base = {
       version: board.doc_version,
@@ -1119,6 +1120,7 @@ export class BoardRepository {
         statusLabels: doc.meta.statusLabels ?? null,
         arrows: doc.meta.arrows && Object.keys(doc.meta.arrows).length ? doc.meta.arrows : null,
         memos: Array.isArray(doc.meta.memos) && doc.meta.memos.length ? doc.meta.memos : null,
+        hidden: Array.isArray(doc.meta.hidden) && doc.meta.hidden.length ? doc.meta.hidden : null,
       });
       this.db.prepare(`
         INSERT INTO board (id, name, start_date, end_date, doc_version, root_event_id, meta_json)
