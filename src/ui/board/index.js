@@ -716,7 +716,7 @@ export class Board {
     const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); this.endArrowEdit(); } };
     const onDown = (e) => {
       if (e.target.closest?.('.arrow-handles .ah')) return;
-      if (e.target.closest?.('.arrow')?.dataset.rel === this._arrowEdit) return;
+      if (e.target.closest?.('.arrow, .ref-line')?.dataset.rel === this._arrowEdit) return;
       this.endArrowEdit();
     };
     document.addEventListener('keydown', onKey, true);
@@ -737,7 +737,7 @@ export class Board {
   /** 편집 중인 화살표의 손잡이 — 양 끝(동그라미)과, 가운데 구간을 옮길 수 있으면 마름모 */
   #drawArrowHandles() {
     this.grid.querySelector(':scope > .arrow-handles')?.remove();
-    for (const p of this.arrowLayer.querySelectorAll('.arrow.editing')) p.classList.remove('editing');
+    for (const p of this.arrowLayer.querySelectorAll('.arrow.editing, .ref-line.editing')) p.classList.remove('editing');
     const id = this._arrowEdit;
     if (!id) return;
     const g = this.arrowLayer._geom?.get(id);
@@ -749,7 +749,7 @@ export class Board {
       A = anchorPoint(g.box.from, shape.a); B = anchorPoint(g.box.to, shape.b);
       r = elbowRoute(A, B, shape.m, [g.box.from, g.box.to], shape.f);
     }
-    this.arrowLayer.querySelector(`.arrow[data-rel="${CSS.escape(id)}"]`)?.classList.add('editing');
+    this.arrowLayer.querySelector(`.arrow[data-rel="${CSS.escape(id)}"], .ref-line[data-rel="${CSS.escape(id)}"]`)?.classList.add('editing');
     const layer = el('div.arrow-handles', { attrs: { 'aria-hidden': 'true' } });
     const handle = (cls, p, part, title) => {
       const h = el(`div.ah.${cls}`, { title, style: { left: `${p.x}px`, top: `${p.y}px` }, dataset: { part } });
@@ -840,7 +840,7 @@ export class Board {
         const now = performance.now();
         const again = this._lastArrowClick?.id === id && now - this._lastArrowClick.t < 450;
         this._lastArrowClick = { id, t: now };
-        if (again && arrow.classList.contains('arrow')) { this.editArrow(id); return; }
+        if (again) { this.editArrow(id); return; }
         this.selectRel(id);
         return;
       }
@@ -851,7 +851,7 @@ export class Board {
 
     // 자식 카드의 가로 폭 손잡이를 더블클릭하면 자동 배치로 되돌린다
     this.grid.addEventListener('dblclick', (ev) => {
-      const arrow = ev.target.closest?.('.arrow');
+      const arrow = ev.target.closest?.('.arrow, .ref-line');
       if (arrow?.dataset.rel) { ev.stopPropagation(); this.editArrow(arrow.dataset.rel); return; }
       const cls = ev.target.classList;
       if (cls.contains('grip-hw') || cls.contains('grip-he')) {
@@ -890,8 +890,13 @@ export class Board {
       const refHit = ev.target.closest?.('.ref-line');
       if (refHit?.dataset.rel) {
         ev.preventDefault();
-        this.selectRel(refHit.dataset.rel);
-        openCtxMenu(ev.clientX, ev.clientY, [{ label: '참조 삭제', action: () => this.deleteRel(refHit.dataset.rel) }]);
+        const id = refHit.dataset.rel;
+        this.selectRel(id);
+        openCtxMenu(ev.clientX, ev.clientY, [
+          { label: '선 모양 고치기', action: () => this.editArrow(id) },
+          { label: '자동 경로로 되돌리기', disabled: !this.store.meta.arrows?.[id], action: () => { this.resetArrow(id); this.endArrowEdit(); } },
+          { label: '참조 삭제', action: () => this.deleteRel(id) },
+        ]);
         return;
       }
       const card = ev.target.closest('.ev');

@@ -85,6 +85,7 @@
 .ref-line{fill:var(--arrow-fill);stroke:var(--arrow-edge);stroke-width:1.25;stroke-linejoin:round;pointer-events:auto}
 .ref-line:hover{fill:var(--accent-soft);stroke:var(--accent)}
 .ref-line.selected{fill:var(--accent);stroke:var(--accent);stroke-width:2.5}
+.ref-line.editing{fill:var(--accent-soft);stroke:var(--accent);stroke-dasharray:4 2}
 /* 눌러 고른 화살표 — Delete로 지운다. 채움은 강조와 같고 테두리를 굵게 */
 .arrow.selected{fill:var(--accent);stroke:var(--accent);stroke-width:2.5}
 .arrow.editing{fill:var(--accent-soft);stroke:var(--accent);stroke-dasharray:4 2}

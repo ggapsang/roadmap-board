@@ -72,9 +72,11 @@ export function drawArrows(layer, grid, items, relations, display, arrows = {}, 
     titleObstacles.push({ id: `title:${cont.dataset.id}`, x, y, w: t.offsetWidth, h: t.offsetHeight });
   }
 
-  // 화살표는 '선행(dep)' 관계만 그린다 (from=선행 → to=후행).
+  // 선행(dep)은 머리 있는 화살표(from=선행 → to=후행), 참조(ref)는 같은 모양에서 머리만 없는 선. 둘 다 양 끝 카드가 이 보드에 다
+  // 그려졌을 때만(트랙·보드·다른 보드와의 참조는 편집 창 목록에서 본다). 모양 고치기(doc.meta.arrows)·경로 고르기·꼴 이어 쓰기는 같다.
   for (const rel of relations) {
-    if (rel.type !== 'dep') continue;
+    if (rel.type !== 'dep' && rel.type !== 'ref') continue;
+    const isRef = rel.type === 'ref';
     const from = box.get(rel.from);
     const to = box.get(rel.to);
     if (!from || !to) continue;             // 필터로 숨겨진 경우
@@ -106,49 +108,25 @@ export function drawArrows(layer, grid, items, relations, display, arrows = {}, 
       points = r.points;
       g = {};
     }
-    const d = blockArrowPath(points, width, head);
+    const d = isRef ? blockBarPath(points, width) : blockArrowPath(points, width, head);
     if (!d) continue;
-    geom.set(rel.id, { from: rel.from, to: rel.to, points, box: { from, to }, ...g, custom: !!o });
+    geom.set(rel.id, { from: rel.from, to: rel.to, points, box: { from, to }, ...g, custom: !!o, type: rel.type });
 
     const path = document.createElementNS(NS, 'path');
     path.setAttribute('d', d);
-    path.setAttribute('class', 'arrow');
-    path.dataset.from = rel.from;       // 카드에 올렸을 때 이어진 화살표를 찾는다(Board#linkHighlight)
+    path.setAttribute('class', isRef ? 'ref-line' : 'arrow');
+    path.dataset.from = rel.from;       // 카드에 올렸을 때 이어진 화살표를 찾는다(Board#linkHighlight — 선행만)
     path.dataset.to = rel.to;
     path.dataset.rel = rel.id;
     if (o) path.classList.add('custom');
-    path.append(makeTitle(rel.from, rel.to, items));
-    group.append(path);
-  }
-
-  // 참조 — 선행 화살표와 같은 모양(굵기·색·테두리)에서 머리만 없다. 양 끝 카드가 이 보드에 다 그려졌을 때만(트랙·보드·다른
-  // 보드와의 참조는 편집 창 목록에서 본다). 선행처럼 다른 카드를 피해 경로를 고른다.
-  for (const rel of relations) {
-    if (rel.type !== 'ref') continue;
-    const from = box.get(rel.from);
-    const to = box.get(rel.to);
-    if (!from || !to) continue;
-    const obstacles = [...titleObstacles];
-    for (const [id, rect] of box) {
-      if (id === rel.from || id === rel.to || container.has(id)) continue;
-      obstacles.push({ id, ...rect });
+    if (isRef) {
+      const title = document.createElementNS(NS, 'title');
+      const a = items.find((x) => x.id === rel.from), b = items.find((x) => x.id === rel.to);
+      title.textContent = `참조 · ${a?.ti ?? rel.from} — ${b?.ti ?? rel.to}`;
+      path.append(title);
+    } else {
+      path.append(makeTitle(rel.from, rel.to, items));
     }
-    const kept = forms?.get(rel.id);
-    const sameTrack = trackOf.get(rel.from) === trackOf.get(rel.to);
-    const r = routeBetweenKeyed(from, to, sameTrack, bite, obstacles, kept?.key ?? null);
-    forms?.set(rel.id, { key: r.key });
-    const d = blockBarPath(r.points, width);
-    if (!d) continue;
-    const path = document.createElementNS(NS, 'path');
-    path.setAttribute('d', d);
-    path.setAttribute('class', 'ref-line');
-    path.dataset.from = rel.from;
-    path.dataset.to = rel.to;
-    path.dataset.rel = rel.id;
-    const title = document.createElementNS(NS, 'title');
-    const a = items.find((i) => i.id === rel.from), b = items.find((i) => i.id === rel.to);
-    title.textContent = `참조 · ${a?.ti ?? rel.from} — ${b?.ti ?? rel.to}`;
-    path.append(title);
     group.append(path);
   }
 }

@@ -545,7 +545,7 @@ export function normalize(doc) {
 
   // ── 사용자가 고친 화살표 모양(보드 표시) — 관계 id → { a:{side,t}, b:{side,t}, m }. 없는 관계·틀린 값은 버린다
   //    (화살표는 자동 경로로 돌아간다). 끝점 = 카드 테두리 위 점(변·비율), m = 가운데 구간 위치(A→B 비율).
-  const relIds = new Set(doc.relations.filter((r) => r.type === 'dep').map((r) => r.id));
+  const relIds = new Set(doc.relations.filter((r) => r.type === 'dep' || r.type === 'ref').map((r) => r.id));   // 참조 선도 고친다
   const SIDES = ['top', 'right', 'bottom', 'left'];
   const end = (e) => (isObj(e) && SIDES.includes(e.side) && Number.isFinite(Number(e.t))
     ? { side: e.side, t: Math.min(1, Math.max(0, Number(e.t))) } : null);
