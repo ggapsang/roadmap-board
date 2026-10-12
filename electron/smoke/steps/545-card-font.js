@@ -36,6 +36,17 @@ export default {
         await sleep(150);
         o.parentFs = near(fsOf(parent.id), boardFs0 * 1.5);
         o.childOwn = near(fsOf(child.id), boardFs0);
+        // 자식이 상위 카드 아래로 삐져나가도 상위 제목은 배율을 따른다 — 넘침으로 잘못 읽어 최소 크기로 줄이던 것(2026-10-13 사용자)
+        const hd0 = child.place.hd;
+        r.store.commit('스모크 자식 늘리기', () => { child.place.hd = 400; });
+        await sleep(150);
+        const pn = document.querySelector('.col .ev[data-id="' + parent.id + '"]');
+        const cn = pn?.querySelector(':scope > .ev[data-id="' + child.id + '"]');
+        o.childOut = !!cn && cn.offsetTop + cn.offsetHeight > pn.clientHeight;
+        const pt = pn?.querySelector(':scope > .t');
+        o.parentTitle = !!pt && !pt.style.fontSize && near(parseFloat(getComputedStyle(pt).fontSize) / (13 * boardFs0), 1.5);
+        r.store.commit('스모크 자식 원복', () => { child.place.hd = hd0; });
+        await sleep(120);
         r.store.commit('스모크 상위 글자 원복', () => { parent.place.fs = null; });
         await sleep(120);
         // 범위 — 가-를 끝까지 눌러도 60% 밑으로 안 간다. 가운데(100%)는 되돌린다(null)
@@ -75,6 +86,8 @@ export default {
     && o?.multiplied === true
     && o?.parentFs === true
     && o?.childOwn === true
+    && o?.childOut === true
+    && o?.parentTitle === true
     && o?.min === 0.6
     && o?.reset === true
     && o?.undo === true

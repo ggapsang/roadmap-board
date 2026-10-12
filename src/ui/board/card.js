@@ -224,7 +224,14 @@ export function fitTitle(node) {
   const t = node.querySelector(':scope > .t');
   if (!t) return;
   const titleOver = () => t.scrollHeight > t.clientHeight + 1 || t.scrollWidth > t.clientWidth + 1;
-  const overflow = () => titleOver() || node.scrollHeight > node.clientHeight + 1;
+  // 상위 일정은 자기 내용만 잰다 — 자식 카드가 아래로 삐져나가면 scrollHeight가 커져 '넘친다'로 읽고 제목을 최소 크기로
+  // 줄여 버렸다(카드 글자 크기를 바꿔도 그대로이던 것, 2026-10-13 사용자)
+  const own = node.classList.contains('container')
+    ? [...node.querySelectorAll(':scope > .t, :scope > .meta, :scope > .pg, :scope > .card-note')] : null;
+  const contentOver = own
+    ? () => own.some((x) => !x.hidden && x.offsetTop + x.offsetHeight > node.clientHeight + 1)
+    : () => node.scrollHeight > node.clientHeight + 1;
+  const overflow = () => titleOver() || contentOver();
   if (!overflow()) return;
 
   for (const sel of [':scope > .card-note', ':scope > .meta', ':scope > .pg']) {
