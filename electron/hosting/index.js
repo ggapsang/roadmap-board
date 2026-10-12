@@ -187,6 +187,23 @@ export class HostingManager {
     this.db.prepare("UPDATE hosting SET status = 'discarded', closed_at = datetime('now','localtime') WHERE id = ?").run(id);
   }
 
+  /** 버린 것을 다시 호스팅한다 — 사본(스냅샷 + 변경 이력)은 남아 있으니 버리기 전 그대로 이어진다(2026-10-13 사용자).
+   *  기준(base)도 그대로라 나중에 거둘 때 처음 떼어 낸 때와 비교한다. 원래 보드에 열린 호스팅이 있으면 못 한다(한 보드에 하나).
+   *  포트는 원래 번호 — 그새 다른 호스팅이 가져갔으면 빈 번호로 */
+  async revive(id) {
+    const row = this.db.prepare('SELECT status, source_board_id, port FROM hosting WHERE id = ?').get(id);
+    if (!row) throw new Error('호스팅을 찾을 수 없습니다.');
+    if (row.status !== 'discarded') throw new Error('버린 호스팅만 다시 호스팅할 수 있습니다.');
+    if (row.source_board_id != null
+      && this.db.prepare("SELECT 1 FROM hosting WHERE source_board_id = ? AND status IN ('open','paused') AND id != ?").get(row.source_board_id, id)) {
+      throw new Error('원래 보드를 이미 호스팅하고 있습니다 — 그 호스팅을 거두거나 버린 뒤에 다시 호스팅하세요.');
+    }
+    const taken = this.db.prepare("SELECT 1 FROM hosting WHERE port = ? AND status IN ('open','paused') AND id != ?").get(row.port, id);
+    this.db.prepare("UPDATE hosting SET status = 'paused', closed_at = NULL, port = ?, updated_at = datetime('now','localtime') WHERE id = ?")
+      .run(taken ? this.#freePortNumber() : row.port, id);
+    return this.open(id);
+  }
+
   /** 이력(지운 호스팅 행과 변경까지) 지우기 — 거두었거나 버린 것만 */
   remove(id) {
     const row = this.db.prepare('SELECT status FROM hosting WHERE id = ?').get(id);

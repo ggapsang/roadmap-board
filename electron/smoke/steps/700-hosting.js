@@ -1,7 +1,7 @@
 // 스모크 단계 'hosting' — 보드 호스팅(docs/SHARE.md). 도구 모음 '호스팅'으로 지금 보드를 떼어 내면 호스팅 창이 뜨고,
 // 브라우저 참가자(127.0.0.1 — 스모크는 사내망 대신 루프백에만 연다)가 링크로 들어와 이름을 적고 같은 사본을 함께 고친다.
 //   다른 칸 동시 고치기 → 둘 다 산다 · 같은 칸 → 모두 같은 값 · 참가자 되돌리기는 자기 것만 · 보기 전용 · 이름 표식 ·
-//   참가자 화면엔 DB 전체 기능이 없다 · 토큰 없이·앱 밖 파일은 막힌다 · 원래 보드는 그대로 · 멈췄다 다시 열면 이어진다(이력)
+//   참가자 화면엔 DB 전체 기능이 없다 · 토큰 없이·앱 밖 파일은 막힌다 · 원래 보드는 그대로 · 멈췄다 다시 열면 이어진다(이력) · 버린 것을 다시 호스팅
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function until(fn, ms = 6000, step = 80) {
@@ -122,10 +122,22 @@ export default {
     guest.destroy();
     hosting().discard(row.id);
     host.destroy();
+    // 버린 것을 다시 호스팅 — 사본·이력이 남아 버리기 전 그대로 이어 열린다(이력 지우기 전까지, 2026-10-13 사용자)
+    await sleep(200);
+    const nBefore = db.prepare('SELECT COUNT(*) n FROM hosting_op WHERE hosting_id = ?').get(row.id).n;
+    const rev = await hosting().revive(row.id);
+    const after = hosting().list().find((h) => h.id === row.id);
+    out.revived = after.status === 'open' && rev.port === row.port && hosting().state(row.id).doc.items.find((x) => x.id === id0).ti === '참가자가 고침'
+      && db.prepare('SELECT COUNT(*) n FROM hosting_op WHERE hosting_id = ?').get(row.id).n === nBefore;
+    out.reviveOnlyDiscarded = await hosting().revive(row.id).then(() => false, () => true);
+    const host2 = await until(() => hostWindow(row.id));
+    hosting().discard(row.id);
+    host2?.destroy();
     return out;
   },
   check: (o) => o?.btnShown === true && o?.portFrom1126 === true && o?.plainUrl === true && o?.noPrompt === true && o?.hostSession === true && o?.guestReady === true
     && o?.guestRestricted === true && o?.people === true && o?.guestToHost === true && o?.bothFields === true && o?.sameField === true
     && o?.undoOwn === true && o?.presence === true && o?.noDbWide === true && o?.viewOnly === true && o?.blocked === true && o?.privateOnly === true
-    && o?.sourceUntouched === true && o?.history === true && o?.noFix === true && o?.guestClosed === true && o?.resumed === true,
+    && o?.sourceUntouched === true && o?.history === true && o?.noFix === true && o?.guestClosed === true && o?.resumed === true
+    && o?.revived === true && o?.reviveOnlyDiscarded === true,
 };

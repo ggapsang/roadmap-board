@@ -85,6 +85,7 @@ contextBridge.exposeInMainWorld('roadmapDB', {
     window: (id) => call('hosting:window', id),
     pause: (id) => call('hosting:pause', id),
     discard: (id) => call('hosting:discard', id),
+    revive: (id) => call('hosting:revive', id),
     remove: (id) => call('hosting:remove', id),
     state: (id) => call('hosting:state', id),
     submit: (id, payload) => call('hosting:submit', id, payload),

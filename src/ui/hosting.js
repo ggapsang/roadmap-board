@@ -2,7 +2,7 @@
  * 보드 호스팅 — 호스트 PC의 화면 (docs/SHARE.md §5·§6).
  *
  *   startHosting        도구 모음 '호스팅' — 지금 보드를 떼어 내 사내망에 연다(호스팅 창이 뜬다)
- *   renderHostingList   첫 화면의 호스팅 목록 — 창 열기·다시 열기 · 멈춤 · 거두기 · 이력 · 버리기 · 이력 지우기
+ *   renderHostingList   첫 화면의 호스팅 목록 — 창 열기·다시 열기 · 멈춤 · 거두기 · 이력 · 버리기 · (버린 것) 다시 호스팅 · 이력 지우기
  *   harvest             거두기 — 원래 보드에 3방향 합치기(충돌만 묻는다) / 독립된 보드로(새 id) / 그만두기
  *
  * 호스팅 사본은 이벤트가 아니다 — 거두기 전까지 시스템(이벤트·포함·관계)에는 아무 일도 없다.
@@ -96,11 +96,13 @@ export async function renderHostingList({ api, mount, onHarvest }) {
       ]),
       el('div.hrow-actions', {}, [
         active ? btn(h.live ? '창 열기' : '다시 열기', async () => { try { await api.window(h.id); } catch (e) { toast(e.message, 'warn'); } }) : null,
+        // 버린 것 — 사본과 이력이 남아 있어 버리기 전 그대로 이어 연다(이력 지우기 전까지)
+        h.status === 'discarded' ? btn('다시 호스팅', async () => { try { await api.revive(h.id); } catch (e) { toast(e.message, 'warn'); } }) : null,
         h.live ? btn('멈춤', async () => { await api.pause(h.id); }) : null,
         active ? btn('거두기', () => onHarvest(h), 'btn sm cta') : null,
         btn('이력', () => showHistory(api, h)),
         active ? btn('버리기', async () => {
-          if (await askConfirm({ title: '호스팅 버리기', message: `'${h.name}' 사본의 변경을 거두지 않고 끝냅니다. 이력은 남습니다.`, confirmLabel: '버리기', danger: true })) await api.discard(h.id);
+          if (await askConfirm({ title: '호스팅 버리기', message: `'${h.name}' 사본의 변경을 거두지 않고 끝냅니다. 사본과 이력은 남아, 이력을 지우기 전까지 '다시 호스팅'으로 이어 열 수 있습니다.`, confirmLabel: '버리기', danger: true })) await api.discard(h.id);
         }) : btn('이력 지우기', async () => {
           if (await askConfirm({ title: '이력 지우기', message: `'${h.name}' 호스팅의 사본과 변경 이력을 지웁니다. 되돌릴 수 없습니다.`, confirmLabel: '지우기', danger: true })) await api.remove(h.id);
         }),

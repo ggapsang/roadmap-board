@@ -563,6 +563,7 @@ function registerHostingIpc() {
   ipcMain.handle('hosting:window', withChange(async (_e, id) => { const r = await hosting.open(id); openHostWindow(id); return r; }));
   ipcMain.handle('hosting:pause', withChange((_e, id) => hosting.pause(id)));
   ipcMain.handle('hosting:discard', withChange((_e, id) => hosting.discard(id)));
+  ipcMain.handle('hosting:revive', withChange(async (_e, id) => { const r = await hosting.revive(id); openHostWindow(id); return r; }));
   ipcMain.handle('hosting:remove', withChange((_e, id) => hosting.remove(id)));
   ipcMain.handle('hosting:state', safe((_e, id) => hosting.state(id)));
   ipcMain.handle('hosting:submit', safe((_e, id, payload) => hosting.submit(id, 'host', payload ?? {})));
