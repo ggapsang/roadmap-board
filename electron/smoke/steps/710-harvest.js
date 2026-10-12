@@ -15,7 +15,7 @@ async function until(fn, ms = 8000, step = 80) {
 export default {
   name: 'harvest',
   areas: ['hosting', 'db'],
-  async run({ target, wrote, hosting, hostWindow, db, fs, BoardRepository }) {
+  async run({ target, wrote, hosting, hostWindow, db, fs, BoardRepository, capture, shotDir }) {
     if (!wrote) return null;
     const out = {};
     const js = (w, code) => w.webContents.executeJavaScript(`(async () => { ${code} })()`);
@@ -54,6 +54,11 @@ export default {
     out.independentRun = (await js(target, `return window.__roadmap.store.item(${JSON.stringify(A)}).ti`)) === start.base[A].ti;
 
     // 첫 화면 › 호스팅 › 거두기 › 원래 보드에 합치기
+    if (shotDir()) {
+      await js(target, `window.__roadmap.tabs.newLauncherTab(); await new Promise((r) => setTimeout(r, 600)); document.getElementById('l-hosting').scrollIntoView(); return true;`);
+      await capture(target, 'hosting-list');
+      await js(target, `window.__roadmap.tabs.closeTab(window.__roadmap.tabs.active); await new Promise((r) => setTimeout(r, 300)); return true;`);
+    }
     const res = await js(target, `
       const r = window.__roadmap;
       const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
@@ -69,6 +74,14 @@ export default {
       choice.click();
       const sheet = await wait('.harvest', 5000);
       if (!sheet) return { error: '거두기 창 없음', listed };
+      const rows = [...document.querySelectorAll('.harvest-row')];
+      return { listed, n: rows.length };`);
+    if (shotDir()) await capture(target, 'hosting-harvest');
+    const res2 = await js(target, `
+      const r = window.__roadmap;
+      const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+      const listed = ${JSON.stringify(!!res?.listed)};
+      if (${JSON.stringify(res?.error ?? null)}) return ${JSON.stringify(res ?? {})};
       const rows = [...document.querySelectorAll('.harvest-row')];
       const texts = rows.map((x) => x.querySelector('.harvest-what').textContent);
       // B 상태 충돌은 보드 쪽, C(사본에서 지움 vs 보드에서 고침)는 사본 쪽(지움)
@@ -90,7 +103,7 @@ export default {
         added: !!it('hv-new') && (r.store.meta.memos ?? []).some((m) => m.id === 'hv-memo'),
         board: r.adapter.projectId,
       };`);
-    Object.assign(out, res);
+    Object.assign(out, res2);
     const hrow = db.prepare('SELECT status, result_json FROM hosting WHERE id = ?').get(start.id);
     out.harvested = hrow?.status === 'harvested';
     const result = hrow?.result_json ? JSON.parse(hrow.result_json) : {};

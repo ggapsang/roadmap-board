@@ -53,6 +53,7 @@ body.session .tabbar, body.session #btnProjects, body.session #btnGraph, body.se
 .harvest-list{display:flex;flex-direction:column;gap:var(--u2)}
 .harvest-row{display:flex;flex-direction:column;gap:2px;padding:var(--u2) 0;border-bottom:1px solid var(--border-subtle)}
 .harvest-what{color:var(--text-primary);font-weight:500}
-.harvest-opt{display:flex;align-items:center;gap:var(--u2);font-size:13px;color:var(--text-secondary);cursor:pointer;margin:0}
-.harvest-opt input{width:auto;height:auto}
-.harvest-opt em{font-style:normal;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dlg .harvest-opt{display:flex;align-items:center;gap:var(--u2);font-size:13px;color:var(--text-secondary);cursor:pointer;margin:0}
+.dlg .harvest-opt input{width:auto;height:auto}
+.dlg .harvest-opt .harvest-side{min-width:120px}
+.dlg .harvest-opt em{font-style:normal;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

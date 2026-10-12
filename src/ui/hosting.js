@@ -11,6 +11,7 @@ import { el, clear } from './dom.js';
 import { toast } from './toast.js';
 import { askConfirm, askChoice, askText, openSheet } from './dialog.js';
 import { merge3, findEntity } from '../core/merge3.js';
+import { statusList, ITEM_TYPES } from '../config/index.js';
 
 const STATUS = { open: '호스팅 중', paused: '멈춤', harvested: '거둠', discarded: '버림' };
 
@@ -136,6 +137,14 @@ function describe(c, ours, theirs) {
   return `${kind}${what ? ` '${what}'` : ''} · ${field || c.f}`;
 }
 
+/** 충돌 칸의 값을 사람이 읽게 — 상태·종류는 이름으로, 긴 값은 줄여서 */
+const showField = (c, v, doc) => {
+  if (c?.f === 'st') return statusList(doc).find((s) => s.key === v)?.label ?? show(v);
+  if (c?.f === 'ty') return ITEM_TYPES.find((t) => t.key === v)?.label ?? show(v);
+  if (c?.f === 'parent' && v) return doc.items?.find((x) => x.id === v)?.ti ?? show(v);
+  return show(v);
+};
+
 const show = (v) => {
   if (v == null || v === '') return '(없음)';
   if (typeof v === 'object') { const s = JSON.stringify(v); return s.length > 60 ? s.slice(0, 57) + '…' : s; }
@@ -201,16 +210,18 @@ export async function harvest({ api, row, tabs, store, adapter, listEvents }) {
     const radios = [];
     r.conflicts.forEach((c, i) => {
       const who = (m.authors?.[authorKey(c)] ?? []).join(', ');
+      const fixed = (t) => ({ fixed: t });
       const opt = (side, label, value) => {
         const input = el('input', { type: 'radio', name: `hv${i}`, value: side, checked: side === 'theirs', on: { change: () => picked.set(c.key, side) } });
         radios.push({ input, key: c.key, side });
-        return el('label.harvest-opt', {}, [input, el('span', { text: label }), el('em', { text: show(value) })]);
+        const text = value && typeof value === 'object' && 'fixed' in value ? value.fixed : showField(c, value, ours);
+        return el('label.harvest-opt', {}, [input, el('span.harvest-side', { text: label }), el('em', { text: text })]);
       };
       list.append(el('div.harvest-row', {}, [
         el('div.harvest-what', { text: describe(c, ours, m.theirs) }),
-        c.base !== undefined && c.kind === 'both' ? el('div.muted', { text: `원래: ${show(c.base)}` }) : null,
-        opt('theirs', `사본${who ? ` (${who})` : ''}`, c.kind === 'theirs-del' ? '지움' : c.kind === 'ours-del' ? '살림' : c.theirs),
-        opt('ours', '보드', c.kind === 'ours-del' ? '지움' : c.kind === 'theirs-del' ? '남김' : c.ours),
+        c.base !== undefined && c.kind === 'both' ? el('div.muted', { text: `원래 값: ${showField(c, c.base, ours)}` }) : null,
+        opt('theirs', `사본${who ? ` (${who})` : ''}`, c.kind === 'theirs-del' ? fixed('지운다') : c.kind === 'ours-del' ? fixed('다시 살린다') : c.theirs),
+        opt('ours', '보드', c.kind === 'ours-del' ? fixed('지운 채로 둔다') : c.kind === 'theirs-del' ? fixed('남긴다') : c.ours),
       ]));
     });
     const setAll = (side) => { for (const x of radios) { x.input.checked = x.side === side; if (x.input.checked) picked.set(x.key, side); } };

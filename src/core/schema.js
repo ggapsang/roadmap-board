@@ -628,10 +628,19 @@ function normalizeRelations(doc, itemIds) {
   const src = [];
   // 관계는 doc.relations에서 받는다. 단 포함(contain)은 item.parent가 authoritative라
   // 입력의 contain은 버리고 item.parent에서 다시 만든다(중복·불일치 방지).
-  if (Array.isArray(doc.relations)) for (const r of doc.relations) if (isObj(r) && r.type !== 'contain') src.push(r);
+  // 다시 만든 포함은 같은 부모·자식이면 원래 id를 쓴다 — 정규화를 몇 번 돌려도 같은 문서(호스팅이 변경마다 정규화한다,
+  // docs/SHARE.md §3. id가 매번 바뀌면 고침이 끝없이 생긴다)
+  const containId = new Map();
+  if (Array.isArray(doc.relations)) {
+    for (const r of doc.relations) {
+      if (!isObj(r)) continue;
+      if (r.type === 'contain') { if (typeof r.id === 'string' && r.id) containId.set(`${r.from}|${r.to}`, r.id); }
+      else src.push(r);
+    }
+  }
   for (const it of doc.items) {
     for (const d of (Array.isArray(it.dp) ? it.dp : [])) src.push({ type: 'dep', from: d, to: it.id });
-    if (typeof it.parent === 'string' && it.parent) src.push({ type: 'contain', from: it.parent, to: it.id });
+    if (typeof it.parent === 'string' && it.parent) src.push({ type: 'contain', from: it.parent, to: it.id, id: containId.get(`${it.parent}|${it.id}`) });
   }
 
   const adj = new Map();                          // `${type}|${node}` -> Set(다음 노드)

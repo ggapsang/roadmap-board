@@ -1,4 +1,11 @@
-# 보드 호스팅 — 설계 (2026-10-12, 구현 전)
+# 보드 호스팅 — 설계 (2026-10-12 · 1~3단계 구현)
+
+> **구현 메모(2026-10-12).** 설계에서 '호스팅 탭'이라 적은 것은 **호스팅 창**으로 만들었다 — 같은 렌더러를 `?hosting=id`로 띄워
+> 참가자 브라우저와 같은 코드 길(HostedAdapter)을 탄다. 탭마다 저장소를 바꿔 끼우지 않아도 된다.
+> 파일: `electron/hosting/index.js`(사본·이력·웹 서버·순서), `electron/db/migrations/024_hosting.sql`, `src/core/ops.js`(변경 쪼개기·적용),
+> `src/core/merge3.js`(3방향 합치기), `src/core/storage.js` HostedAdapter·IpcHostTransport·HttpTransport, `src/ui/session.js`(공유 화면),
+> `src/ui/hosting.js`(시작·목록·거두기). 스모크 `700-hosting`·`710-harvest`.
+> 정규화를 변경마다 돌리므로 **정규화는 같은 문서에 몇 번 돌려도 같아야 한다**(포함 관계 id를 다시 만들지 않고 유지 — schema.js).
 
 > 보드 하나를 이 PC(호스트)에서 사내망에 열어, 브라우저로 들어온 사람들과 동시에 보고 고친다.
 > **호스팅하는 동안 그 보드는 원래 보드와 떨어진 독립 사본으로 운영되고**, 고친 것을 '거둘' 때 호스트가 합칠지·무엇을 남길지·

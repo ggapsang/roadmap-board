@@ -455,7 +455,10 @@ export class HostingManager {
     const p = url.pathname;
     if (p.startsWith('/api/')) return this.#api(s, req, res, url, ip, headers);
     if (req.method !== 'GET' && req.method !== 'HEAD') return deny(405, '');
-    const rel = p === '/' ? '/index.html' : decodeURIComponent(p);
+    // 디코딩한 뒤 정규화한 경로로 허용 목록을 본다 — '%2e%2e%2f'처럼 인코딩한 '..'로 앱 밖(electron/·DB)에 닿지 못하게
+    let rel;
+    try { rel = p === '/' ? '/index.html' : path.posix.normalize(decodeURIComponent(p)); } catch { return deny(400, ''); }
+    if (/[\u0000\\]/.test(rel)) return deny(400, '');   // NUL·역슬래시(윈도 경로 구분자)는 받지 않는다
     const { prefixes, exact } = this.allowed;
     if (!exact.has(rel) && !prefixes.some((x) => rel.startsWith(x))) return deny(404, '');
     const file = path.join(this.root, rel);

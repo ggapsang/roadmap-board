@@ -53,6 +53,7 @@ electron/          메인 프로세스 — 창, IPC, SQLite
   db/index.js        연결 + PRAGMA user_version 기반 마이그레이션
   db/repository.js   문서 <-> 정규화 테이블
   db/migrations/     NNN_*.sql — 번호 순 적용
+  hosting/index.js   보드 호스팅(docs/SHARE.md) — 사본·이력(hosting·hosting_op)·사내망 웹 서버(SSE+POST)·변경 순서 매기기
 
 src/               렌더러 (프레임워크 없음, ES 모듈)
   config/            상태·조직·배율 등 런타임 설정, 기본 로드맵(seed)
@@ -65,8 +66,10 @@ src/               렌더러 (프레임워크 없음, ES 모듈)
     store.js           문서 상태 + 되돌리기 + 저장
     view.js            화면 상태 (필터/검색/배율/선택) — 저장도 undo도 안 됨
     layout.js          레인(겹침) 배치 — 순수 함수. 트랙/상위 일정 안에서 같은 규칙
-    storage.js         저장소 어댑터 (Local / Electron / Memory)
+    storage.js         저장소 어댑터 (Local / Electron / Memory / Hosted — 호스팅 사본: 호스트 창 IPC · 참가자 HTTP)
     graph.js           그래프 뷰 계산 — 노드 크기·순환(Tarjan)·결정적 초기 배치·방향 중력(d3-force)
+    ops.js             호스팅 동기화 변경 — 문서 차이를 대상·칸 변경으로(diffDocs)·적용(applyOps)·내 칸 빼기·지문
+    merge3.js          거두기 3방향 합치기 — 기준·사본·지금 보드
   ui/                DOM 렌더
     launcher.js        프로젝트 목록 — 앱의 첫 화면 (휴지통 버튼 → trash.js 팝업)
     tabs.js            보드 탭 — 문서 캐시, 다른 보드 저장이 바꾼 탭은 '낡음' → 돌아갈 때 다시 읽기. 탭 줄 밖으로 끌면 따로 창(detach)
@@ -76,6 +79,8 @@ src/               렌더러 (프레임워크 없음, ES 모듈)
     noteEditor.js      비고 편집기 — CodeMirror 6 + 옵시디언식 라이브 미리보기(커서 줄만 원문). 저장은 마크다운 원문
     markdown.js        마크다운 → DOM(카드 위 비고) — textContent만, 링크는 http·https·mailto만
     help.js            도움말 팝업 — docs/HELP.md를 읽어 그린다(작은 마크다운 변환, textContent만). F1·첫 화면 ?
+    session.js         공유(호스팅) 화면 — 위쪽 막대·참가자·이름 표식(호스트 창·참가자 브라우저 공통)
+    hosting.js         호스팅 시작 · 첫 화면 호스팅 목록 · 거두기(3방향 합치기 충돌 고르기)
     board/             축 · 헤더 · 카드 · 화살표 · 드래그 · 메모(memos.js — 포스트잇, 이벤트 아님)
     panels/            일정 편집(속성·매핑·스타일·상세 — 트랙 머리를 누르면 같은 패널의 트랙 모드: 제목·별칭·기간·비고·항등·조합·채우기,
                        .item-only는 숨김) · 보드 설정(트랙·조직·상태·표시) · 데이터
@@ -261,6 +266,14 @@ src/               렌더러 (프레임워크 없음, ES 모듈)
    바뀌어도 따라간다. 크기 `w`·`h`는 px. 그리기·입력은 `src/ui/board/memos.js`(층 `.memos`는 다시 그려지지 않고 리스너는 그 층과
    window에만 — 규약 14, 끄는 동안 DOM만 옮기고 놓을 때 한 번 commit). 쓰던 메모는 탭을 떠날 때(`getDoc`)·창을 닫기 전·떼어 내기 전에
    `finishEdit`로 저장한다. 내보내기의 메모 포함 여부는 이 PC 설정(`exportMemos`, localStorage) — PNG·PDF·인쇄·JSON이 같은 값을 쓴다.
+30. **호스팅은 떼어 낸 독립 사본이다 (docs/SHARE.md, 2026-10-12 사용자).** 사본·이력은 `hosting`·`hosting_op`(024)에만 쓰고 4대상에는
+   거두기 전까지 쓰지 않는다. `hosting.source_board_id`는 SET NULL(원래 보드가 지워져도 독립 보드로 거둔다 — 규약 18의 의도적 예외).
+   이벤트 id는 원래 것 그대로(거둘 때 같은 id = 같은 이벤트). 호스트 창(`?hosting=id`)과 참가자 브라우저(http + `?t=` 토큰)는 같은 렌더러에
+   `HostedAdapter` — 메인이 받은 순서대로 번호를 붙여 적용(같은 칸은 나중 것)하고 정규화 고침(fix)까지 뿌린다. **정규화는 같은 문서에 몇 번
+   돌려도 같아야 한다**(새 id를 만들면 변경마다 고침이 생긴다 — 정규화를 고칠 때 지킬 것). 공유 화면은 DB 전체를 보거나 바꾸는 것(다른 보드·
+   그래프·휴지통·항등·조합·참조 고르기·반입)을 하지 않는다 — 새 기능이 `adapter.listEvents()` 같은 DB 전체를 쓰면 `adapter.session`이면 막는다.
+   되돌리기는 `Store.applyRemote`가 남의 변경을 되돌리기 기록에도 넣어 '내 것만'. 웹 서버는 사설 대역 주소만, 렌더러 파일만(정규화한 경로로
+   허용 목록), 스모크·재현은 127.0.0.1에만. 거두기는 원래 보드 문서에 `store.replace`(되돌리기 1단계·보드가 본 것만 저장) + 먼저 DB 백업.
 
 ## 데이터
 

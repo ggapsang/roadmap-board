@@ -63,7 +63,7 @@ export class SessionUi {
       : this.status === 'online' ? (this.host ? '호스팅 중' : '연결됨') : this.status === 'offline' ? '다시 연결하는 중…' : '연결 끊김';
     const ok = !a.closed && this.status === 'online';
     clear(this.bar);
-    this.bar.append(
+    const parts = [
       el('span.sess-dot', { className: ok ? 'sess-dot on' : 'sess-dot' }),
       el('b.sess-state', { text: stateText }),
       el('span.sess-name', { text: a.hostInfo?.name || '' }),
@@ -77,7 +77,8 @@ export class SessionUi {
       this.host ? el('button.btn.sm.outline', { type: 'button', text: '링크 복사', title: '사내망 주소 — 이 링크를 받은 사람은 이름만 적고 들어옵니다', on: { click: () => this.#copyLink() } }) : null,
       this.host ? el('button.btn.sm.outline', { type: 'button', text: '이력', on: { click: () => this.#history() } }) : null,
       this.host && !a.closed ? el('button.btn.sm.outline', { type: 'button', text: '호스팅 멈춤', title: '참가자 연결을 닫습니다. 사본과 이력은 남고, 첫 화면에서 다시 열거나 거둘 수 있습니다', on: { click: () => this.#pause() } }) : null,
-    );
+    ];
+    this.bar.append(...parts.filter(Boolean));
     document.title = `${a.hostInfo?.name || 'WOLFPACK'} · ${this.host ? '호스팅' : '공유'}`;
   }
 

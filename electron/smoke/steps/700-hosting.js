@@ -17,7 +17,7 @@ async function until(fn, ms = 6000, step = 80) {
 export default {
   name: 'hosting',
   areas: ['hosting', 'db', 'board', 'panel'],
-  async run({ target, wrote, hosting, hostWindow, BrowserWindow, db }) {
+  async run({ target, wrote, hosting, hostWindow, BrowserWindow, db, capture, shotDir }) {
     if (!wrote) return null;
     const out = {};
     const js = (w, code) => w.webContents.executeJavaScript(`(async () => { ${code} })()`);
@@ -43,7 +43,7 @@ export default {
 
     // ── 참가자 — 링크로 들어와 이름만 적는다
     const url = row.urls[0];
-    const guest = new BrowserWindow({ show: false, width: 1300, height: 860, webPreferences: { sandbox: true, contextIsolation: true } });
+    const guest = new BrowserWindow({ show: !!shotDir(), width: 1300, height: 860, webPreferences: { sandbox: true, contextIsolation: true } });
     await guest.loadURL(url);
     await until(() => js(guest, `return !!document.querySelector('.dlg input')`), 8000);
     await js(guest, `const i = document.querySelector('.dlg input'); i.value = '시험 참가자'; document.querySelector('.dlg-actions .btn.cta').click(); return true;`);
@@ -77,6 +77,7 @@ export default {
     // 이름 표식 — 참가자가 카드를 고르면 호스트 화면 그 카드 위에 이름
     await js(guest, `window.__roadmap.itemPanel.open(${JSON.stringify(id0)}); return true`);
     out.presence = !!(await until(() => js(host, `return [...document.querySelectorAll('.presence-tag')].some((t) => t.textContent.includes('시험 참가자'))`)));
+    if (shotDir()) { await capture(host, 'hosting-host'); await capture(guest, 'hosting-guest'); }
     // 참가자 화면 — 항등·조합·참조 고르기 없음
     out.noDbWide = await js(guest, `
       document.querySelector('#pItem .ptab[data-tab="rel"]')?.click();
@@ -95,11 +96,17 @@ export default {
       const a = await fetch('/api/state?cid=x', { credentials: 'omit' });
       const b = await fetch('/electron/main.js');
       const c = await fetch('/package.json');
-      return a.status === 403 && b.status === 404 && c.status === 404;`);
+      const d = await fetch('/src/%2e%2e%2felectron%2fmain.js');      // 인코딩한 '..'로 앱 밖 — 막힌다
+      const e = await fetch('/src/..%5c..%5celectron%5cmain.js');      // 역슬래시
+      return a.status === 403 && b.status === 404 && c.status === 404 && d.status >= 400 && e.status >= 400;`);
+    out.privateOnly = (await import('../../hosting/index.js')).isPrivateAddress('192.168.0.5') && !(await import('../../hosting/index.js')).isPrivateAddress('8.8.8.8')
+      && (await import('../../hosting/index.js')).isPrivateAddress('::ffff:10.1.2.3') && !(await import('../../hosting/index.js')).isPrivateAddress('172.32.0.1');
     // 원래 보드는 그대로(독립 사본)
     out.sourceUntouched = (await js(target, `return window.__roadmap.store.items[0].ti`)) === before.ti;
     // 이력 + 멈췄다 다시 열기
     const nOps = db.prepare('SELECT COUNT(*) n FROM hosting_op WHERE hosting_id = ?').get(row.id).n;
+    // 정규화가 쓸데없는 고침을 만들지 않는다(같은 문서를 몇 번 정규화해도 같다 — 포함 관계 id 유지)
+    out.noFix = db.prepare('SELECT op_json FROM hosting_op WHERE hosting_id = ?').all(row.id).every((r) => !(JSON.parse(r.op_json).fix ?? []).length);
     out.history = nOps >= 5 && hosting().history(row.id).some((h) => h.author === '시험 참가자');
     hosting().pause(row.id);
     out.guestClosed = !!(await until(() => js(guest, 'return window.__roadmap.session.closed')));
@@ -113,6 +120,6 @@ export default {
   },
   check: (o) => o?.btnShown === true && o?.portFrom1126 === true && o?.hostSession === true && o?.guestReady === true
     && o?.guestRestricted === true && o?.people === true && o?.guestToHost === true && o?.bothFields === true && o?.sameField === true
-    && o?.undoOwn === true && o?.presence === true && o?.noDbWide === true && o?.viewOnly === true && o?.blocked === true
-    && o?.sourceUntouched === true && o?.history === true && o?.guestClosed === true && o?.resumed === true,
+    && o?.undoOwn === true && o?.presence === true && o?.noDbWide === true && o?.viewOnly === true && o?.blocked === true && o?.privateOnly === true
+    && o?.sourceUntouched === true && o?.history === true && o?.noFix === true && o?.guestClosed === true && o?.resumed === true,
 };
