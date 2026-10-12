@@ -19,6 +19,8 @@
 
 <!-- ── 보드 탭 (여러 보드를 동시에) ───────────────────────── -->
 <div class="tabbar" id="tabbar" role="tablist" aria-label="열린 보드"></div>
+<!-- 공유(호스팅) 화면의 위쪽 막대 — 호스트 창·참가자 브라우저(src/ui/session.js) -->
+<div class="sessionbar" id="sessionBar" hidden></div>
 
 <!-- ── 보드 로딩 표시 (빈 화면 대신) ──────────────────────── -->
 <div class="loading" id="boardLoading" hidden aria-live="polite">
@@ -52,6 +54,8 @@
     <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V15z"/></svg>설정</button>
   <button class="btn" id="btnGraph" type="button" title="그래프 — 이 보드가 품은 이벤트와, 거기서 한 걸음 이어진 바깥 이벤트 (읽기 전용 · 전체는 첫 화면의 그래프)">
     <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="9" cy="18" r="2.5"/><path d="M8.2 7.2 15.7 8M7 8.3l1.3 7.4M16.6 10.1l-5.9 6.2"/></svg>그래프</button>
+  <button class="btn" id="btnHost" type="button" hidden title="호스팅 — 이 보드를 떼어 낸 사본을 사내망에 열어 함께 보고 고칩니다(원래 보드와 따로 운영, 나중에 거둡니다)">
+    <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.8 7.6-4.4M8.2 13.2l7.6 4.4"/></svg>호스팅</button>
   <button class="btn icon" id="btnSelect" type="button" aria-pressed="false"
           title="텍스트 선택 모드 (Ctrl+I) — 켜면 카드 글자를 긁어 복사할 수 있고 드래그 이동은 멈춥니다"
           aria-label="텍스트 선택 모드">
@@ -370,6 +374,9 @@
     <div class="lempty" id="l-empty" hidden>
       아직 보드가 없습니다. <b>새 보드</b>로 시작하세요.
     </div>
+
+    <!-- 호스팅 목록 — 떼어 낸 사본들(src/ui/hosting.js). 없으면 숨는다 -->
+    <section class="hsect" id="l-hosting" hidden></section>
 
     <img class="lhero" src="./assets/hero.jpg" alt="WOLFPACK" width="930" height="563">
 

@@ -31,6 +31,8 @@ import { ConfigPanel } from './ui/panels/config.js';
 import { DataPanel } from './ui/panels/data.js';
 import { GraphView } from './ui/graph.js';
 import { openHelp } from './ui/help.js';
+import { SessionUi, joinAsGuest } from './ui/session.js';
+import { renderHostingList, startHosting, harvest } from './ui/hosting.js';
 
 /** 글을 쓰는 입력 칸 — 여기서는 Ctrl+Z/Y가 그 칸의 글자 되돌리기다. 날짜·체크박스·숫자 등은 보드 되돌리기로 넘긴다 */
 const TEXT_INPUTS = new Set(['text', 'search', 'email', 'url', 'tel', 'password']);
@@ -39,6 +41,10 @@ async function boot() {
   initTheme();
 
   const adapter = createAdapter(STORAGE_KEY);
+  // 공유(호스팅) 화면 — 호스트 창(?hosting=)·참가자 브라우저. 탭·런처 없이 사본 하나만 고친다(docs/SHARE.md §4)
+  const session = adapter.session ? adapter : null;
+  let sessionUi = null;
+  if (session) document.body.classList.add('session', session.host ? 'session-host' : 'session-guest');
   const view = new ViewState();
   document.documentElement.style.setProperty('--wk', view.weekHeight + 'px');
 
@@ -220,6 +226,8 @@ async function boot() {
     else refresh();
     // 되돌리기·다시 실행 — 열린 패널의 칸도 되돌린 값으로(패널은 문서를 새로 읽어야 보인다)
     if (['undo', 'redo', 'replace'].includes(reason)) syncPanelsToDoc();
+    // 남이 고친 것(공유) — 열린 편집 창도 맞춘다. 단 내가 그 창에서 쓰는 중이면 손이 튀지 않게 두었다가 나올 때
+    if (reason === 'remote' && !document.activeElement?.closest?.('.panel')) syncPanelsToDoc();
     tabs?.syncActiveName();   // 보드 이름이 바뀌었으면 탭 이름도 맞춘다
     if (panels.current === 'pData') $('d-json').value = store.toJSON();
   });
@@ -275,7 +283,8 @@ async function boot() {
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'F1') { e.preventDefault(); openHelp(); return; }   // 도움말 — 어느 화면에서든
-    // 브라우저처럼 탭 조작 — 런처가 떠 있어도, 입력 중이어도 먼저 받는다.
+    // 브라우저처럼 탭 조작 — 런처가 떠 있어도, 입력 중이어도 먼저 받는다. 공유 화면에는 탭이 없다
+    if (session && (e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 't' || e.key === 'Tab' || e.code === 'Tab')) { e.preventDefault(); return; }
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 't') {
       e.preventDefault(); tabs.newLauncherTab(); return;
     }
@@ -434,7 +443,7 @@ async function boot() {
   // 예시(기본) 로드맵을 목록에 한 번 넣어 둔다 — 실제로 쓰는 일정이라 처음부터
   // 사용자가 만든 프로젝트와 함께 보이게 한다. 이름이 이미 있으면 다시 만들지 않는다.
   // (스모크 테스트 DB에는 넣지 않는다 — 결정적인 목록을 전제로 하기 때문)
-  if (adapter.createProject && adapter.listProjects) {
+  if (!session && adapter.createProject && adapter.listProjects) {
     try {
       const info = adapter.info ? await adapter.info().catch(() => null) : null;
       const isSmoke = !!info?.file && /wolfpack-smoke/.test(info.file);
@@ -446,9 +455,10 @@ async function boot() {
     } catch { /* 목록/생성 실패는 조용히 무시 — 앱 실행은 계속 */ }
   }
 
-  tabs.init();
+  if (session) { await startSession(); }
+  else tabs.init();
   // 탭을 끌어 뺀 창 — 그 탭(보드·그래프)을 바로 연다(보드는 메인이 이 창 것으로 옮겨 두었다)
-  {
+  if (!session) {
     const q = new URLSearchParams(location.search);
     if (q.get('board')) await tabs.openBoard(Number(q.get('board')), { claimed: true });
     else if (q.get('graph')) await tabs.openGraph({ scope: q.get('graph') === 'all' ? null : Number(q.get('graph')), name: q.get('gname') ?? '' });
@@ -463,6 +473,7 @@ async function boot() {
 
   function updateStorageNote() {
     const note = $('d-storage');
+    if (session) { note.textContent = '호스팅 사본 — 호스트 PC에 저장됩니다. 원래 보드와는 따로입니다.'; return; }
     if (adapter.info) {
       adapter.info()
         .then((i) => { note.textContent = `SQLite에 자동 저장됩니다 · ${i.file}`; })
@@ -482,7 +493,55 @@ async function boot() {
     await store.flush();
   });
 
-  Object.assign(globalThis, { __roadmap: { store, view, board, adapter, launcher, tabs, openProject, graphView, itemPanel } });
+  /**
+   * 공유 화면 시작 — 참가자는 이름을 적고 들어온다. 사본을 받아 그리고, 남의 변경을 받으면 다시 그린다(docs/SHARE.md §3).
+   * 번호가 빠졌거나 지문이 다르면 어댑터가 통째로 다시 받는다(onReset).
+   */
+  async function startSession() {
+    launcher.hide();
+    try {
+      if (session.host) await session.join(); else await joinAsGuest(session);
+      const doc = await session.openProject();
+      sessionUi = new SessionUi({ adapter: session, board, view });
+      session.onApply = (ops) => { if (ops.length) store.applyRemote(ops); };
+      session.onReset = (fresh) => { store.adopt(fresh); };
+      session.onPeople = () => { sessionUi.render(); sessionUi.drawPresence(); };
+      session.onRole = () => { sessionUi.render(); refresh(); };
+      session.onStatus = (s, why) => { sessionUi.setStatus(s, why); toolbar.sync(); };
+      // 보드를 그릴 때마다 — 내가 고른 카드를 알리고(바뀔 때만) 다른 사람이 고른 카드에 이름 표식
+      let presenceSel;
+      board.onRendered = () => {
+        if (view.selectedItem !== presenceSel) { presenceSel = view.selectedItem; session.presence(presenceSel); }
+        sessionUi.drawPresence();
+      };
+      applyOpenedDoc(doc);
+      sessionUi.render();
+    } catch (err) {
+      document.body.innerHTML = '';
+      document.body.append(Object.assign(document.createElement('p'), {
+        className: 'session-fail',
+        textContent: `공유 보드를 열지 못했습니다 — ${err?.message ?? err}. 호스트가 호스팅을 멈췄거나 링크가 바뀌었을 수 있습니다.`,
+      }));
+    }
+  }
+
+  // ── 보드 호스팅(호스트 PC) — 도구 모음 '호스팅'과 첫 화면의 호스팅 목록(docs/SHARE.md §6) ──
+  const hostingApi = !session ? window.roadmapDB?.hosting ?? null : null;
+  $('btnHost').hidden = !hostingApi;
+  if (hostingApi) {
+    $('btnHost').addEventListener('click', () => startHosting({
+      api: hostingApi, adapter, store,
+      before: async () => { document.activeElement?.blur?.(); itemPanel.flushNote(); board.memos.finishEdit(); await store.flush(); },
+    }));
+    launcher.renderHosting = () => renderHostingList({
+      api: hostingApi, mount: $('l-hosting'),
+      onHarvest: (row) => harvest({ api: hostingApi, row, tabs, store, adapter, listEvents: () => adapter.listEvents() }),
+    });
+    hostingApi.onChanged(() => { if (launcher.visible) launcher.renderHosting(); });
+    if (launcher.visible) launcher.renderHosting();
+  }
+
+  Object.assign(globalThis, { __roadmap: { store, view, board, adapter, launcher, tabs, openProject, graphView, itemPanel, session, get sessionUi() { return sessionUi; } } });
 }
 
 /** 프로젝트를 열기 전의 빈 문서 */

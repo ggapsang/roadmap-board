@@ -23,7 +23,7 @@ export function dialogOpen() {
 }
 
 /** 끌어도 드래그가 시작되지 않는 곳 — 입력·버튼·목록은 원래 동작(클릭·선택·스크롤)을 지킨다 */
-const NO_DRAG = 'input,textarea,select,button,a,label,[contenteditable],.dlg-tree,.trash-list,.dlg-choices,.dlg-tabs,.help-body,.help-toc,.help-resize';
+const NO_DRAG = 'input,textarea,select,button,a,label,[contenteditable],.dlg-sheet,.dlg-tree,.trash-list,.dlg-choices,.dlg-tabs,.help-body,.help-toc,.help-resize';
 /** 이만큼 움직여야 드래그로 본다(px) — 그 전에는 클릭 */
 const DRAG_SLOP = 3;
 
@@ -417,5 +417,38 @@ export function askCalendar({ title, message = '', units = [], unit = 'week', st
     scrim.hidden = false;
     closeOnScrim(scrim, () => finish(null));
     sel.focus();
+  });
+}
+
+/**
+ * 내용을 그대로 보여 주는 팝업 — 호스팅 이력·거두기 충돌처럼 목록이 긴 것. 버튼을 누르면 그 key로 닫힌다(Esc·막 = null).
+ * @param {{title:string, message?:string, content?:Node, wide?:boolean, actions?:{key:string,label:string,cta?:boolean,danger?:boolean}[]}} o
+ * @returns {Promise<string|null>}
+ */
+export function openSheet({ title, message = '', content = null, wide = false, actions = [{ key: 'close', label: '닫기' }] }) {
+  const scrim = ensureHost();
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (key) => {
+      if (settled) return;
+      settled = true;
+      scrim.hidden = true;
+      scrim.replaceChildren();
+      document.removeEventListener('keydown', onKey, true);
+      resolve(key);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(null); } };
+    document.addEventListener('keydown', onKey, true);
+    const box = el(`div.dlg${wide ? '.dlg-wide' : ''}`, { on: { click: (e) => e.stopPropagation() } }, [
+      el('h2', { text: title }),
+      message ? el('p.note', { text: message }) : null,
+      content ? el('div.dlg-sheet', {}, [content]) : null,
+      el('div.dlg-actions', {}, actions.map((a) => el(`button.btn.${a.danger ? 'danger' : a.cta ? 'cta' : 'outline'}`, {
+        type: 'button', text: a.label, on: { click: () => finish(a.key) },
+      }))),
+    ]);
+    scrim.replaceChildren(makeMovable(box));
+    scrim.hidden = false;
+    closeOnScrim(scrim, () => finish(null));
   });
 }

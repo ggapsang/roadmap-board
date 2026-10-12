@@ -11,6 +11,7 @@
  */
 import { Emitter } from './emitter.js';
 import { prepare, SCHEMA_VERSION } from './schema.js';
+import { applyOps } from './ops.js';
 import { UNDO_LIMIT } from '../config/index.js';
 
 export class Store extends Emitter {
@@ -157,6 +158,20 @@ export class Store extends Emitter {
     this.#tx = null;
     this.#group = null;
     this.emit('change', { label: '프로젝트 열기', reason: 'adopt' });
+  }
+
+  /**
+   * 남이 고친 것을 받는다(호스팅, docs/SHARE.md §3) — 저장하지 않고(호스트에서 온 것이다) 되돌리기 단계도 만들지 않는다.
+   * 되돌리기·다시 실행 기록에도 같은 변경을 넣는다 — 그래야 Ctrl+Z가 **내가 고친 것만** 되돌린다(스냅샷을 통째로 되살리면
+   * 남이 고친 것까지 되돌아간다).
+   */
+  applyRemote(ops) {
+    if (!ops?.length) return;
+    applyOps(this.#doc, ops);
+    const rebase = (json) => JSON.stringify(applyOps(JSON.parse(json), ops));
+    this.#undo = this.#undo.map(rebase);
+    this.#redo = this.#redo.map(rebase);
+    this.emit('change', { label: '다른 사람의 변경', reason: 'remote' });
   }
 
   /** 직렬화 — 데이터 패널 · 반출용 */

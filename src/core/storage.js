@@ -17,6 +17,7 @@
  *   deleteProject(id)
  *   load() / save(doc)          → 현재 열린 프로젝트
  */
+import { diffDocs, applyOps, opKeys, withoutPending, docHash } from './ops.js';
 
 export class StorageAdapter {
   get readonly() { return false; }
@@ -254,10 +255,189 @@ export class MemoryAdapter extends StorageAdapter {
   async save(doc) { this.doc = doc; }
 }
 
-/** 실행 환경에 맞는 어댑터를 고른다. */
+// ── 보드 호스팅(docs/SHARE.md) ─────────────────────────────
+
+/** 호스트 창 — 같은 동기화에 IPC로 낀다(호스트는 'host'라는 참가자다) */
+export class IpcHostTransport {
+  constructor(api, id) { this.api = api.hosting; this.id = id; this.host = true; }
+  async hello() { return { cid: 'host', role: 'edit' }; }
+  async state() { return this.api.state(this.id); }
+  listen(onMsg, onStatus) { this.api.onEvent((id, msg) => { if (id === this.id) onMsg(msg); }); onStatus?.('online'); }
+  async send(payload) { return this.api.submit(this.id, payload); }
+  presence(sel) { this.api.presence(this.id, { sel }).catch(() => {}); }
+}
+
+/** 참가자 브라우저 — HTTP. 호스트 → 화면은 SSE, 화면 → 호스트는 POST. 링크의 토큰을 모든 요청에 싣는다 */
+export class HttpTransport {
+  constructor(token) { this.token = token; this.cid = null; this.host = false; }
+  #url(p) {
+    const q = new URLSearchParams();
+    if (this.cid) q.set('cid', this.cid);
+    if (this.token) q.set('t', this.token);
+    return `${p}?${q}`;
+  }
+  async #post(p, body) {
+    const r = await fetch(this.#url(p), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw Object.assign(new Error(j.error || `HTTP ${r.status}`), { status: r.status, body: j });
+    return j;
+  }
+  async hello(name, cid) { const r = await this.#post('/api/hello', { name, cid }); this.cid = r.cid; return r; }
+  async state() {
+    const r = await fetch(this.#url('/api/state'));
+    if (!r.ok) throw Object.assign(new Error(`HTTP ${r.status}`), { status: r.status });
+    return r.json();
+  }
+  listen(onMsg, onStatus) {
+    this.es?.close();
+    const es = new EventSource(this.#url('/api/stream'));
+    es.onmessage = (e) => { try { onMsg(JSON.parse(e.data)); } catch { /* 깨진 메시지는 버린다 */ } };
+    es.onopen = () => onStatus?.('online');
+    // 끊기면 브라우저가 알아서 다시 붙는다. 호스트가 멈췄다 다시 열려 이 참가자를 모르면 거절되어 닫힌다
+    es.onerror = () => onStatus?.(es.readyState === EventSource.CLOSED ? 'lost' : 'offline');
+    this.es = es;
+  }
+  async send(payload) { return this.#post('/api/ops', payload); }
+  presence(sel) { this.#post('/api/presence', { sel }).catch(() => {}); }
+}
+
+/**
+ * 호스팅 사본을 고치는 저장소(호스트 창·참가자 브라우저 공통) — docs/SHARE.md §3.
+ *   save(doc)   지난번 보낸 문서와의 차이를 변경(op)으로 쪼개 호스트에 보낸다. 보낸 칸은 확정받을 때까지 '내 것'(pending)
+ *   받기        호스트가 순서를 붙여 뿌린 변경 — 남의 것은 내 pending 칸을 빼고 적용(내 것이 더 늦게 닿아 결국 남는다),
+ *               내 것은 정규화가 고친 것(fix)만 적용. 번호가 빠졌거나 지문이 다르면 문서를 통째로 다시 받는다
+ * 화면과의 연결: onApply(ops)·onReset(doc)·onPeople(list)·onRole(role)·onStatus(state) — main.js가 단다.
+ * DB 전체를 보거나 바꾸는 것(다른 보드·휴지통·합치기·그래프)은 하지 않는다 — 기본 어댑터의 빈 응답 그대로.
+ */
+export class HostedAdapter extends StorageAdapter {
+  #sending = Promise.resolve();
+
+  constructor(transport, api = null) {
+    super();
+    this.t = transport;
+    this.session = true;
+    this.host = !!transport.host;
+    this.projectId = null;
+    this.role = 'edit';
+    this.closed = false;
+    this.cid = null;
+    this.cseq = 0;
+    this.seq = 0;
+    this.pending = new Map();      // 칸 이름 → 그 칸을 보낸 cseq
+    this.lastSent = null;          // 호스트가 가진 문서에 내가 보낸 것까지 얹은 것(내 화면 기준)
+    this.ext = [];
+    this.people = [];
+    this.hostInfo = {};
+    // 호스트 창은 내보내기(PNG·PDF·JSON)를 앱 기능 그대로 쓴다
+    if (api) {
+      this.exportPng = (clip, suggested) => api.exportPng(clip, suggested);
+      this.exportPdf = (size, suggested) => api.exportPdf(size, suggested);
+      this.exportJson = (json, suggested) => api.exportJson(json, suggested);
+    }
+  }
+
+  get readonly() { return this.role !== 'edit' || this.closed; }
+
+  async join(name, cid = null) {
+    const h = await this.t.hello(name, cid);
+    this.cid = h.cid;
+    this.role = h.role ?? 'edit';
+    return h;
+  }
+
+  async openProject() {
+    const st = await this.t.state();
+    this.#take(st);
+    this.t.listen((m) => this.#onMsg(m), (s) => this.onStatus?.(s));
+    return st.doc;
+  }
+
+  async listEvents() { return this.ext; }
+  async eventsById(ids) { const want = new Set(ids ?? []); return this.ext.filter((e) => want.has(e.id)); }
+
+  #take(st) {
+    this.seq = st.seq;
+    this.lastSent = JSON.parse(JSON.stringify(st.doc));
+    this.pending.clear();
+    this.ext = st.ext ?? [];
+    this.role = st.role ?? this.role;
+    this.people = st.people ?? [];
+    this.hostInfo = { name: st.name, port: st.port, urls: st.urls ?? [], host: !!st.host };
+  }
+
+  async save(doc) {
+    if (this.readonly || !this.lastSent) return undefined;
+    const ops = diffDocs(this.lastSent, doc);
+    if (!ops.length) return undefined;
+    this.lastSent = JSON.parse(JSON.stringify(doc));
+    const cseq = (this.cseq += 1);
+    for (const k of ops.flatMap(opKeys)) this.pending.set(k, cseq);
+    // 한 사람의 변경은 보낸 순서대로 닿아야 한다(나중 것이 이긴다) — 앞의 전송이 끝난 뒤 보낸다
+    const run = async () => {
+      let r;
+      try { r = await this.t.send({ ops, cseq }); } catch (err) { r = { ok: false, error: err.message, resync: true }; }
+      if (r?.ok === false) {
+        if (r.error === 'readonly') { this.role = 'view'; this.onRole?.('view'); }
+        if (r.resync) await this.resync();
+      }
+    };
+    this.#sending = this.#sending.then(run, run);
+    return this.#sending;
+  }
+
+  #onMsg(m) {
+    if (!m || typeof m !== 'object') return;
+    if (m.type === 'ops') {
+      if (m.seq !== this.seq + 1) { this.resync(); return; }      // 빠진 변경이 있다 — 통째로 다시
+      this.seq = m.seq;
+      let apply;
+      if (m.cid === this.cid) {
+        for (const [k, c] of [...this.pending]) if (c <= (m.cseq ?? 0)) this.pending.delete(k);
+        apply = m.fix ?? [];
+      } else {
+        apply = [...withoutPending(m.ops ?? [], new Set(this.pending.keys())), ...(m.fix ?? [])];
+      }
+      if (apply.length) applyOps(this.lastSent, apply);
+      this.onApply?.(apply, m);
+      // 확정 못 받은 것이 없으면 호스트 문서와 같아야 한다 — 다르면 통째로 다시 받는다
+      if (!this.pending.size && m.hash && docHash(this.lastSent) !== m.hash) this.resync();
+      return;
+    }
+    if (m.type === 'presence') { this.people = m.people ?? []; this.onPeople?.(this.people); return; }
+    if (m.type === 'role') { this.role = m.role; this.onRole?.(m.role); return; }
+    if (m.type === 'welcome') { if (m.seq !== this.seq) this.resync(); return; }
+    if (m.type === 'kicked') { this.closed = true; this.onStatus?.('kicked', m.reason); return; }
+    if (m.type === 'closed') { this.closed = true; this.onStatus?.('closed'); }
+  }
+
+  /** 문서를 통째로 다시 받는다 — 번호가 빠졌거나, 지문이 다르거나, 거절당했을 때 */
+  async resync() {
+    if (this._resyncing) return;
+    this._resyncing = true;
+    try {
+      const st = await this.t.state();
+      this.#take(st);
+      this.onReset?.(st.doc);
+    } catch (err) {
+      this.onStatus?.('lost', err?.message);
+    } finally { this._resyncing = false; }
+  }
+
+  /** 내가 고른 카드 — 다른 사람 화면에 이름 표식으로 */
+  presence(sel) { this.t.presence(sel ?? null); }
+}
+
+/** 실행 환경에 맞는 어댑터를 고른다. 호스팅 창(?hosting=)·참가자 브라우저(http + 링크 토큰)는 HostedAdapter. */
 export function createAdapter(localStorageKey) {
+  const q = typeof location !== 'undefined' ? new URLSearchParams(location.search) : new URLSearchParams();
   if (typeof window !== 'undefined' && window.roadmapDB?.available) {
+    if (q.get('hosting') && window.roadmapDB.hosting) {
+      return new HostedAdapter(new IpcHostTransport(window.roadmapDB, Number(q.get('hosting'))), window.roadmapDB);
+    }
     return new ElectronAdapter(window.roadmapDB);
+  }
+  if (typeof location !== 'undefined' && /^https?:$/.test(location.protocol) && q.get('t')) {
+    return new HostedAdapter(new HttpTransport(q.get('t')));
   }
   return new LocalStorageAdapter(localStorageKey);
 }

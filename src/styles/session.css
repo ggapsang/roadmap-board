@@ -1,0 +1,58 @@
+/* ── 보드 호스팅 (docs/SHARE.md) ──────────────────────────
+   공유 화면(호스트 창·참가자 브라우저)의 위쪽 막대, 카드 위 이름 표식, 첫 화면의 호스팅 목록, 거두기 팝업.
+   이름 표식은 사람마다 색을 주지 않는다 — 색은 상태를 뜻한다(규약 4·7). 연결 점만 신호색(성공·주의) */
+
+/* 공유 화면에는 탭·프로젝트·그래프·데이터가 없다 — 사본 하나만 */
+body.session .tabbar, body.session #btnProjects, body.session #btnGraph, body.session #btnData, body.session #btnHost { display: none !important; }
+
+.sessionbar{flex:none;display:flex;align-items:center;gap:var(--u2);height:var(--tab-h);padding:0 var(--u4);
+  background:var(--bg-header);border-bottom:1px solid var(--border-subtle);font-size:13px;color:var(--text-secondary);white-space:nowrap;overflow:hidden}
+.sessionbar .grow{flex:1}
+.sessionbar .sess-name{color:var(--text-primary);font-weight:600;overflow:hidden;text-overflow:ellipsis}
+.sessionbar .muted{overflow:hidden;text-overflow:ellipsis}
+.sess-dot{width:var(--u2);height:var(--u2);border-radius:50%;background:var(--state-late);flex:none}
+.sess-dot.on{background:var(--state-done)}
+.sess-state{color:var(--text-primary);font-weight:600}
+.sess-chip{padding:2px var(--u2);border:1px solid var(--border-default);border-radius:var(--u1);font-size:12px}
+
+/* 다른 사람이 고른 카드 — 이름 표식(카드 위 왼쪽) + 옅은 테두리 */
+.presence-layer{position:absolute;inset:0;z-index:19;pointer-events:none}
+.presence-tag{position:absolute;transform:translateY(-100%);padding:0 var(--u1-5);border-radius:var(--u1) var(--u1) 0 0;
+  background:var(--text-secondary);color:var(--bg-panel);font-size:11px;line-height:16px;white-space:nowrap;max-width:220px;
+  overflow:hidden;text-overflow:ellipsis}
+.ev.peer-sel{box-shadow:0 0 0 1px var(--text-secondary)}
+
+.session-fail{padding:var(--u10);font-size:14px;color:var(--text-primary)}
+
+/* 참가자·이력 팝업 */
+.dlg.dlg-wide{max-width:720px}
+.dlg-sheet{max-height:60vh;overflow:auto;margin-bottom:var(--u3)}
+.sess-people{display:flex;flex-direction:column;gap:var(--u1)}
+.sess-person{display:flex;align-items:center;gap:var(--u2);font-size:13px;padding:var(--u1) 0;border-bottom:1px solid var(--border-subtle)}
+.sess-person > span{flex:1}
+.sess-history{display:flex;flex-direction:column;font-size:13px}
+.sess-hrow{display:grid;grid-template-columns:150px 100px 1fr;gap:var(--u2);padding:var(--u1) 0;border-bottom:1px solid var(--border-subtle)}
+
+/* 첫 화면 — 호스팅 목록 */
+.hsect{margin-top:var(--u6);display:flex;flex-direction:column;gap:var(--u2)}
+.hsect-head{display:flex;align-items:baseline;gap:var(--u3)}
+.hsect-head h2{margin:0;font-size:15px;font-weight:600;color:var(--text-primary)}
+.hsect-head .muted{font-size:12px}
+.hrow{display:flex;align-items:center;gap:var(--u3);padding:var(--u3) var(--u4);background:var(--surface-card);
+  border:1px solid var(--border-subtle);border-radius:var(--r-panel)}
+.hrow-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;font-size:12px}
+.hrow-name{display:flex;align-items:center;gap:var(--u2);font-size:14px;color:var(--text-primary)}
+.hrow-actions{display:flex;gap:var(--u1-5);flex-wrap:wrap;justify-content:flex-end}
+.hchip{font-size:11px;padding:0 var(--u1-5);border:1px solid var(--border-default);border-radius:var(--u1);color:var(--text-secondary)}
+.hchip.st-open{border-color:var(--state-done);color:var(--state-done)}
+
+/* 거두기 */
+.harvest{display:flex;flex-direction:column;gap:var(--u2);font-size:13px}
+.harvest-bulk{display:flex;align-items:center;gap:var(--u2)}
+.harvest-bulk > span{flex:1;color:var(--text-primary);font-weight:600}
+.harvest-list{display:flex;flex-direction:column;gap:var(--u2)}
+.harvest-row{display:flex;flex-direction:column;gap:2px;padding:var(--u2) 0;border-bottom:1px solid var(--border-subtle)}
+.harvest-what{color:var(--text-primary);font-weight:500}
+.harvest-opt{display:flex;align-items:center;gap:var(--u2);font-size:13px;color:var(--text-secondary);cursor:pointer;margin:0}
+.harvest-opt input{width:auto;height:auto}
+.harvest-opt em{font-style:normal;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

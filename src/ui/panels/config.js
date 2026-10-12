@@ -165,7 +165,8 @@ export class ConfigPanel {
       const combN = composedOf(this.store, track.id).size;
       const row = el('div.trow', { className: track.id === this.view.selectedTrack ? 'trow active' : 'trow' }, [
         el('div.names', {}, [lab, name]),
-        button({ className: 'mini' + (combN ? ' on' : ''), iconPath: ICONS.plus, title: combN ? `조합 ${combN}개 — 편집` : '조합 — 여러 이벤트로 이 트랙을 이루기', onClick: () => this.#combine(track.id) }),
+        // 조합 고르기는 DB 전체 이벤트를 보여 준다 — 공유(호스팅) 화면에서는 막는다
+        this.adapter?.session ? null : button({ className: 'mini' + (combN ? ' on' : ''), iconPath: ICONS.plus, title: combN ? `조합 ${combN}개 — 편집` : '조합 — 여러 이벤트로 이 트랙을 이루기', onClick: () => this.#combine(track.id) }),
         button({ className: 'mini', iconPath: ICONS.up, title: '위로', onClick: () => this.move(i, -1) }),
         button({ className: 'mini', iconPath: ICONS.down, title: '아래로', onClick: () => this.move(i, +1) }),
         button({ className: 'mini', iconPath: ICONS.trash, title: '삭제', onClick: () => this.remove(i) }),

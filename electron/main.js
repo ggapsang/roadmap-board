@@ -11,6 +11,7 @@ import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { openDatabase } from './db/index.js';
 import { BoardRepository } from './db/repository.js';
+import { HostingManager } from './hosting/index.js';
 // 스모크 — 기본 점검 + 고친 코드에 닿는 단계만(electron/smoke/). 렌더러와 같은 시드를 쓴다.
 import { runSmoke } from './smoke/index.js';
 
@@ -91,6 +92,10 @@ protocol.registerSchemesAsPrivileged([{
 let db = null;
 let repo = null;
 let win = null;
+/** 보드 호스팅(docs/SHARE.md) — 사본·이력·웹 서버 */
+let hosting = null;
+/** 호스팅 id → 그 호스팅을 고치는 호스트 창(호스팅 창은 같은 렌더러를 ?hosting=id로 띄운다 — 탭·런처 없이 사본 하나만) */
+const hostWindows = new Map();
 
 function registerProtocol() {
   protocol.handle('app', (request) => {
@@ -143,7 +148,8 @@ function windowAt(x, y, exceptId) {
 }
 
 /**
- * @param {{board?:number, graph?:{scope:number|null,name:string}, x?:number, y?:number}} [open] 새 창이 처음 열 탭(탭을 끌어 뺀 창)
+ * @param {{board?:number, graph?:{scope:number|null,name:string}, hosting?:number, x?:number, y?:number}} [open] 새 창이 처음 열 탭(탭을 끌어 뺀 창)
+ *   hosting이면 호스팅 창 — 그 호스팅의 사본 하나만 고친다(보드를 차지하지 않는다)
  */
 function createWindow(open = null) {
   const w = new BrowserWindow({
@@ -182,6 +188,11 @@ function createWindow(open = null) {
   const q = new URLSearchParams();
   if (open?.board != null) q.set('board', String(open.board));
   if (open?.graph) { q.set('graph', open.graph.scope == null ? 'all' : String(open.graph.scope)); q.set('gname', open.graph.name ?? ''); }
+  if (open?.hosting != null) {
+    q.set('hosting', String(open.hosting));
+    hostWindows.set(open.hosting, w);
+    w.on('closed', () => { if (hostWindows.get(open.hosting) === w) hostWindows.delete(open.hosting); });
+  }
   w.loadURL('app://board/index.html' + (q.size ? `?${q}` : ''));
   // 창 닫기(X) — 쓰던 것을 저장하고 닫는다(아래 flushWindow)
   w.on('close', (e) => {
@@ -214,6 +225,7 @@ function createWindow(open = null) {
       console.log(`[renderer] 로드 실패 ${code} ${desc} ${url}`));
     if (first) win0.webContents.once('did-finish-load', () => runSmoke(win0, {
       app, db, root: ROOT, capture, shotDir, resolveDbPath, BoardRepository, fs, path, ROOT,
+      hosting: () => hosting, hostWindow: (id) => hostWindows.get(id) ?? null, BrowserWindow,
     }));
   }
   if (REPRO) {
@@ -528,7 +540,62 @@ async function askSavePath({ title, defaultPath, filters, parent = null }) {
   return canceled ? null : filePath;
 }
 
+/** 호스팅 창을 연다(이미 있으면 앞으로) */
+function openHostWindow(id) {
+  const had = hostWindows.get(id);
+  if (had && !had.isDestroyed()) { if (had.isMinimized()) had.restore(); had.focus(); return had; }
+  return createWindow({ hosting: id });
+}
+
+/** 호스팅 IPC — {ok, data, error}로 돌려준다(preload call). 호스팅 목록이 바뀌면 모든 창의 첫 화면이 다시 읽는다 */
+function registerHostingIpc() {
+  const safe = (fn) => async (e, ...args) => {
+    try { return { ok: true, data: await fn(e, ...args) }; } catch (err) {
+      console.error('[hosting]', err);
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  };
+  const changed = () => { for (const st of winState.values()) if (!st.win.isDestroyed()) st.win.webContents.send('hosting:changed'); };
+  const withChange = (fn) => safe(async (...a) => { const r = await fn(...a); changed(); return r; });
+  ipcMain.handle('hosting:list', safe(() => hosting.list()));
+  // 보드를 떼어 내 호스팅을 시작하고 호스팅 창을 연다(이 보드에 이미 있으면 그것을)
+  ipcMain.handle('hosting:start', withChange(async (_e, payload) => { const r = await hosting.start(payload); openHostWindow(r.id); return r; }));
+  ipcMain.handle('hosting:window', withChange(async (_e, id) => { const r = await hosting.open(id); openHostWindow(id); return r; }));
+  ipcMain.handle('hosting:pause', withChange((_e, id) => hosting.pause(id)));
+  ipcMain.handle('hosting:discard', withChange((_e, id) => hosting.discard(id)));
+  ipcMain.handle('hosting:remove', withChange((_e, id) => hosting.remove(id)));
+  ipcMain.handle('hosting:state', safe((_e, id) => hosting.state(id)));
+  ipcMain.handle('hosting:submit', safe((_e, id, payload) => hosting.submit(id, 'host', payload ?? {})));
+  ipcMain.handle('hosting:presence', safe((_e, id, payload) => hosting.presence(id, 'host', payload ?? {})));
+  ipcMain.handle('hosting:role', safe((_e, id, cid, role) => hosting.setRole(id, cid, role)));
+  ipcMain.handle('hosting:kick', safe((_e, id, cid) => hosting.kick(id, cid)));
+  ipcMain.handle('hosting:token', withChange((_e, id) => hosting.newToken(id)));
+  ipcMain.handle('hosting:history', safe((_e, id) => hosting.history(id)));
+  // 거두기(§5) — 재료(기준·사본·고친 사람)를 주고, 원래 보드에 합치는 일은 렌더러가 그 보드 문서로 한다(지금 저장 경로 그대로)
+  ipcMain.handle('hosting:material', safe((_e, id) => hosting.material(id)));
+  // 거두기 전 DB 백업(LESSONS 8)
+  ipcMain.handle('hosting:backup', safe((_e, id) => {
+    const file = resolveDbPath();
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const dest = `${file}.harvest${id}-${stamp}.bak`;
+    db.exec(`VACUUM INTO '${dest.replace(/'/g, "''")}'`);
+    return dest;
+  }));
+  ipcMain.handle('hosting:finish', withChange((_e, id, result) => { hosting.finish(id, result); hostWindows.get(id)?.close(); return true; }));
+  // 독립된 보드로 거두기 — 새 id 전부로 새 보드(원래 보드와 남)
+  ipcMain.handle('hosting:independent', withChange((e, id, name) => {
+    const doc = hosting.independentDoc(id, name);
+    const st = stateOf(e);
+    const boardId = repo.createProject(doc, doc.meta.name);
+    if (st) repo.open(st.active);
+    hosting.finish(id, { mode: 'independent', boardId });
+    hostWindows.get(id)?.close();
+    return boardId;
+  }));
+}
+
 function registerIpc() {
+  registerHostingIpc();
   // DB 요청은 보낸 창의 보드로 — 창마다 저장 대상 보드가 다르다(repo.boardId를 요청마다 맞춘다. better-sqlite3는 동기라
   // 요청 사이에 끼어들 틈이 없다).
   const guard = (fn) => (e, ...args) => {
@@ -752,6 +819,10 @@ app.whenReady().then(() => {
   console.log('[db] 파일:', file);
   db = openDatabase(file);
   repo = new BoardRepository(db);   // 프로젝트는 런처에서 연다
+  hosting = new HostingManager({
+    db, root: ROOT, localOnly: SMOKE || REPRO,   // 검사 중엔 127.0.0.1에만(방화벽 창을 띄우지 않게)
+    toHost: (id, msg) => { const w = hostWindows.get(id); if (w && !w.isDestroyed()) w.webContents.send('hosting:event', id, msg); },
+  });
 
   registerProtocol();
   registerIpc();
@@ -791,5 +862,6 @@ app.on('before-quit', (e) => {
     Promise.all(left.map((st) => flushWindow(st.win).then(() => { st.flushed = true; }))).then(() => app.quit());
     return;
   }
+  try { hosting?.shutdown(); } catch { /* noop */ }
   try { db?.close(); } catch { /* noop */ }
 });

@@ -88,6 +88,7 @@ export class Launcher {
   async render() {
     try {
       this._projects = await this.adapter.listProjects();
+      this.renderHosting?.();      // 호스팅 목록(호스트 PC, src/ui/hosting.js) — main.js가 단다
     } catch (err) {
       clear($('l-list'));
       $('l-list').append(el('p.note', { text: '목록을 읽지 못했습니다: ' + err.message }));

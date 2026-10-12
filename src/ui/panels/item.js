@@ -695,7 +695,9 @@ export class ItemPanel {
     clear(box);
     const subj = this.#subject();
     if (!subj) return;
-    box.append(el('button.btn.outline.sm', { type: 'button', text: '편집', title: '참조관계설정 — 이 이벤트가 참고하는 것 고르기', on: { click: () => this.#openRefsPicker() } }));
+    if (!this.adapter?.session) {
+      box.append(el('button.btn.outline.sm', { type: 'button', text: '편집', title: '참조관계설정 — 이 이벤트가 참고하는 것 고르기', on: { click: () => this.#openRefsPicker() } }));
+    }
     const refs = this.#refsOf(subj.id);
     const list = el('div.combine-summary');
     if (!refs.length) list.append(el('div.empty', { text: '참조가 없습니다.' }));
@@ -737,6 +739,8 @@ export class ItemPanel {
 
   /** 참조 상대로 가기 — 이 보드에 있으면 그 카드·트랙을 열고, 아니면 그 이벤트가 놓인 보드를 열어 거기서 */
   async #goToRef(id) {
+    // 공유 화면 — 이 사본 안의 것만 연다(다른 보드는 없다)
+    if (this.adapter?.session && !this.store.item(id) && !this.store.track(id)) { toast('공유 화면에서는 다른 보드로 갈 수 없습니다'); return; }
     const ev = this.#eventInfo(id);
     const cur = this.adapter?.projectId;
     let boardId = cur;
@@ -767,6 +771,8 @@ export class ItemPanel {
     const box = $('i-same');
     clear(box);
     if (!subj) return;
+    // 공유(호스팅) 화면에서는 항등·조합·참조 고르기를 막는다 — DB 전체 이벤트를 보여 주고 바꾼다(docs/SHARE.md §4)
+    if (this.adapter?.session) { box.append(el('div.empty', { text: '공유 화면에서는 항등설정을 바꿀 수 없습니다 — 거둔 뒤 원래 보드에서.' })); return; }
     box.append(el('button.btn.outline.sm', {
       type: 'button', text: '편집', title: '항등설정 — 같은 이벤트로 합칠 대상 고르기',
       on: { click: () => this.#openMergePicker() },
@@ -885,10 +891,12 @@ export class ItemPanel {
   #renderCombine() {
     const box = $('i-combine');
     clear(box);
-    box.append(el('button.btn.outline.sm', {
-      type: 'button', text: '편집', title: '조합설정 — 이 이벤트를 이루는 이벤트 고르기',
-      on: { click: () => this.#openCombinePicker() },
-    }));
+    if (!this.adapter?.session) {
+      box.append(el('button.btn.outline.sm', {
+        type: 'button', text: '편집', title: '조합설정 — 이 이벤트를 이루는 이벤트 고르기',
+        on: { click: () => this.#openCombinePicker() },
+      }));
+    }
     const children = [...this.#composedOf()];
     const list = el('div.combine-summary');
     if (!children.length) list.append(el('div.empty', { text: '조합한 이벤트가 없습니다.' }));
@@ -1217,7 +1225,7 @@ export class ItemPanel {
         },
       }, [icon(ICONS.close)]);
       // 항등 — 태스크도 이벤트라 다른 보드 이벤트와 합치거나(항등설정), 합친 것을 이 보드만 떼어 낼 수 있다
-      const same = el('button.task-del.task-same', {
+      const same = this.adapter?.session ? null : el('button.task-del.task-same', {
         type: 'button', text: '≡', title: '항등설정 · 다른 보드 자리 · 항등 해제',
         on: { click: (e) => { e.preventDefault(); this.#taskSameMenu(t, e.currentTarget); } },
       });

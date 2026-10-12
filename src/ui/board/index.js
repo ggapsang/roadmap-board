@@ -567,6 +567,7 @@ export class Board {
     this.#drawArrowHandles();
     // 메모(포스트잇) — 컬럼 폭이 정해진 뒤에 자리를 잰다
     this.memos.draw();
+    this.onRendered?.();      // 공유 화면 — 다른 사람이 고른 카드 표식(ui/session.js)
   }
 
   /** 각 트랙 컬럼의 실제 너비(px) */

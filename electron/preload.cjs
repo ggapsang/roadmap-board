@@ -77,4 +77,27 @@ contextBridge.exposeInMainWorld('roadmapDB', {
 
   exportJson: (json, suggested) => call('file:export', json, suggested),
   importJson: () => call('file:import'),
+
+  // 보드 호스팅(docs/SHARE.md) — 떼어 낸 사본을 사내망에 열고, 호스트 창은 IPC로 같은 동기화에 낀다
+  hosting: {
+    list: () => call('hosting:list'),
+    start: (payload) => call('hosting:start', payload),
+    window: (id) => call('hosting:window', id),
+    pause: (id) => call('hosting:pause', id),
+    discard: (id) => call('hosting:discard', id),
+    remove: (id) => call('hosting:remove', id),
+    state: (id) => call('hosting:state', id),
+    submit: (id, payload) => call('hosting:submit', id, payload),
+    presence: (id, payload) => call('hosting:presence', id, payload),
+    role: (id, cid, role) => call('hosting:role', id, cid, role),
+    kick: (id, cid) => call('hosting:kick', id, cid),
+    token: (id) => call('hosting:token', id),
+    history: (id) => call('hosting:history', id),
+    material: (id) => call('hosting:material', id),
+    backup: (id) => call('hosting:backup', id),
+    finish: (id, result) => call('hosting:finish', id, result),
+    independent: (id, name) => call('hosting:independent', id, name),
+    onEvent: (cb) => ipcRenderer.on('hosting:event', (_e, id, msg) => cb(id, msg)),
+    onChanged: (cb) => ipcRenderer.on('hosting:changed', () => cb()),
+  },
 });
