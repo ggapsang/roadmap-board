@@ -9,7 +9,8 @@
  * 뿌린다 — 모두 같은 결과로 모인다.
  *
  * 전송(§3): 참가자는 HTTP — SSE(호스트 → 화면) + POST(화면 → 호스트). 호스트 창은 IPC로 같은 메시지를 받는다.
- * 사내망만(§4): 사설 대역이 아닌 곳에서 온 연결은 거절. 링크의 토큰이 있어야 들어온다.
+ * 사내망만(§4): 사설 대역이 아닌 곳에서 온 연결은 거절. 입장 제약은 없다 — 포트 주소(http://사내 IP:1126/)를 브라우저로 열면 바로
+ * 들어온다(2026-10-12 사용자). 이름은 '참가자 N'으로 붙고 참가자가 막대에서 바꾼다.
  */
 import http from 'node:http';
 import os from 'node:os';
@@ -107,16 +108,16 @@ export class HostingManager {
       ORDER BY h.id DESC`).all();
     return rows.map((r) => {
       const s = this.live.get(r.id);
-      const { resultJson, token, ...rest } = r;
+      const { resultJson, token: _token, ...rest } = r;
       return { ...rest, result: resultJson ? JSON.parse(resultJson) : null, live: !!s,
         guests: s ? [...s.clients.values()].filter((c) => c.cid !== HOST_CID && c.online).length : 0,
-        urls: this.urls(r.port, token) };
+        urls: this.urls(r.port) };
     });
   }
 
-  urls(port, token) {
+  urls(port) {
     const hosts = this.localOnly ? ['127.0.0.1'] : lanAddresses();
-    return hosts.map((h) => `http://${h}:${port}/?t=${token}`);
+    return hosts.map((h) => `http://${h}:${port}/`);
   }
 
   /** 보드를 떼어 내 호스팅을 시작한다. 그 보드에 열린(멈춘 것 포함) 호스팅이 있으면 그것을 돌려준다(한 보드에 하나) */
@@ -149,7 +150,7 @@ export class HostingManager {
     const s = {
       id, name: row.name, port: row.port, token: row.token, sourceBoardId: row.source_board_id,
       doc, seq, ext: row.ext_json ? JSON.parse(row.ext_json) : [], snapSeq: row.doc_seq, snapTimer: null,
-      clients: new Map([[HOST_CID, { cid: HOST_CID, name: '호스트', role: 'edit', online: true, sel: null, host: true }]]),
+      clients: new Map([[HOST_CID, { cid: HOST_CID, name: '호스트', role: 'edit', online: true, sel: null, host: true }]]), joined: 0,
       streams: new Map(), banned: new Set(), server: null,
     };
     await this.#listen(s);
@@ -200,21 +201,26 @@ export class HostingManager {
     const s = this.#live(id);
     const c = s.clients.get(cid);
     return { doc: s.doc, seq: s.seq, hash: docHash(s.doc), ext: s.ext, name: s.name, cid, role: c?.role ?? 'edit',
-      host: cid === HOST_CID, people: this.#people(s), port: s.port, urls: this.urls(s.port, s.token) };
+      host: cid === HOST_CID, people: this.#people(s), port: s.port, urls: this.urls(s.port), me: c?.name ?? '' };
   }
 
-  /** 참가자 입장 — 이름만 받는다(링크만 입장, 2026-10-12 사용자). 다시 들어온 사람(같은 cid)은 그대로 */
+  /**
+   * 참가자 입장 — 묻는 것 없이 들어온다(2026-10-12 사용자). 이름을 안 주면 '참가자 N'. 다시 들어온 사람(같은 cid)은 그대로,
+   * 이름을 주면 바꾼다(막대의 '내 이름').
+   */
   hello(id, { name, cid, ip }) {
     const s = this.#live(id);
     let c = cid ? s.clients.get(cid) : null;
     if (!c || c.host) {
-      c = { cid: crypto.randomBytes(8).toString('hex'), role: 'edit', sel: null };
+      s.joined += 1;
+      c = { cid: crypto.randomBytes(8).toString('hex'), role: 'edit', sel: null, name: `참가자 ${s.joined}` };
       s.clients.set(c.cid, c);
     }
-    c.name = String(name || '참가자').slice(0, 40);
+    const want = String(name ?? '').trim();
+    if (want) c.name = want.slice(0, 40);
     c.ip = ip;
     this.#presence(s);
-    return { cid: c.cid, role: c.role };
+    return { cid: c.cid, role: c.role, name: c.name };
   }
 
   /**
@@ -273,22 +279,6 @@ export class HostingManager {
     s.clients.delete(cid);
     this.#presence(s);
     return true;
-  }
-
-  /** 링크 다시 만들기 — 옛 링크는 막히고 들어와 있던 참가자도 나간다 */
-  newToken(id) {
-    const s = this.#live(id);
-    s.token = this.#token();
-    this.db.prepare('UPDATE hosting SET token = ? WHERE id = ?').run(s.token, id);
-    for (const [cid, c] of [...s.clients]) {
-      if (c.host) continue;
-      this.#send(s, cid, { type: 'kicked', reason: 'token' });
-      try { s.streams.get(cid)?.end(); } catch { /* 이미 끊김 */ }
-      s.streams.delete(cid);
-      s.clients.delete(cid);
-    }
-    this.#presence(s);
-    return this.#info(s);
   }
 
   /** 이력 — 최근 변경부터 */
@@ -357,9 +347,10 @@ export class HostingManager {
   }
 
   #info(s) {
-    return { id: s.id, port: s.port, urls: this.urls(s.port, s.token), name: s.name };
+    return { id: s.id, port: s.port, urls: this.urls(s.port), name: s.name };
   }
 
+  /** 토큰 칸은 024에서 NOT NULL이라 채워 둔다 — 입장에는 쓰지 않는다(포트 주소만으로 들어온다, 2026-10-12 사용자) */
   #token() { return crypto.randomBytes(16).toString('hex'); }
 
   /** 다른 호스팅이 쓰지 않는 가장 작은 포트(1126부터) — 실제로 비었는지는 열 때 본다 */
@@ -444,13 +435,7 @@ export class HostingManager {
     if (!isPrivateAddress(ip)) return deny(403, '사내망에서만 접속할 수 있습니다.');
     if (s.banned.has(ip)) return deny(403, '호스트가 내보냈습니다.');
     const url = new URL(req.url, 'http://x');
-    const cookieName = `wp${s.port}`;
-    const cookie = Object.fromEntries(String(req.headers.cookie ?? '').split(';').map((x) => x.trim().split('=')).filter((x) => x.length === 2));
-    const given = url.searchParams.get('t') || req.headers['x-wolfpack-token'] || cookie[cookieName];
-    const ok = given && crypto.timingSafeEqual(Buffer.from(String(given).padEnd(64).slice(0, 64)), Buffer.from(s.token.padEnd(64).slice(0, 64)));
-    if (!ok) return deny(403, '링크가 올바르지 않거나 바뀌었습니다. 호스트에게 새 링크를 받으세요.');
     const headers = { 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' };
-    if (url.searchParams.get('t')) headers['Set-Cookie'] = `${cookieName}=${s.token}; HttpOnly; SameSite=Strict; Path=/`;
 
     const p = url.pathname;
     if (p.startsWith('/api/')) return this.#api(s, req, res, url, ip, headers);
@@ -465,6 +450,8 @@ export class HostingManager {
     if (!file.startsWith(this.root + path.sep)) return deny(403, '');
     fs.readFile(file, (err, buf) => {
       if (err) return deny(404, '');
+      // 첫 화면에 '호스팅 사본' 표식을 넣는다 — 렌더러가 이것을 보고 참가자 화면(HostedAdapter)으로 뜬다(src/core/storage.js createAdapter)
+      if (rel === '/index.html') buf = Buffer.from(buf.toString('utf8').replace('<head>', '<head>\n<meta name="wolfpack-hosting" content="1">'), 'utf8');
       res.writeHead(200, { ...headers, 'Content-Type': TYPES[path.extname(file).toLowerCase()] ?? 'application/octet-stream' });
       res.end(req.method === 'HEAD' ? undefined : buf);
     });

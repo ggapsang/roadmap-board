@@ -45,6 +45,6 @@
 .lfoot{margin-top:var(--u8);padding-top:var(--u4);border-top:1px solid var(--border-subtle);
   font-size:11px;line-height:18px;color:var(--text-tertiary)}
 
-/* 브랜드 이미지 — 목록 아래에 한 번만. UI 곳곳에 반복하지 않는다 (가이드 §14) */
-.lhero{display:block;width:100%;height:auto;margin-top:var(--u8);
+/* 브랜드 이미지 — 첫 화면 맨 위에 한 번만(보드가 많아도 보이게, 2026-10-12 사용자). UI 곳곳에 반복하지 않는다 (가이드 §14) */
+.lhero{display:block;width:100%;height:auto;margin:0 0 var(--u6);
   border-radius:var(--r-card);border:1px solid var(--border-subtle)}

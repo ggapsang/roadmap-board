@@ -569,7 +569,6 @@ function registerHostingIpc() {
   ipcMain.handle('hosting:presence', safe((_e, id, payload) => hosting.presence(id, 'host', payload ?? {})));
   ipcMain.handle('hosting:role', safe((_e, id, cid, role) => hosting.setRole(id, cid, role)));
   ipcMain.handle('hosting:kick', safe((_e, id, cid) => hosting.kick(id, cid)));
-  ipcMain.handle('hosting:token', withChange((_e, id) => hosting.newToken(id)));
   ipcMain.handle('hosting:history', safe((_e, id) => hosting.history(id)));
   // 거두기(§5) — 재료(기준·사본·고친 사람)를 주고, 원래 보드에 합치는 일은 렌더러가 그 보드 문서로 한다(지금 저장 경로 그대로)
   ipcMain.handle('hosting:material', safe((_e, id) => hosting.material(id)));

@@ -41,13 +41,19 @@ export default {
     await until(() => js(host, 'return !!window.__roadmap?.sessionUi && window.__roadmap.store.items.length > 0'), 10000);
     out.hostSession = await js(host, `return document.body.classList.contains('session-host') && getComputedStyle(document.getElementById('tabbar')).display === 'none'`);
 
-    // ── 참가자 — 링크로 들어와 이름만 적는다
+    // ── 참가자 — 포트 주소만 열면 묻는 것 없이 들어온다(2026-10-12 사용자). 이름은 '참가자 N', 막대의 '내 이름'에서 바꾼다
     const url = row.urls[0];
+    out.plainUrl = url === `http://127.0.0.1:${row.port}/`;
     const guest = new BrowserWindow({ show: !!shotDir(), width: 1300, height: 860, webPreferences: { sandbox: true, contextIsolation: true } });
     await guest.loadURL(url);
-    await until(() => js(guest, `return !!document.querySelector('.dlg input')`), 8000);
-    await js(guest, `const i = document.querySelector('.dlg input'); i.value = '시험 참가자'; document.querySelector('.dlg-actions .btn.cta').click(); return true;`);
     out.guestReady = !!(await until(() => js(guest, 'return !!window.__roadmap?.sessionUi && window.__roadmap.store.items.length > 0'), 10000));
+    out.noPrompt = await js(guest, `return !document.querySelector('.dlg-scrim:not([hidden]) .dlg') && /^참가자 \\d+$/.test(window.__roadmap.session.me)`);
+    await js(guest, `
+      [...document.querySelectorAll('#sessionBar button')].find((b) => b.textContent.startsWith('내 이름')).click();
+      await new Promise((r) => setTimeout(r, 200));
+      const i = document.querySelector('.dlg input'); i.value = '시험 참가자';
+      document.querySelector('.dlg-actions .btn.cta').click();
+      return true;`);
     out.guestRestricted = await js(guest, `return document.body.classList.contains('session-guest') && !window.roadmapDB
       && getComputedStyle(document.getElementById('btnGraph')).display === 'none' && getComputedStyle(document.getElementById('btnData')).display === 'none'`);
     out.people = !!(await until(() => js(host, `return (window.__roadmap.session.people || []).some((p) => p.name === '시험 참가자')`)));
@@ -118,7 +124,7 @@ export default {
     host.destroy();
     return out;
   },
-  check: (o) => o?.btnShown === true && o?.portFrom1126 === true && o?.hostSession === true && o?.guestReady === true
+  check: (o) => o?.btnShown === true && o?.portFrom1126 === true && o?.plainUrl === true && o?.noPrompt === true && o?.hostSession === true && o?.guestReady === true
     && o?.guestRestricted === true && o?.people === true && o?.guestToHost === true && o?.bothFields === true && o?.sameField === true
     && o?.undoOwn === true && o?.presence === true && o?.noDbWide === true && o?.viewOnly === true && o?.blocked === true && o?.privateOnly === true
     && o?.sourceUntouched === true && o?.history === true && o?.noFix === true && o?.guestClosed === true && o?.resumed === true,

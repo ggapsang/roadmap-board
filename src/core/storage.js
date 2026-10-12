@@ -267,15 +267,10 @@ export class IpcHostTransport {
   presence(sel) { this.api.presence(this.id, { sel }).catch(() => {}); }
 }
 
-/** 참가자 브라우저 — HTTP. 호스트 → 화면은 SSE, 화면 → 호스트는 POST. 링크의 토큰을 모든 요청에 싣는다 */
+/** 참가자 브라우저 — HTTP. 호스트 → 화면은 SSE, 화면 → 호스트는 POST. 입장 제약 없음(포트 주소만, 2026-10-12 사용자) */
 export class HttpTransport {
-  constructor(token) { this.token = token; this.cid = null; this.host = false; }
-  #url(p) {
-    const q = new URLSearchParams();
-    if (this.cid) q.set('cid', this.cid);
-    if (this.token) q.set('t', this.token);
-    return `${p}?${q}`;
-  }
+  constructor() { this.cid = null; this.host = false; }
+  #url(p) { return this.cid ? `${p}?cid=${encodeURIComponent(this.cid)}` : p; }
   async #post(p, body) {
     const r = await fetch(this.#url(p), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) });
     const j = await r.json().catch(() => ({}));
@@ -342,6 +337,7 @@ export class HostedAdapter extends StorageAdapter {
     const h = await this.t.hello(name, cid);
     this.cid = h.cid;
     this.role = h.role ?? 'edit';
+    this.me = h.name ?? name ?? '';
     return h;
   }
 
@@ -427,7 +423,10 @@ export class HostedAdapter extends StorageAdapter {
   presence(sel) { this.t.presence(sel ?? null); }
 }
 
-/** 실행 환경에 맞는 어댑터를 고른다. 호스팅 창(?hosting=)·참가자 브라우저(http + 링크 토큰)는 HostedAdapter. */
+/**
+ * 실행 환경에 맞는 어댑터를 고른다. 호스팅 창(?hosting=)·참가자 브라우저는 HostedAdapter — 참가자 브라우저는 호스트의 웹 서버가
+ * 첫 화면에 넣은 표식(<meta name="wolfpack-hosting">)으로 안다(포트 주소만 열면 된다).
+ */
 export function createAdapter(localStorageKey) {
   const q = typeof location !== 'undefined' ? new URLSearchParams(location.search) : new URLSearchParams();
   if (typeof window !== 'undefined' && window.roadmapDB?.available) {
@@ -436,8 +435,8 @@ export function createAdapter(localStorageKey) {
     }
     return new ElectronAdapter(window.roadmapDB);
   }
-  if (typeof location !== 'undefined' && /^https?:$/.test(location.protocol) && q.get('t')) {
-    return new HostedAdapter(new HttpTransport(q.get('t')));
+  if (typeof document !== 'undefined' && document.querySelector('meta[name="wolfpack-hosting"]')) {
+    return new HostedAdapter(new HttpTransport());
   }
   return new LocalStorageAdapter(localStorageKey);
 }

@@ -24,7 +24,7 @@ export async function startHosting({ api, adapter, store, before }) {
   if (!had) {
     const ok = await askConfirm({
       title: '이 보드 호스팅',
-      message: '지금 보드를 떼어 낸 사본을 사내망에 엽니다. 링크를 받은 사람은 브라우저로 들어와 함께 보고 고칩니다. '
+      message: '지금 보드를 떼어 낸 사본을 사내망에 엽니다. 주소(http://이 PC의 사내 IP:포트/)를 크롬 등 브라우저로 열면 누구나 바로 들어와 함께 보고 고칩니다. '
         + '호스팅하는 동안 사본과 이 보드는 서로 영향을 주지 않고, 고친 것은 나중에 첫 화면의 호스팅 목록에서 거둡니다. '
         + '사내망 HTTP라 내용이 암호화되지 않습니다 — 미공개 자료가 든 보드인지 확인하세요.',
       confirmLabel: '호스팅 시작',

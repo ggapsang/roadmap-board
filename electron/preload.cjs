@@ -91,7 +91,6 @@ contextBridge.exposeInMainWorld('roadmapDB', {
     presence: (id, payload) => call('hosting:presence', id, payload),
     role: (id, cid, role) => call('hosting:role', id, cid, role),
     kick: (id, cid) => call('hosting:kick', id, cid),
-    token: (id) => call('hosting:token', id),
     history: (id) => call('hosting:history', id),
     material: (id) => call('hosting:material', id),
     backup: (id) => call('hosting:backup', id),
