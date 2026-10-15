@@ -387,3 +387,16 @@ body.reordering-col{cursor:grabbing!important;user-select:none}
 .memo-grip{position:absolute;right:0;bottom:0;width:var(--u3);height:var(--u3);cursor:nwse-resize;
   background:linear-gradient(135deg,transparent 50%,var(--border-default) 50%)}
 body.dragging-memo,body.dragging-memo *{cursor:grabbing!important;user-select:none}
+
+/* 비고 미리보기 — 비고가 있는 카드에 커서를 올리면 옆에 뜬다(notetip.js). 떠 있는 계층이라 그림자를 준다(가이드: 그림자는 떠 있는 것에만).
+   보기만 — 커서를 가로채지 않는다. 길면 아래를 흐리게 자른다(고치기·전부 보기는 편집 패널). */
+.note-tip{position:fixed;z-index:70;max-width:360px;min-width:160px;max-height:min(420px,60vh);overflow:hidden;
+  padding:var(--u3) var(--u4);background:var(--bg-panel);border:1px solid var(--border-default);border-radius:var(--r-control);
+  box-shadow:var(--shadow-pop);pointer-events:none;color:var(--text-primary);font-size:12px;line-height:1.55;text-align:left}
+/* 넘칠 때만 아래를 흐리게 — 마스크는 색이 아니라 투명도(black = 보임) */
+.note-tip.long{-webkit-mask-image:linear-gradient(to bottom,black calc(100% - var(--u6)),transparent);
+  mask-image:linear-gradient(to bottom,black calc(100% - var(--u6)),transparent)}
+.note-tip[hidden]{display:none}
+.note-tip-title{font-weight:600;font-size:12px;color:var(--text-secondary);margin-bottom:var(--u1-5);
+  padding-bottom:var(--u1-5);border-bottom:1px solid var(--border-subtle)}
+.note-tip-body{word-break:keep-all;overflow-wrap:anywhere}

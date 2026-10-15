@@ -40,6 +40,7 @@ export const AREAS = {
   graph: ['src/core/graph.js', 'src/ui/graph.js', 'src/styles/graph.css'],
   db: ['electron/db/', 'src/core/storage.js'],
   memo: ['src/ui/board/memos.js'],
+  notetip: ['src/ui/board/notetip.js'],
   hosting: ['electron/hosting/', 'src/core/ops.js', 'src/core/merge3.js', 'src/ui/session.js', 'src/ui/hosting.js', 'src/styles/session.css'],
 };
 

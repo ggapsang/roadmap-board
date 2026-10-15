@@ -27,6 +27,7 @@ import { renderCard, fitTitle } from './card.js';
 import { createArrowLayer, drawArrows } from './arrows.js';
 import { anchorPoint, anchorFromPoint, elbowRoute, overrideFromRoute } from '../../core/arrow-geometry.js';
 import { attachDrag } from './drag.js';
+import { NoteTip } from './notetip.js';
 import { MemoLayer } from './memos.js';
 
 export class Board {
@@ -44,6 +45,7 @@ export class Board {
     this.columns = new Map();
     this.arrowLayer = createArrowLayer();
     this.memos = new MemoLayer({ grid, store, view, board: () => this });
+    this.noteTip = new NoteTip({ grid, store });      // 비고가 있는 카드에 커서를 올리면 비고를 띄운다
     this._layout = { placement: new Map(), trackLanes: new Map() };
 
     this.#attachEvents();
