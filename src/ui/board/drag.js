@@ -10,11 +10,16 @@
  * 칸 인덱스. 정밀도 단위(step)는 눈금 모드가 정한다: 주-일·월-주 1일 · 분기-월 1주 · 눈금 없음 1칸.
  * 월 단위(눈금 없음의 한 칸이 월)는 달력 산술이라, 끝은 '다음 칸의 시작 − 1'로 옮긴다(말일 보정).
  *
+ * 하위 카드(모자관계)는 상위 카드의 트랙에 묶여 있어 끄는 동안 그 자리에 남고, 다른 트랙 위에 놓으면 그 칸을 표시했다가
+ * 놓을 때 '모자관계가 풀린다'고 한 번 묻는다 — 그러면 상위에서 빠져 그 트랙의 최상위 카드가 된다(2026-10-15 사용자).
+ * 끌기와 풀기는 되돌리기 1단계다(묻는 동안 트랜잭션을 열어 둔다). 취소하면 세로 이동만 남는다.
+ *
  * 트랙 이동은 포인터가 실제로 올라가 있는 컬럼을 찾아 판정한다.
  * 레인 확장 때문에 컬럼 폭이 트랙마다 다르므로, 고정 폭으로 나눠 델타를 구하면
  * 폭이 넓은 트랙 위에서 커서와 카드가 어긋난다.
  */
 import { UNIT_DAYS, LAYOUT } from '../../config/index.js';
+import { askConfirm } from '../dialog.js';
 
 /** 크기 강제 높이(hd)의 하한(위치 단위) — 0이면 카드가 사라진다. 화면에선 카드 최소 높이가 먼저 막는다 */
 const HD_MIN = 0.05;
@@ -77,6 +82,8 @@ export function attachDrag(grid, {
       hostWidth,
       x0: item.place?.x ?? (rect.left - hostLeft) / hostWidth,
       w0: item.place?.w ?? rect.width / hostWidth,
+      child: !!item.parent,
+      leave: null,          // 하위 카드를 상위의 트랙 밖에 놓으려는 트랙 인덱스
       moved: false,
     };
     card.setPointerCapture(ev.pointerId);
@@ -207,6 +214,13 @@ export function attachDrag(grid, {
         let dn = n;
         while (dn < 0 && tl.add(drag.startDay, dn) < 0) dn += 1;
         tl.set(item, tl.add(drag.startDay, dn), endAdd(drag.endDay, dn));
+        if (drag.child) {
+          // 하위 카드는 상위 트랙에 묶여 있다 — 옮길 트랙은 놓을 때 묻는다. 그 칸만 표시
+          const k = Math.max(0, Math.min(store.tracks.length - 1, pointerTrack));
+          drag.leave = k !== drag.homeTrack ? k : null;
+          markDrop(drag.leave);
+          return;
+        }
         const sp = item.place.sp ?? 1;
         const maxTrack = store.tracks.length - sp;
         const k = Math.max(0, Math.min(maxTrack, drag.startTrack + dTrack));
@@ -235,11 +249,52 @@ export function attachDrag(grid, {
     });
   });
 
+  /** 하위 카드를 놓을 트랙 칸 표시 */
+  function markDrop(k) {
+    grid.querySelectorAll('.col.drop-leave').forEach((c) => c.classList.remove('drop-leave'));
+    if (k != null) grid.querySelectorAll('.col')[k]?.classList.add('drop-leave');
+  }
+
+  /** 하위 카드를 상위에서 빼 트랙 k의 최상위로 — 자손은 새 최상위 조상의 트랙을 따른다 */
+  function detachTo(id, k) {
+    store.commit('모자관계 해제', (doc) => {
+      const d = new Map(doc.items.map((x) => [x.id, x]));
+      const it = d.get(id);
+      const track = store.tracks[k];
+      if (!it || !track) return;
+      it.parent = null;
+      it.place.x = null; it.place.w = null; it.place.sp = 1;
+      it.place.t = track.id; it.place.tracks = [track.id];
+      const top = (x, g = 0) => (x.parent && d.has(x.parent) && g < 256 ? top(d.get(x.parent), g + 1) : x);
+      for (const x of doc.items) {
+        if (!x.parent) continue;
+        const root = top(x);
+        if (root.id !== id) continue;
+        x.place.t = root.place.t;
+        x.place.tracks = [root.place.t];
+      }
+    });
+  }
+
   const finish = () => {
     if (!drag) return;
-    const { id, moved } = drag;
+    const { id, moved, leave } = drag;
     drag = null;
-    if (moved) { store.end(); onDragEnd?.(id); }
+    markDrop(null);
+    if (!moved) return;
+    if (leave == null) { store.end(); onDragEnd?.(id); return; }
+    const item = store.item(id);
+    const parent = item?.parent ? store.item(item.parent) : null;
+    const name = store.tracks[leave]?.alias || store.tracks[leave]?.name || '다른 트랙';
+    askConfirm({
+      title: '모자관계 해제',
+      message: `'${item?.ti ?? ''}' 카드를 '${name}' 트랙으로 옮기면 상위 카드${parent ? ` '${parent.ti}'` : ''} 안에서 빠집니다 — 모자관계가 해제됩니다.`,
+      confirmLabel: '옮기고 해제',
+    }).then((ok) => {
+      if (ok) detachTo(id, leave);
+      store.end();
+      onDragEnd?.(id);
+    });
   };
 
   grid.addEventListener('pointerup', finish);

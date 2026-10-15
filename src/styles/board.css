@@ -400,3 +400,6 @@ body.dragging-memo,body.dragging-memo *{cursor:grabbing!important;user-select:no
 .note-tip-title{font-weight:600;font-size:12px;color:var(--text-secondary);margin-bottom:var(--u1-5);
   padding-bottom:var(--u1-5);border-bottom:1px solid var(--border-subtle)}
 .note-tip-body{word-break:keep-all;overflow-wrap:anywhere}
+
+/* 하위 카드를 상위의 트랙 밖으로 끌 때 놓을 칸 — 놓으면 모자관계 해제를 묻는다(drag.js). 포커스 표시라 Orange */
+.col.drop-leave{outline:2px dashed var(--accent);outline-offset:-2px}
