@@ -31,8 +31,16 @@ export default {
         o.created = memos().length === 1 && !!m0?.date && m0.track === col.dataset.t && m0.x > 0.3 && m0.x < 0.5;
         o.editing = r.board.memos.editing && !!nodeOf(m0.id)?.querySelector('.cm-editor');
         // 마크다운 — 쓰고 Esc로 마치면 바로 서식으로 보인다
-        r.board.memos.edit.ed.setValue('# 메모 제목\\n**굵게** 쓴 글', { resetHistory: false });
+        r.board.memos.edit.ed.setValue('# 메모 제목\\n**굵게** 쓴 글\\n끝', { resetHistory: false });
         await sleep(50);
+        // 쓰는 중에도 비고 편집기처럼 커서 줄만 원문, 나머지는 서식(굵게·제목 크기) — 서식 스타일이 비고 칸에만 걸려 있던 것(2026-10-16)
+        { const v = r.board.memos.edit.ed.view; v.dispatch({ selection: { anchor: v.state.doc.length } }); }
+        await sleep(80);
+        { const ed = nodeOf(m0.id).querySelector('.memo-editor');
+          const st = ed.querySelector('.cm-md-strong'); const h = ed.querySelector('.cm-md-h1');
+          o.liveEdit = !!st && Number(getComputedStyle(st).fontWeight) >= 600 && !!h
+            && parseFloat(getComputedStyle(h).fontSize) > parseFloat(getComputedStyle(ed.querySelector('.cm-content')).fontSize)
+            && !ed.querySelector('.cm-content').textContent.includes('**'); }
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
         await sleep(200);
         const n = () => nodeOf(m0.id);
@@ -131,6 +139,7 @@ export default {
   check: (o) => o?.menu === true
     && o?.created === true
     && o?.editing === true
+    && o?.liveEdit === true
     && o?.markdown === true
     && o?.notEvent === true
     && o?.undoOne === true

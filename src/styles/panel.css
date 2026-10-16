@@ -36,24 +36,25 @@ body.panel-open{--panel-w:var(--panel-size)}
 .note-editor .cm-editor.cm-focused{outline:none}
 .note-editor .cm-scroller{font-family:inherit;line-height:1.6;padding:var(--u2) 0}
 .note-editor .cm-content{padding:0 var(--u3);caret-color:var(--text-primary)}
-.note-editor .cm-line{padding:0}
-.note-editor .cm-placeholder{color:var(--text-tertiary)}
-.note-editor .cm-selectionBackground,.note-editor .cm-focused .cm-selectionBackground{background:var(--accent-soft) !important}
-.note-editor .cm-cursor{border-left-color:var(--text-primary)}
-.note-editor .cm-md-h1{font-size:1.35em;font-weight:700}
-.note-editor .cm-md-h2{font-size:1.2em;font-weight:700}
-.note-editor .cm-md-h3{font-size:1.08em;font-weight:600}
-.note-editor .cm-md-strong{font-weight:700}
-.note-editor .cm-md-em{font-style:italic}
-.note-editor .cm-md-strike{text-decoration:line-through;color:var(--text-tertiary)}
-.note-editor .cm-md-code{font-family:ui-monospace,Consolas,monospace;font-size:.92em;background:var(--bg-hover);border-radius:var(--u1);padding:0 2px}
-.note-editor .cm-md-link{text-decoration:underline;cursor:pointer}
-.note-editor .cm-md-bullet{display:inline-block;width:1em;color:var(--text-secondary)}
-.note-editor .cm-md-task{margin:0 var(--u1-5) 0 0;vertical-align:-2px;cursor:pointer;accent-color:var(--text-primary)}
-.note-editor .cm-md-done{color:var(--text-tertiary);text-decoration:line-through}
-.note-editor .cm-md-quote{border-left:3px solid var(--border-default);padding-left:var(--u2) !important;color:var(--text-secondary)}
-.note-editor .cm-md-codeblock,.note-editor .cm-md-table{font-family:ui-monospace,Consolas,monospace;font-size:.9em;background:var(--bg-hover)}
-.note-editor .cm-md-hr{display:inline-block;width:100%;border-top:1px solid var(--border-subtle);vertical-align:middle}
+/* 아래 줄·커서·서식은 메모 편집기(ui/board/memos.js — 같은 noteEditor)와 같이 쓴다. 메모에 빠져 있어 굵게·제목·목록이 서식 없이 보였다(2026-10-16) */
+:is(.note-editor,.memo-editor) .cm-line{padding:0}
+:is(.note-editor,.memo-editor) .cm-placeholder{color:var(--text-tertiary)}
+:is(.note-editor,.memo-editor) .cm-selectionBackground,:is(.note-editor,.memo-editor) .cm-focused .cm-selectionBackground{background:var(--accent-soft) !important}
+:is(.note-editor,.memo-editor) .cm-cursor{border-left-color:var(--text-primary)}
+:is(.note-editor,.memo-editor) .cm-md-h1{font-size:1.35em;font-weight:700}
+:is(.note-editor,.memo-editor) .cm-md-h2{font-size:1.2em;font-weight:700}
+:is(.note-editor,.memo-editor) .cm-md-h3{font-size:1.08em;font-weight:600}
+:is(.note-editor,.memo-editor) .cm-md-strong{font-weight:700}
+:is(.note-editor,.memo-editor) .cm-md-em{font-style:italic}
+:is(.note-editor,.memo-editor) .cm-md-strike{text-decoration:line-through;color:var(--text-tertiary)}
+:is(.note-editor,.memo-editor) .cm-md-code{font-family:ui-monospace,Consolas,monospace;font-size:.92em;background:var(--bg-hover);border-radius:var(--u1);padding:0 2px}
+:is(.note-editor,.memo-editor) .cm-md-link{text-decoration:underline;cursor:pointer}
+:is(.note-editor,.memo-editor) .cm-md-bullet{display:inline-block;width:1em;color:var(--text-secondary)}
+:is(.note-editor,.memo-editor) .cm-md-task{margin:0 var(--u1-5) 0 0;vertical-align:-2px;cursor:pointer;accent-color:var(--text-primary)}
+:is(.note-editor,.memo-editor) .cm-md-done{color:var(--text-tertiary);text-decoration:line-through}
+:is(.note-editor,.memo-editor) .cm-md-quote{border-left:3px solid var(--border-default);padding-left:var(--u2) !important;color:var(--text-secondary)}
+:is(.note-editor,.memo-editor) .cm-md-codeblock,:is(.note-editor,.memo-editor) .cm-md-table{font-family:ui-monospace,Consolas,monospace;font-size:.9em;background:var(--bg-hover)}
+:is(.note-editor,.memo-editor) .cm-md-hr{display:inline-block;width:100%;border-top:1px solid var(--border-subtle);vertical-align:middle}
 /* 제목 textarea — 한 줄 높이에서 시작해 내용만큼 자란다 (Shift+Enter로 줄바꿈) */
 .fld textarea#i-title{min-height:var(--u8);overflow:hidden}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:var(--u2)}
