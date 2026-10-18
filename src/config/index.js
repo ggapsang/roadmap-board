@@ -90,8 +90,6 @@ export const DEFAULT_RELATION = 'dep';
  * 방향 중력은 목표 좌표로 끌지 않고 **최소 간격(gap)에 못 미칠 때만** 벌린다(G-20).
  */
 export const GRAPH = {
-  /** 화살촉을 달지 않는 계열 — 참조는 방향 없이 잇는 선(점선) */
-  noArrow: ['ref'],
   /** 엣지 종류 → 계열 */
   typeFamily: { contain: 'contain', dep: 'flow', merge: 'flow', cause: 'cause', ref: 'ref' },
   /** 계열별 방향 중력(u·gap·strength·slider)과 스프링 세기 */
@@ -120,6 +118,34 @@ export const GRAPH = {
   sliders: { structure: 0.5, flow: 0.5 },
   /** 라벨을 보이는 최소 화면 반지름(px) — 멀리서는 큰 노드만 (4.5) */
   labelMinScreenRadius: 9,
+  /**
+   * 스타일 탭(2026-10-19 사용자) — 노드 색·모양, 관계 계열별 선 색·화살촉. 그래프 전체 기본값 + 고른 노드만 따로.
+   * 이 PC 설정(localStorage)이다 — 이벤트·배치·공유 문서에 넣지 않는다(G-03·G-05). 색은 팔레트 key만, 값은 `--graph-c-{key}` 토큰.
+   * 모양은 사용자가 고른 표현일 뿐 역할로 나누지 않는다(G-07). 기본은 지금처럼 모두 원.
+   */
+  style: {
+    palette: [
+      { key: 'teal', label: '청록' }, { key: 'blue', label: '파랑' }, { key: 'purple', label: '보라' }, { key: 'pink', label: '분홍' },
+      { key: 'red', label: '빨강' }, { key: 'yellow', label: '노랑' }, { key: 'green', label: '초록' }, { key: 'gray', label: '회색' },
+    ],
+    shapes: [
+      { key: 'circle', label: '원' }, { key: 'square', label: '사각형' }, { key: 'diamond', label: '마름모' },
+      { key: 'hexagon', label: '육각형' }, { key: 'triangle', label: '삼각형' },
+    ],
+    heads: [
+      { key: 'triangle', label: '삼각' }, { key: 'open', label: '열린 화살' }, { key: 'dot', label: '점' }, { key: 'none', label: '없음' },
+    ],
+    /** 선 색 'base'는 계열 기본색(`--graph-{계열}`) */
+    defaults: {
+      node: { color: 'teal', shape: 'circle' },
+      families: {
+        contain: { color: 'base', head: 'triangle' },
+        flow: { color: 'base', head: 'triangle' },
+        cause: { color: 'base', head: 'triangle' },
+        ref: { color: 'base', head: 'none' },          // 참조는 방향 없이 잇는 선(점선)
+      },
+    },
+  },
 };
 
 /**

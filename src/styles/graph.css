@@ -1,6 +1,7 @@
 /* ── 그래프 뷰 (src/ui/graph.js) — 표현 층 · 읽기 전용 ─────────────
-   모든 이벤트가 같은 원(크기만 다름, G-07·G-08). 엣지는 굵기 같고 색 계열 넷(G-14), 화살촉(G-15).
-   호버·선택은 색·불투명도만(G-28). 떠 있는 층이 아니라 보드 자리를 덮는 작업 화면이라 그림자 없음. */
+   노드 색·모양은 기본 한 가지(원) + 사용자가 스타일 탭에서 고른 것(전체 기본·노드마다, 이 PC 설정 — ui/graph.js).
+   엣지는 굵기 같고 색 계열 넷(G-14, 색·화살촉은 스타일 탭), 화살촉(G-15). 색은 CSS 변수 --gv-node·--gv-{계열}·--n-fill(토큰 경유).
+   호버·선택·검색은 색·불투명도·테두리만(G-28). 떠 있는 층이 아니라 보드 자리를 덮는 작업 화면이라 그림자 없음. */
 /* 보드와 무관한 독립 탭 — 보드 화면 위를 덮는다(첫 화면 z:90보다 위, 팝업 z:120보다 아래) */
 .graphview{position:fixed;top:var(--tab-h);left:0;right:0;bottom:0;z-index:95;
   background:var(--bg-canvas);display:flex;flex-direction:column}
@@ -24,33 +25,40 @@
 .gv-swatch[data-family="cause"]{border-top-color:var(--graph-cause)}
 .gv-swatch[data-family="ref"]{border-top:2px dashed var(--graph-ref)}
 .gv-note{margin:0;font-size:11px;color:var(--text-tertiary)}
-.gv-stage{position:relative;flex:1;min-height:0}
+.gv-main{flex:1;min-height:0;display:flex}
+.gv-stage{position:relative;flex:1;min-width:0;min-height:0}
 .gv-svg{position:absolute;inset:0;width:100%;height:100%;cursor:grab;touch-action:none;user-select:none}
 .gv-svg.panning{cursor:grabbing}
 
-/* 엣지 — 굵기 모두 1.5px, 색 계열 넷 */
-.gv-link{fill:none;stroke-width:1.5;stroke:var(--graph-contain);opacity:.85}
-.gv-link.gv-f-flow{stroke:var(--graph-flow)}
-.gv-link.gv-f-cause{stroke:var(--graph-cause)}
-.gv-link.gv-f-ref{stroke:var(--graph-ref);stroke-dasharray:4 4}
+/* 엣지 — 굵기 모두 1.5px, 색 계열 넷(스타일 탭이 --gv-{계열}을 바꾼다) */
+.graphview{--gv-node:var(--graph-c-teal);--gv-contain:var(--graph-contain);--gv-flow:var(--graph-flow);
+  --gv-cause:var(--graph-cause);--gv-ref:var(--graph-ref)}
+.gv-link{fill:none;stroke-width:1.5;stroke:var(--gv-contain);opacity:.85}
+.gv-link.gv-f-flow{stroke:var(--gv-flow)}
+.gv-link.gv-f-cause{stroke:var(--gv-cause)}
+.gv-link.gv-f-ref{stroke:var(--gv-ref);stroke-dasharray:4 4}
 .gv-link.dim{opacity:.12}
 .gv-link.hl{stroke:var(--accent);opacity:1}
-.gv-arrowhead{fill:var(--graph-contain)}
-.gv-arrowhead.gv-f-flow{fill:var(--graph-flow)}
-.gv-arrowhead.gv-f-cause{fill:var(--graph-cause)}
-.gv-arrowhead.gv-f-ref{fill:var(--graph-ref)}
-.gv-arrowhead.gv-f-hl{fill:var(--accent)}
+.gv-arrowhead{fill:var(--gv-contain);stroke:var(--gv-contain)}
+.gv-arrowhead.gv-f-flow{fill:var(--gv-flow);stroke:var(--gv-flow)}
+.gv-arrowhead.gv-f-cause{fill:var(--gv-cause);stroke:var(--gv-cause)}
+.gv-arrowhead.gv-f-ref{fill:var(--gv-ref);stroke:var(--gv-ref)}
+.gv-arrowhead.gv-f-hl{fill:var(--accent);stroke:var(--accent)}
+path.gv-arrowhead:not(.open),circle.gv-arrowhead{stroke:none}
+.gv-arrowhead.open{fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 
-/* 노드 — 모두 같은 원 */
-.gv-node{fill:var(--graph-node);stroke:var(--graph-node-edge);stroke-width:1.5;cursor:pointer;
-  transition:opacity .12s ease,fill .12s ease}
+/* 노드 — 기본 한 색·원. 고른 노드만 따로 칠하면 --n-fill */
+.gv-node{fill:var(--n-fill,var(--gv-node));stroke:var(--graph-node-edge);stroke-width:1.5;cursor:pointer;
+  transition:opacity .12s ease}
 @media (prefers-reduced-motion:reduce){.gv-node{transition:none}}
-/* 범위 밖 한 걸음 — 비운 원·점선 테두리. 호버·선택 강조(dim·focus)가 뒤에서 이긴다 */
-.gv-node.outside{fill:var(--bg-canvas);stroke-dasharray:3 2;opacity:.6}
-.gv-label.outside{opacity:.6}
-.gv-node.dim{opacity:.18}
-.gv-node.near{fill:var(--text-secondary)}
-.gv-node.focus,.gv-node.sel{fill:var(--accent)}
+/* 범위 밖 한 걸음 — 숨기지 않고 흐리게: 같은 색·모양을 옅게, 테두리는 점선(바깥이라는 표시) */
+.gv-node.outside{opacity:.38;stroke:var(--text-tertiary);stroke-dasharray:3 2}
+.gv-label.outside{opacity:.55}
+.gv-node.dim{opacity:.14}
+.gv-node.outside.near,.gv-node.outside.focus,.gv-node.outside.sel,.gv-node.outside.hit{opacity:.7}
+/* 호버·선택은 테두리로 — 사용자가 고른 노드 색을 덮지 않는다 */
+.gv-node.focus,.gv-node.sel{stroke:var(--accent);stroke-width:3;stroke-dasharray:none}
+.gv-node.hit{stroke:var(--accent);stroke-width:2;stroke-dasharray:none}
 
 /* 라벨 — 멀리서는 큰 노드만, 호버·선택과 그 이웃은 늘 (4.5) */
 .gv-label{font-size:11px;fill:var(--graph-label);pointer-events:none;display:none;
@@ -60,13 +68,60 @@
 .gv-edge-label{font-size:10px;font-weight:600;fill:var(--accent);pointer-events:none;
   paint-order:stroke;stroke:var(--bg-canvas);stroke-width:3px;stroke-linejoin:round}
 
-/* 선택한 노드 정보 (읽기 전용) — 떠 있는 층 */
-.gv-info{position:absolute;top:var(--u3);right:var(--u3);width:280px;max-height:calc(100% - var(--u6));overflow:auto;
-  background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:var(--r-panel);
-  box-shadow:var(--shadow-pop);padding:var(--u3)}
-.gv-info[hidden]{display:none}
+/* 검색 — 위쪽 막대. 결과 목록은 떠 있는 층 */
+.gv-search{position:relative}
+.gv-search-input{width:200px;height:var(--u8);padding:0 var(--u2-5);border:1px solid var(--border-default);
+  border-radius:var(--r-control);background:var(--bg-panel);color:var(--text-primary);font-size:12px}
+.gv-search-input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.gv-results{position:absolute;top:calc(100% + var(--u1));left:0;z-index:5;width:280px;max-height:360px;overflow:auto;
+  background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:var(--r-control);box-shadow:var(--shadow-pop);
+  padding:var(--u1) 0}
+.gv-results[hidden]{display:none}
+.gv-results-head{padding:var(--u1) var(--u3);font-size:11px;color:var(--text-tertiary)}
+.gv-result{display:flex;align-items:baseline;gap:var(--u2);width:100%;padding:var(--u1-5) var(--u3);border:0;background:none;
+  text-align:left;font-size:12px;color:var(--text-primary);cursor:pointer}
+.gv-result span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gv-result em{font-style:normal;font-size:11px;color:var(--text-tertiary)}
+.gv-result:hover{background:var(--bg-hover)}
+
+/* 오른쪽 패널 — 정보·스타일 (작업 화면의 한 칸이라 그림자 없음) */
+.gv-side{width:300px;flex:none;display:flex;flex-direction:column;min-height:0;
+  background:var(--bg-panel);border-left:1px solid var(--border-subtle)}
+.gv-side[hidden]{display:none}
+.gv-tabs{display:flex;gap:var(--u1);padding:0 var(--u3);border-bottom:1px solid var(--border-subtle);flex:none}
+.gv-tab{height:var(--u10);padding:0 var(--u2);border:0;border-bottom:2px solid transparent;background:none;
+  font-size:13px;color:var(--text-secondary);cursor:pointer}
+.gv-tab[aria-selected="true"]{color:var(--text-primary);font-weight:600;border-bottom-color:var(--accent)}
+.gv-pane{flex:1;min-height:0;overflow:auto;padding:var(--u3)}
+.gv-pane[hidden]{display:none}
+.gv-hint{font-size:12px;color:var(--text-tertiary);line-height:1.5}
 .gv-info-title{font-size:14px;line-height:20px;font-weight:600;color:var(--text-primary)}
 .gv-info-sub{font-size:11px;color:var(--text-tertiary);margin:2px 0 var(--u2)}
+.gv-info-head{font-size:11px;font-weight:600;color:var(--text-secondary);margin:var(--u3) 0 var(--u1-5)}
+.gv-facts{display:flex;flex-wrap:wrap;gap:var(--u1-5)}
+.gv-facts .muted{font-size:12px;color:var(--text-tertiary)}
+.gv-fact{display:inline-flex;gap:var(--u1);align-items:baseline;padding:2px var(--u2);border:1px solid var(--border-subtle);
+  border-radius:var(--r-pill);font-size:11px;color:var(--text-tertiary)}
+.gv-fact b{font-weight:600;color:var(--text-primary)}
+.gv-note-box{font-size:12px;line-height:1.55;color:var(--text-primary)}
+
+/* 스타일 탭 */
+.gv-style-sec{padding-bottom:var(--u2);border-bottom:1px solid var(--border-subtle)}
+.gv-style-row{display:flex;align-items:flex-start;gap:var(--u2);margin:var(--u1-5) 0}
+.gv-style-label{width:44px;flex:none;font-size:12px;line-height:var(--u6);color:var(--text-secondary)}
+.gv-style-fam{margin-top:var(--u2)}
+.gv-style-famname{font-size:12px;font-weight:600;color:var(--text-primary)}
+.gv-sws{display:flex;flex-wrap:wrap;gap:var(--u1-5)}
+.gv-sw{width:var(--u6);height:var(--u6);border-radius:var(--r-pill);border:2px solid var(--bg-panel);background:var(--sw);
+  box-shadow:0 0 0 1px var(--border-default);cursor:pointer;padding:0}
+.gv-sw.base{width:auto;padding:0 var(--u2);background:var(--bg-panel);color:var(--text-secondary);font-size:11px;
+  box-shadow:inset 0 -3px 0 var(--sw),0 0 0 1px var(--border-default)}
+.gv-sw[aria-pressed="true"]{box-shadow:0 0 0 2px var(--accent)}
+.gv-sw.base[aria-pressed="true"]{box-shadow:inset 0 -3px 0 var(--sw),0 0 0 2px var(--accent)}
+.gv-seg{flex-wrap:wrap}
+.gv-seg button{height:var(--u6);font-size:11px;padding:0 var(--u2)}
+.gv-reset{margin-top:var(--u1-5)}
+.gv-style-foot{padding-top:var(--u3)}
 .gv-info-list{display:flex;flex-direction:column;gap:2px}
 .gv-info-row{display:flex;align-items:baseline;gap:var(--u1-5);font-size:12px}
 .gv-info-row .linklike{background:none;border:0;padding:0;color:var(--text-primary);cursor:pointer;text-align:left;
@@ -74,4 +129,4 @@
 .gv-info-row .linklike:hover{color:var(--accent);text-decoration:underline}
 .gv-info-row em{font-size:11px;color:var(--text-tertiary);font-style:normal;flex:none}
 .gv-info-dir{color:var(--text-tertiary);flex:none}
-.gv-info .empty{font-size:12px;color:var(--text-tertiary)}
+.gv-pane .empty{font-size:12px;color:var(--text-tertiary)}
