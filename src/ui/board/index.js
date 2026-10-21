@@ -539,11 +539,10 @@ export class Board {
       }
 
       // 최상위 카드: 소속 트랙을 연속 구간(run)으로 나눈다. 붙은 트랙은 걸쳐서 한 장,
-      // 떨어진 구간엔 같은 카드의 사본(echo)을 그 트랙에 따로 놓는다.
+      // 떨어진 구간엔 같은 카드의 사본(echo)을 그 트랙에 따로 놓는다. 점 마일스톤도 같다 — 예전엔 처음~끝 트랙을
+      // 다 채워 한 표식으로 그려, 속하지 않은 사이 트랙까지 가로질러 보였다(2026-10-21 사용자).
       const forced = item.place?.hd != null;
-      const isMsPoint = ctx.timeline.isPoint(item);
-      const runs = forced ? [[item.place.t]]
-        : isMsPoint ? [this.#fillRange(item)] : this.#trackRuns(item);
+      const runs = forced ? [[item.place.t]] : this.#trackRuns(item);
 
       runs.forEach((run, r) => {
         const homeTrackId = run[0];
@@ -613,19 +612,6 @@ export class Board {
     }
     runs.push(run);
     return runs.map((r) => r.map((i) => tracks[i].id));
-  }
-
-  /** 소속 트랙의 최소~최대를 연속으로 채운 한 구간 (점 마일스톤은 한 표식으로 가로지른다). */
-  #fillRange(item) {
-    const tracks = this.store.tracks;
-    const index = new Map(tracks.map((t, i) => [t.id, i]));
-    const members = (Array.isArray(item.place?.tracks) && item.place.tracks.length
-      ? item.place.tracks : [item.place?.t]).filter((id) => index.has(id));
-    const idxs = members.map((id) => index.get(id)).sort((a, b) => a - b);
-    if (!idxs.length) return [];
-    const out = [];
-    for (let i = idxs[0]; i <= idxs[idxs.length - 1]; i += 1) out.push(tracks[i].id);
-    return out;
   }
 
   redrawArrows() {
