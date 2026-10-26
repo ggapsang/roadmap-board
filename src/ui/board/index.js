@@ -477,6 +477,8 @@ export class Board {
       this.columns.set(track.id, col);
       this.grid.append(col);
     }
+    // 머리는 골격보다 먼저 그려지므로(rebuild) 새 칸에도 채우기를 다시 붙인다 — 빠지면 머리에만 색이 남는다
+    this.#syncColumnFill();
     this.grid.append(el('div.pad'));
     this.grid.append(this.arrowLayer);
     this.grid.append(this.memos.layer);

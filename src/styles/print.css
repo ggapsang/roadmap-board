@@ -26,3 +26,21 @@ body.exporting .gut-m b u{position:static}
    (visibility — 레이아웃은 그대로). */
 body.exporting .addcol>*{visibility:hidden}
 @media print{.addcol>*{visibility:hidden}}
+
+/* 내보내기 미리보기(export.js openExportPreview) — 보드 자체가 미리보기. 툴바·탭·상태 줄 대신 위에 미리보기 막대, 보드는 고칠 수
+   없다(스크롤·확대만). 내보내기와 같은 것(메모·'+' 칸·트랙 색 범위)을 여기서도 먹인다. */
+body.export-preview .tabbar,
+body.export-preview .bar,
+body.export-preview .status,
+body.export-preview .crumbs,
+body.export-preview .panel,
+body.export-preview .note-tip{display:none!important}
+body.export-preview .cal,
+body.export-preview .cal *{pointer-events:none!important}
+body.export-preview .addcol>*{visibility:hidden}
+body.export-preview.no-memo-export .memos{display:none!important}
+body.exporting .xp-bar{display:none!important}
+@media print{ .xp-bar{display:none!important} }
+/* 트랙 색을 머리에만 — 칸은 색 없이(화면은 늘 칸 전체). 채우기 규칙(.col[data-fill="hatch"] 0,2,0)보다 명시도가 높다 */
+body.export-fill-head:is(.export-preview,.exporting) .col[data-fill]{background:var(--surface-track)}
+@media print{ body.export-fill-head .col[data-fill]{background:var(--surface-track)} }

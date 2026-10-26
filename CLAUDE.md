@@ -276,6 +276,9 @@ src/               렌더러 (프레임워크 없음, ES 모듈)
    바뀌어도 따라간다. 크기 `w`·`h`는 px. 그리기·입력은 `src/ui/board/memos.js`(층 `.memos`는 다시 그려지지 않고 리스너는 그 층과
    window에만 — 규약 14, 끄는 동안 DOM만 옮기고 놓을 때 한 번 commit). 쓰던 메모는 탭을 떠날 때(`getDoc`)·창을 닫기 전·떼어 내기 전에
    `finishEdit`로 저장한다. 내보내기의 메모 포함 여부는 이 PC 설정(`exportMemos`, localStorage) — PNG·PDF·인쇄·JSON이 같은 값을 쓴다.
+   내보내기 메뉴는 **미리보기**(`export.js openExportPreview`, 2026-10-26 사용자)를 거친다 — 보드 자체가 미리보기(`body.export-preview`,
+   고칠 수 없다)이고 트랙 색 범위(`exportTrackFill`: 칸 전체·머리만, 이 PC 설정)도 거기서 고른다. 내보낼 모양을 바꾸는 CSS는
+   `print.css`에서 `.exporting`·`.export-preview`·`@media print` 셋에 같이 건다.
 30. **호스팅은 떼어 낸 독립 사본이다 (docs/SHARE.md, 2026-10-12 사용자).** 사본·이력은 `hosting`·`hosting_op`(024)에만 쓰고 4대상에는
    거두기 전까지 쓰지 않는다. `hosting.source_board_id`는 SET NULL(원래 보드가 지워져도 독립 보드로 거둔다 — 규약 18의 의도적 예외).
    이벤트 id는 원래 것 그대로(거둘 때 같은 id = 같은 이벤트). 호스트 창(`?hosting=id`)과 참가자 브라우저(포트 주소만 — 입장 제약 없음, 서버가 첫 화면에 `<meta name="wolfpack-hosting">`)는 같은 렌더러에

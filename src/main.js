@@ -19,7 +19,7 @@ import { ViewState } from './core/view.js';
 import { $ } from './ui/dom.js';
 import { initTheme } from './ui/theme.js';
 import { toast } from './ui/toast.js';
-import { exportPng, exportPdf } from './ui/export.js';
+import { openExportPreview, exportPreview } from './ui/export.js';
 import { Launcher } from './ui/launcher.js';
 import { BoardTabs } from './ui/tabs.js';
 import { Board } from './ui/board/index.js';
@@ -163,8 +163,13 @@ async function boot() {
       openTracks: () => configPanel.open(view.selectedTrack),
       openData: () => dataPanel.open(),
       nudgeFont: (d) => nudgeFont(d),
-      exportPng: () => { panels.close(); return atFullSize(() => exportPng(adapter, store)); },
-      exportPdf: () => { panels.close(); return atFullSize(() => exportPdf(adapter, store)); },
+      exportPreview: (format) => {
+        panels.close();
+        // 고른 표시(선택 테두리)는 내보낼 그림이 아니다 — 화면 상태라 비워도 문서·되돌리기와 무관
+        view.selectedItem = view.selectedTrack = view.selectedRel = view.selectedMemo = null;
+        refresh();
+        openExportPreview({ format, adapter, store, atFullSize });
+      },
       openProjects: () => { panels.close(); tabs.newLauncherTab(); },
       toggleTextSelect: () => {
         view.textSelect = !view.textSelect;
@@ -283,6 +288,11 @@ async function boot() {
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'F1') { e.preventDefault(); openHelp(); return; }   // 도움말 — 어느 화면에서든
+    // 내보내기 미리보기 — 보드를 고칠 수 없는 동안이라 단축키(되돌리기·삭제·탭)를 받지 않는다. Esc로 나온다
+    if (exportPreview.active) {
+      if (e.key === 'Escape') { e.preventDefault(); exportPreview.close(); }
+      return;
+    }
     // 브라우저처럼 탭 조작 — 런처가 떠 있어도, 입력 중이어도 먼저 받는다. 공유 화면에는 탭이 없다
     if (session && (e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 't' || e.key === 'Tab' || e.code === 'Tab')) { e.preventDefault(); return; }
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 't') {

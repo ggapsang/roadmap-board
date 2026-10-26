@@ -5,7 +5,7 @@
  * 담는다. 그러려면 캡처 직전에 스크롤 컨테이너의 제약을 잠시 풀어
  * 내용 전체가 펼쳐진 상태로 만들어야 한다.
  */
-import { $ } from './dom.js';
+import { $, el } from './dom.js';
 import { toast } from './toast.js';
 
 /**
@@ -28,8 +28,30 @@ export function syncExportMemos() {
   exportMemos.on = on;
   document.body.classList.toggle('no-memo-export', !on);
   document.getElementById('ex-memos')?.setAttribute('aria-checked', String(on));
-  const box = document.getElementById('d-memos');
-  if (box) box.checked = on;
+  for (const id of ['d-memos', 'xp-memos']) {
+    const box = document.getElementById(id);
+    if (box) box.checked = on;
+  }
+}
+
+/**
+ * 내보내기에서 트랙 채우기 색을 어디까지 칠할지 — 'col' 칸 전체(화면과 같다) | 'head' 트랙 머리만. 메모와 같은 까닭으로 이 PC에
+ * 기억한다. 화면은 늘 칸 전체이고, body 표식(export-fill-head)은 내보내기·미리보기·인쇄에서만 먹는다(print.css).
+ */
+const FILL_PREF = 'wolfpack.export.trackFill';
+export const exportTrackFill = {
+  get() { try { return localStorage.getItem(FILL_PREF) === 'head' ? 'head' : 'col'; } catch { return 'col'; } },
+  set(v) {
+    const next = v === 'head' ? 'head' : 'col';
+    try { localStorage.setItem(FILL_PREF, next); } catch { /* 저장 못 해도 이번엔 쓴다 */ }
+    this.value = next;
+    syncExportTrackFill();
+  },
+};
+
+export function syncExportTrackFill() {
+  exportTrackFill.value ??= exportTrackFill.get();
+  document.body.classList.toggle('export-fill-head', exportTrackFill.value === 'head');
 }
 
 /** JSON 반출 글 — 메모를 빼라면 meta.memos를 걷어 낸다(메모는 보드 표시 값이라 빼도 이벤트·관계는 그대로) */
@@ -115,20 +137,120 @@ export async function exportPng(adapter, store) {
     const saved = await withExpandedBoard(({ x, y, width, height }) =>
       adapter.exportPng({ x, y, width, height, scale: 2 }, `${fileBase(store)}-${stamp()}.png`));
     if (saved) toast('저장했습니다: ' + saved);
+    return saved;
   } catch (err) {
     toast('PNG로 내보내지 못했습니다: ' + err.message, 'warn');
   }
 }
 
 export async function exportPdf(adapter, store) {
-  if (!adapter.exportPdf) { window.print(); return; }
+  if (!adapter.exportPdf) { window.print(); return true; }
   try {
     // PDF는 인쇄 경로라 페이지 폭에 맞춰 다시 흐른다. 마지막 트랙에서 자른 폭을 주면
     // 보드가 페이지보다 넓어져 통째로 축소되므로 전체 폭을 준다 ('+'는 CSS로 감춘다).
     const saved = await withExpandedBoard((box) =>
       adapter.exportPdf({ width: box.fullWidth, height: box.height }, `${fileBase(store)}-${stamp()}.pdf`));
     if (saved) toast('저장했습니다: ' + saved);
+    return saved;
   } catch (err) {
     toast('PDF로 내보내지 못했습니다: ' + err.message, 'warn');
   }
+}
+
+/**
+ * 내보내기 미리보기(2026-10-26 사용자) — 보드를 내보낼 모습 그대로 보여 주고, 위쪽 막대에서 형식(PNG·PDF·인쇄)과 설정(트랙 색·메모)을
+ * 고른 뒤 내보낸다. 따로 그리지 않고 **보드 자체가 미리보기**다 — body.export-preview가 툴바·탭·상태 줄을 감추고 내보내기와 같은
+ * CSS(트랙 색 범위·메모·'+' 칸)를 먹이고 보드를 고칠 수 없게 한다(print.css). 스크롤·Ctrl+휠 확대는 그대로. Esc·닫기로 나온다.
+ */
+const FORMATS = [
+  { key: 'png', label: 'PNG 이미지', go: '저장…' },
+  { key: 'pdf', label: 'PDF', go: '저장…' },
+  { key: 'print', label: '인쇄', go: '인쇄…' },
+];
+const FILL_CHOICES = [
+  { key: 'col', label: '칸 전체', title: '트랙 색을 화면처럼 트랙 칸 전체에' },
+  { key: 'head', label: '머리만', title: '트랙 색을 트랙 머리(이름 칸)에만 — 칸은 색 없이' },
+];
+
+let preview = null;
+
+export const exportPreview = {
+  get active() { return !!preview; },
+  get format() { return preview?.format ?? null; },
+  close() { preview?.close(); },
+};
+
+/**
+ * @param {object} o
+ * @param {'png'|'pdf'|'print'} [o.format]  처음 고른 형식(내보내기 메뉴에서 누른 것)
+ * @param {(fn: () => any) => Promise<any>} [o.atFullSize]  보드 확대를 100%로 두고 fn을 부른다(src/main.js)
+ */
+export function openExportPreview({ format = 'png', adapter, store, atFullSize = (fn) => fn() }) {
+  const canPng = !!adapter.exportPng;
+  if (format === 'png' && !canPng) format = 'pdf';
+  if (preview) { preview.pick(format); return; }
+
+  const pressed = (box, key) => {
+    for (const b of box.children) b.setAttribute('aria-pressed', String(b.dataset.key === key));
+  };
+  const fmtSeg = el('div.seg', { attrs: { role: 'group', 'aria-label': '형식' } },
+    FORMATS.map((f) => el('button', {
+      type: 'button', text: f.label, dataset: { key: f.key }, disabled: f.key === 'png' && !canPng,
+      title: f.key === 'png' && !canPng ? 'PNG 내보내기는 앱에서만 됩니다' : null,
+      on: { click: () => pick(f.key) },
+    })));
+  const fillSeg = el('div.seg', { attrs: { role: 'group', 'aria-label': '트랙 색' } },
+    FILL_CHOICES.map((c) => el('button', {
+      type: 'button', text: c.label, title: c.title, dataset: { key: c.key },
+      on: { click: () => { exportTrackFill.set(c.key); pressed(fillSeg, c.key); } },
+    })));
+  pressed(fillSeg, exportTrackFill.value ?? exportTrackFill.get());
+  const memoBox = el('input', { type: 'checkbox', id: 'xp-memos', checked: exportMemos.on ?? exportMemos.get(),
+    on: { change: (e) => exportMemos.set(e.target.checked) } });
+  const goBtn = el('button.btn.cta', { type: 'button', id: 'xp-go', on: { click: () => go() } });
+  const bar = el('div.xp-bar', { id: 'xpBar', attrs: { role: 'toolbar', 'aria-label': '내보내기 미리보기' } }, [
+    el('b.xp-title', { text: '내보내기 미리보기' }),
+    el('span.xp-lbl', { text: '형식' }), fmtSeg,
+    el('span.xp-lbl', { text: '트랙 색' }), fillSeg,
+    el('label.xp-chk', { title: '메모(포스트잇)를 함께 — JSON 반출과 같은 설정' }, [memoBox, ' 메모']),
+    el('span.xp-hint', { text: '보이는 그대로 내보냅니다 · 확대는 100%로' }),
+    el('div.grow'),
+    el('button.btn', { type: 'button', id: 'xp-close', text: '닫기', title: '미리보기 닫기 (Esc)', on: { click: () => close() } }),
+    goBtn,
+  ]);
+
+  function pick(key) {
+    if (key === 'png' && !canPng) return;
+    preview.format = key;
+    pressed(fmtSeg, key);
+    goBtn.textContent = FORMATS.find((f) => f.key === key).go;
+  }
+  let busy = false;
+  async function go() {
+    if (busy) return;
+    busy = true; goBtn.disabled = true;
+    try {
+      const f = preview.format;
+      let done;
+      if (f === 'print') { window.print(); done = true; }
+      else done = await atFullSize(() => (f === 'png' ? exportPng(adapter, store) : exportPdf(adapter, store)));
+      if (done) close();        // 저장 창에서 취소하면 미리보기에 남는다
+    } finally {
+      busy = false; goBtn.disabled = false;
+    }
+  }
+  function close() {
+    if (!preview) return;
+    bar.remove();
+    document.body.classList.remove('export-preview');
+    preview = null;
+  }
+
+  preview = { format, pick, close };
+  syncExportMemos();
+  syncExportTrackFill();
+  (document.querySelector('.bar') ?? document.body.firstChild).after(bar);
+  document.body.classList.add('export-preview');
+  pick(format);
+  goBtn.focus();
 }

@@ -50,9 +50,10 @@ export function initToolbar({ store, view, actions }) {
   });
   document.addEventListener('click', closeMenu);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
-  $('ex-png').addEventListener('click', () => { closeMenu(); actions.exportPng(); });
-  $('ex-pdf').addEventListener('click', () => { closeMenu(); actions.exportPdf(); });
-  $('ex-print').addEventListener('click', () => { closeMenu(); window.print(); });
+  // 형식마다 미리보기를 거친다 — 보이는 그대로 내보내고, 거기서 트랙 색·메모 같은 설정을 고른다(export.js)
+  $('ex-png').addEventListener('click', () => { closeMenu(); actions.exportPreview('png'); });
+  $('ex-pdf').addEventListener('click', () => { closeMenu(); actions.exportPreview('pdf'); });
+  $('ex-print').addEventListener('click', () => { closeMenu(); actions.exportPreview('print'); });
   // 메모 함께 내보내기 — 켜고 끄는 동안 메뉴는 열어 둔다
   $('ex-memos').addEventListener('click', (e) => { e.stopPropagation(); exportMemos.set(!exportMemos.get()); });
   syncExportMemos();

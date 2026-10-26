@@ -57,3 +57,14 @@
 .menu-pop .menu-sep{height:1px;margin:var(--u1) 0;background:var(--border-subtle)}
 .menu-pop button[role="menuitemcheckbox"]::before{content:"";display:inline-block;width:var(--u4)}
 .menu-pop button[role="menuitemcheckbox"][aria-checked="true"]::before{content:"✓"}
+
+/* ── 내보내기 미리보기 막대 (export.js) — 미리보기 동안 툴바 자리에 ── */
+.xp-bar{display:flex;align-items:center;gap:var(--u2);padding:var(--u2-5) var(--u4);
+  background:var(--bg-header);border-bottom:1px solid var(--border-subtle);flex:none;flex-wrap:wrap;min-width:0}
+.xp-bar>.btn,.xp-bar>.seg{flex:none}
+.xp-title{font-size:13px;font-weight:600;color:var(--text-primary);margin-right:var(--u2);white-space:nowrap}
+.xp-lbl{font-size:12px;color:var(--text-tertiary);margin-left:var(--u2);white-space:nowrap}
+.xp-chk{display:inline-flex;align-items:center;gap:var(--u1-5);font-size:13px;color:var(--text-secondary);
+  margin-left:var(--u2);cursor:pointer;white-space:nowrap}
+.xp-hint{font-size:12px;color:var(--text-tertiary);margin-left:var(--u3);white-space:nowrap}
+.xp-bar .seg button:disabled{opacity:.45;cursor:not-allowed}
