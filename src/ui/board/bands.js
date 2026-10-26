@@ -303,6 +303,72 @@ export function attachBandEditing(gutM, { store, getOrigin, getScale, getTimelin
 }
 
 
+/**
+ * 두 번째 칸(안쪽 칸 — 월-주의 주, 주-일의 날, 분기-월의 달) 행마다 높이. 아래 가장자리 손잡이를 끌면 그 행만 늘고 줄며,
+ * 더블클릭하면 원래대로. 배율은 보드 표시 값 display.rowScales[모드][행 시작일] — 모드마다 따로(구간과 같다), 구간 배율과 곱한다.
+ * 리스너는 다시 그려지지 않는 두 번째 칸(gutW)에 두고 포인터를 거기 잡아 둔다 — 끄는 중 다시 그려져 손잡이가 바뀌어도 이어진다(규약 14).
+ */
+export function attachRowEditing(gutW, { store, getScale, getTimeline, getZoom = () => 1, onChange }) {
+  let rs = null;
+  const modeKey = () => {
+    const tl = getTimeline();
+    return tl.dated && tl.mode.outer ? tl.mode.key : null;
+  };
+  const setRow = (doc, key, iso, scale) => {
+    const all = { ...(doc.meta.display.rowScales ?? {}) };
+    const m = { ...(all[key] ?? {}) };
+    if (scale == null || Math.abs(scale - 1) < 0.005) delete m[iso]; else m[iso] = Math.round(scale * 100) / 100;
+    if (Object.keys(m).length) all[key] = m; else delete all[key];
+    doc.meta.display.rowScales = all;
+  };
+
+  gutW.addEventListener('pointerdown', (ev) => {
+    if (store.readonly || ev.button !== 0 || !ev.target.classList.contains('band-resize')) return;
+    const key = modeKey();
+    const row = ev.target.closest('b.row');
+    if (!key || !row) return;
+    ev.preventDefault();
+    const scale = getScale();
+    const from = Number(row.dataset.from), to = Number(row.dataset.to);
+    rs = {
+      key, iso: row.dataset.row, y: ev.clientY,
+      h0: Math.max(1, scale.y(to) - scale.y(from)),             // 지금 보이는 높이(구간 배율까지 탄)
+      scale0: Number(store.meta.display?.rowScales?.[key]?.[row.dataset.row]) || 1,
+      began: false,
+    };
+    ev.target.classList.add('dragging');
+    gutW.setPointerCapture(ev.pointerId);
+  });
+
+  gutW.addEventListener('pointermove', (ev) => {
+    if (!rs) return;
+    const delta = (ev.clientY - rs.y) / getZoom();               // 화면 px → 보드 px
+    if (!rs.began) {
+      if (Math.abs(delta) < 4) return;
+      store.begin('행 높이');
+      rs.began = true;
+    }
+    const next = Math.min(BAND_SCALE.max, Math.max(BAND_SCALE.min, rs.scale0 * (rs.h0 + delta) / rs.h0));
+    store.commit('행 높이', (doc) => setRow(doc, rs.key, rs.iso, next));
+    onChange();
+  });
+
+  const end = () => {
+    if (rs?.began) store.end();
+    rs = null;
+  };
+  gutW.addEventListener('pointerup', end);
+  gutW.addEventListener('pointercancel', end);
+
+  gutW.addEventListener('dblclick', (ev) => {
+    const key = modeKey();
+    const row = ev.target.closest?.('b.row');
+    if (!key || !row || store.readonly || store.meta.display?.rowScales?.[key]?.[row.dataset.row] == null) return;
+    store.commit('행 높이 원복', (doc) => setRow(doc, key, row.dataset.row, null));
+    onChange();
+  });
+}
+
 /** 바깥 칸 하나(주·월·분기)에 딱 맞는 구간인가 (드래그로 만든 낱개 칸 높이 조절 구간) */
 function isSingleCell(band, unit) {
   if (!band || !unit) return false;

@@ -44,6 +44,8 @@
 
 - 표시 설정 `meta.display`(보드 `meta_json`): `scale`(모드), `dated`, `slotUnit`. 옛 `axis`·`axisDir`은 버린다.
 - 구간 `doc.bands[].mode` — 어느 모드의 바깥 칸 묶음인가. DB `band.mode`(021). 옛 구간은 `month-week`.
+- 안쪽 칸 행 높이 `meta.display.rowScales` — `{ 모드: { 행 시작일(ISO): 배율 } }`(2026-10-26 사용자, 두 번째 칸 손잡이). 모드마다 따로,
+  1은 남기지 않는다. 행은 `innerRows`(월-주는 보드 시작일부터 7일씩 — 행선과 같다). `TimeScale`이 구간 배율과 곱한다.
 - 칸 `item.place.slot` — DB `disp.slot_start`·`slot_len`(021). 날짜 없는 보드에서만 쓴다.
 - 이벤트 날짜 NULL 허용 — DB `event.start_date`·`end_date`의 NOT NULL을 푼다(021, 테이블 다시 만들기).
 - 문서 v18: 위를 정규화. 날짜 없는 보드는 날짜를 채우지 않는다(날짜 있는 보드는 지금처럼 채운다).

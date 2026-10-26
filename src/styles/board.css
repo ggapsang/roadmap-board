@@ -52,7 +52,7 @@
 .gut-w{position:sticky;left:var(--gut-m);z-index:20;background:var(--bg-canvas)}
 .gut-w i{position:absolute;left:0;right:0;border-top:1px solid var(--grid-line);pointer-events:none}
 .gut-w i.m{border-top-color:var(--grid-line-strong)}
-.gut-w s{position:absolute;left:0;right:var(--u2);text-align:right;text-decoration:none;
+.gut-w s{position:absolute;left:0;right:var(--u2);text-align:right;text-decoration:none;pointer-events:none;
   font-size:11px;line-height:16px;color:var(--text-tertiary);font-variant-numeric:tabular-nums;padding-top:var(--u1)}
 /* 트랙 사이에 강한 세로선을 쓰지 않는다. 여백과 아주 약한 선으로 가른다 */
 .col{position:relative;border-left:1px solid var(--grid-line);background:var(--surface-track)}
@@ -310,6 +310,11 @@ body.reordering-col{cursor:grabbing!important;user-select:none}
    (9월 위 경계를 끌면 8월이 줄던 혼동). */
 .gut-m b:hover .band-resize,.band-resize.dragging{opacity:1}
 .gut-m b:has(> .band-resize:hover){background:var(--bg-hover)}
+/* 두 번째 칸(주·일·달) 행마다 같은 손잡이 — 행 칸은 손잡이를 위한 자리일 뿐(라벨·행선은 그 위에 따로). 높이를 바꾼 행은 옅게 칠한다 */
+.gut-w b.row{position:absolute;left:0;right:0;font-weight:400}
+.gut-w b.row.sized{background:var(--bg-hover)}
+.gut-w b.row:hover .band-resize{opacity:1}
+.gut-w b.row:has(> .band-resize:hover){background:var(--bg-hover)}
 .band-resize::after{content:"";height:2px;width:60%;border-radius:2px;background:var(--accent)}
 @media (prefers-reduced-motion:reduce){.band-resize{transition:none}}
 

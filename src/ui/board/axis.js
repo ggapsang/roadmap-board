@@ -58,9 +58,39 @@ export function buildBands(origin, endDate, totalDays, userBands = [], outer = '
 }
 
 /**
- * @param {object} ctx {lines, gutM, gutW, grid, origin, endDate, totalDays, bands, scale, timeline}
+ * 안쪽 칸 행 범위(일 인덱스, to 미포함) — 월-주는 보드 시작일부터 7일씩(행선과 같다), 주-일·분기-월은 일·월 단위.
+ * 두 번째 칸 높이 손잡이와 행 배율(display.rowScales)이 이 범위를 쓴다. 키는 행 시작일(ISO).
+ * @returns {{from:number, to:number}[]}
  */
-export function renderAxis({ lines, gutM, gutW, grid, origin, endDate, totalDays, bands = [], scale, timeline }) {
+export function innerRows(origin, totalDays, mode) {
+  const out = [];
+  if (!mode?.inner || mode.key === 'none') return out;
+  if (mode.inner === 'week') {
+    for (let i = 0; i < totalDays; i += 7) out.push({ from: i, to: Math.min(totalDays, i + 7) });
+    return out;
+  }
+  for (let d = unitStart(origin, mode.inner); ; d = addUnits(d, mode.inner, 1)) {
+    const from = Math.round((d - origin) / DAY);
+    if (from >= totalDays) break;
+    const to = Math.min(totalDays, Math.round((addUnits(d, mode.inner, 1) - origin) / DAY));
+    if (to > 0) out.push({ from: Math.max(0, from), to });
+  }
+  return out;
+}
+
+/** 저장된 행 배율(행 시작일 → 배율)을 일 인덱스 범위로 — TimeScale에 넘긴다 */
+export function rowRanges(origin, totalDays, mode, scales = {}) {
+  const want = new Map(Object.entries(scales ?? {}));
+  if (!want.size) return [];
+  return innerRows(origin, totalDays, mode)
+    .map((r) => ({ ...r, scale: Number(want.get(formatDate(new Date(origin.getTime() + r.from * DAY)))) || 1 }))
+    .filter((r) => r.scale !== 1);
+}
+
+/**
+ * @param {object} ctx {lines, gutM, gutW, grid, origin, endDate, totalDays, bands, scale, timeline, rowScales}
+ */
+export function renderAxis({ lines, gutM, gutW, grid, origin, endDate, totalDays, bands = [], scale, timeline, rowScales = {} }) {
   grid.style.height = scale.height + 'px';
   clear(lines); clear(gutM); clear(gutW);
 
@@ -106,6 +136,18 @@ export function renderAxis({ lines, gutM, gutW, grid, origin, endDate, totalDays
       if (p >= 0) line(scale.y(p), false, String(timeline.slotNo(p)));
     }
     return;
+  }
+
+  // ── 두 번째 칸(안쪽 칸) 행마다 높이 손잡이 — 왼쪽 칸 손잡이와 같은 모양, 아래 가장자리를 끌면 그 행(주·일·월)만 늘고 준다(bands.js)
+  const innerName = { day: '날', week: '주', month: '달' }[mode.inner];
+  for (const row of innerRows(origin, totalDays, mode)) {
+    const top = scale.y(row.from);
+    const iso = formatDate(new Date(origin.getTime() + row.from * DAY));
+    gutW.append(el('b.row', {
+      class: rowScales[iso] != null ? 'sized' : null,          // className은 b.row를 덮어쓴다 — 더하는 class로
+      style: { top: top + 'px', height: (scale.y(row.to) - top) + 'px' },
+      dataset: { row: iso, from: String(row.from), to: String(row.to) },
+    }, [el('div.band-resize', { title: `이 ${innerName} 높이 — 아래 가장자리를 끌어 조절 · 더블클릭하면 원래대로` })]));
   }
 
   // ── 안쪽 칸 행선 + 라벨. 바깥 칸 경계는 굵게.

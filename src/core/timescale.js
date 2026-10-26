@@ -10,6 +10,8 @@
  * 기본은 "1일 = ppd 픽셀"로 균일하지만, 사용자가 묶은 구간(band)은 배율(scale)을
  * 따로 가질 수 있다. 2027년 1~3월을 "1Q"로 묶고 40%로 접으면, 그 구간 안의
  * 일정과 격자도 같은 비율로 눌려야 한다. 그러지 않으면 묶는 의미가 없다.
+ * 안쪽 칸 한 행(월-주의 한 주 등)도 따로 배율을 가질 수 있다(rows, display.rowScales — 두 번째 칸 손잡이,
+ * 2026-10-26 사용자). 겹치면 곱한다 — 늘린 달 안에서 한 주를 더 늘리면 그 주는 둘을 곱한 만큼.
  *
  * 순수 계산이다. DOM을 모른다.
  */
@@ -27,42 +29,34 @@ export class TimeScale {
    * @param {number} ppd 기본 일당 픽셀
    * @param {{from:string,to:string,scale:number}[]} bands  이 모드의 구간만
    * @param {object} [timeline] 위치 읽기(DateTimeline). 없으면 날짜로 읽는다.
+   * @param {{from:number,to:number,scale:number}[]} [rows]  이 모드의 안쪽 칸 행 배율(일 인덱스, to 미포함)
    */
-  constructor(origin, totalDays, ppd, bands = [], timeline = null) {
+  constructor(origin, totalDays, ppd, bands = [], timeline = null, rows = []) {
     this.origin = origin;
     this.totalDays = totalDays;
     this.ppd = ppd;
     this.timeline = timeline;
 
-    // 구간을 일 인덱스 범위로 바꾸고 겹치지 않게 정렬한다
-    this.segments = [];
-    const scaled = bands
-      .map((b) => ({
-        from: Math.max(0, dayIndex(b.from, origin)),
-        to: Math.min(totalDays, dayIndex(b.to, origin) + 1),
-        scale: b.scale ?? 1,
-      }))
-      .filter((b) => b.to > b.from && b.scale !== 1)
-      .sort((a, b) => a.from - b.from);
+    // 구간·행을 일 인덱스 범위로 바꾸고, 경계마다 잘라 겹친 배율을 곱한다
+    const clip = (r) => ({ from: Math.max(0, r.from), to: Math.min(totalDays, r.to), scale: r.scale ?? 1 });
+    const ranges = [
+      ...bands.map((b) => clip({ from: dayIndex(b.from, origin), to: dayIndex(b.to, origin) + 1, scale: b.scale })),
+      ...rows.map(clip),
+    ].filter((r) => r.to > r.from && r.scale !== 1);
+    const cuts = [...new Set([0, totalDays, ...ranges.flatMap((r) => [r.from, r.to])])].sort((a, b) => a - b);
 
-    let cursor = 0;
+    this.segments = [];
     let y = 0;
-    for (const band of scaled) {
-      if (band.from > cursor) {
-        this.segments.push({ from: cursor, to: band.from, scale: 1, y });
-        y += (band.from - cursor) * ppd;
-      }
-      const start = Math.max(cursor, band.from);
-      if (band.to > start) {
-        this.segments.push({ from: start, to: band.to, scale: band.scale, y });
-        y += (band.to - start) * ppd * band.scale;
-        cursor = band.to;
-      }
+    for (let k = 0; k + 1 < cuts.length; k += 1) {
+      const from = cuts[k], to = cuts[k + 1];
+      let scale = 1;
+      for (const r of ranges) if (r.from <= from && r.to >= to) scale *= r.scale;
+      const last = this.segments[this.segments.length - 1];
+      if (last && last.scale === scale) last.to = to;     // 배율이 같은 이웃은 한 토막으로
+      else this.segments.push({ from, to, scale, y });
+      y += (to - from) * ppd * scale;
     }
-    if (cursor < totalDays) {
-      this.segments.push({ from: cursor, to: totalDays, scale: 1, y });
-      y += (totalDays - cursor) * ppd;
-    }
+    if (!this.segments.length) this.segments.push({ from: 0, to: totalDays, scale: 1, y: 0 });
     this.height = y;
   }
 

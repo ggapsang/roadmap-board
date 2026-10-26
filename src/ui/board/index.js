@@ -21,8 +21,8 @@ import { el } from '../dom.js';
 import { openCtxMenu } from '../ctxmenu.js';
 import { toast } from '../toast.js';
 import { renderHead } from './head.js';
-import { renderAxis, makeTodayLine } from './axis.js';
-import { attachBandEditing } from './bands.js';
+import { renderAxis, makeTodayLine, rowRanges } from './axis.js';
+import { attachBandEditing, attachRowEditing } from './bands.js';
 import { renderCard, fitTitle } from './card.js';
 import { createArrowLayer, drawArrows } from './arrows.js';
 import { anchorPoint, anchorFromPoint, elbowRoute, overrideFromRoute } from '../../core/arrow-geometry.js';
@@ -52,6 +52,13 @@ export class Board {
     attachBandEditing(gutM, {
       store,
       getOrigin: () => this.origin,
+      getScale: () => this.scale,
+      getTimeline: () => this.timeline,
+      getZoom: () => this.zoom,
+      onChange: () => this.rebuild(),
+    });
+    attachRowEditing(gutW, {
+      store,
       getScale: () => this.scale,
       getTimeline: () => this.timeline,
       getZoom: () => this.zoom,
@@ -275,7 +282,8 @@ export class Board {
     }
     const mode = tl.mode;
     const rowDays = mode.key === 'none' ? UNIT_DAYS[tl.slotUnit] ?? 7 : mode.row;
-    this.scale = new TimeScale(this.origin, this.totalDays, this.view.ppdFor(rowDays), this.#modeBands(), tl);
+    const rows = mode.key === 'none' ? [] : rowRanges(this.origin, this.totalDays, mode, this.store.meta.display?.rowScales?.[mode.key]);
+    this.scale = new TimeScale(this.origin, this.totalDays, this.view.ppdFor(rowDays), this.#modeBands(), tl, rows);
     return this.scale;
   }
 
@@ -458,6 +466,7 @@ export class Board {
       bands: this.#modeBands(),
       scale: this.scale,
       timeline: tl,
+      rowScales: tl.dated ? (this.store.meta.display?.rowScales?.[tl.mode.key] ?? {}) : {},
     });
 
     for (const node of this.grid.querySelectorAll('.col,.pad,.now,.arrows,.memos')) node.remove();

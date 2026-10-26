@@ -347,6 +347,20 @@ export function normalize(doc) {
     if (Math.abs(sc - 1) > 1e-6) rows[k] = Math.round(sc * 100) / 100;
   }
   display.slotRows = rows;
+  // 날짜 있는 보드의 안쪽 칸 행마다 높이 배율 — { 모드: { 행 시작일(ISO): 배율 } }. 모드마다 따로(구간과 같다), 1은 남기지 않는다.
+  const rowScales = {};
+  for (const [mode, m] of Object.entries(isObj(display.rowScales) ? display.rowScales : {})) {
+    if (!SLOT_UNIT_OF[mode] || !isObj(m)) continue;
+    const out = {};
+    for (const [k, v] of Object.entries(m)) {
+      const n = Number(v);
+      if (!ISO.test(k) || !Number.isFinite(n)) continue;
+      const sc = Math.min(BAND_SCALE.max, Math.max(BAND_SCALE.fold, n));
+      if (Math.abs(sc - 1) > 1e-6) out[k] = Math.round(sc * 100) / 100;
+    }
+    if (Object.keys(out).length) rowScales[mode] = out;
+  }
+  display.rowScales = rowScales;
   doc.meta.display = display;
   const dated = display.dated;
 
