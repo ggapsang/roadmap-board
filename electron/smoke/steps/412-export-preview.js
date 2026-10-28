@@ -1,5 +1,5 @@
 // 스모크 단계 'export-preview' — 내보내기 미리보기(2026-10-26 사용자). 메뉴의 형식을 누르면 보드가 미리보기가 되고(툴바 대신 미리보기
-//   막대, 보드는 고칠 수 없다) 트랙 색 범위(칸 전체·머리만)·메모를 고른 대로 보인다 · 내보내기 중(body.exporting)에도 같은 범위 ·
+//   왼쪽 설정 칸 + 회색 책상 위 종이, 기본은 한 장이 다 보이게 줄여서, 보드는 고칠 수 없다 — 10-28) 트랙 색 범위(칸 전체·머리만)·메모를 고른 대로 보인다 · 내보내기 중(body.exporting)에도 같은 범위 ·
 //   Esc로 나온다 · 저장하면 닫힌다. 그리고 골격을 다시 그려도(rebuild) 트랙 칸의 채우기가 남는다(예전엔 머리에만 남았다).
 export default {
   name: 'export-preview',
@@ -23,13 +23,18 @@ export default {
       r.board.rebuild();
       o.rebuildKeeps = col()?.dataset.fill === 'blue' && painted(col());
       ex.exportTrackFill.set('col');
+      const zoom0 = r.view.boardZoom || 1, zoomKey = localStorage.getItem('wolfpack:board-zoom');
       // 메뉴에서 PDF — 미리보기가 열리고 PDF가 골라져 있다
       document.getElementById('ex-pdf').click();
       await sleep(150);
-      const bar = document.getElementById('xpBar');
+      const bar = document.getElementById('xpSide');
       const shown = (n) => !!n && getComputedStyle(n).display !== 'none';
       o.open = ex.exportPreview.active && shown(bar) && !shown(document.querySelector('.bar'))
         && ex.exportPreview.format === 'pdf' && document.getElementById('xp-go').textContent === '저장…';
+      // 한 장이 다 보이게 — 종이(.cal)가 책상(.scroll) 안에 들어간다. 배율은 빌려 쓴 것이라 저장하지 않는다
+      const sc = document.getElementById('scroll').getBoundingClientRect(), pg = document.querySelector('.cal').getBoundingClientRect();
+      o.fitsPage = pg.right <= sc.right + 1 && pg.bottom <= sc.bottom + 1 && pg.left >= sc.left && pg.top >= sc.top;
+      o.zoomNotSaved = localStorage.getItem('wolfpack:board-zoom') === zoomKey;
       o.locked = getComputedStyle(document.querySelector('.cal')).pointerEvents === 'none'
         && getComputedStyle(document.querySelector('.cal .ev') ?? document.body).pointerEvents === 'none';
       // 트랙 색 — 칸 전체 → 머리만(칸은 색 없이, 머리는 그대로). 이 PC에 기억
@@ -59,14 +64,18 @@ export default {
       // Esc — 나온다
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       await sleep(50);
-      o.esc = !ex.exportPreview.active && !document.getElementById('xpBar') && shown(document.querySelector('.bar'))
-        && !document.body.classList.contains('export-preview');
+      o.esc = !ex.exportPreview.active && !document.getElementById('xpSide') && shown(document.querySelector('.bar'))
+        && !document.body.classList.contains('export-preview')
+        && (r.view.boardZoom || 1) === zoom0 && !document.querySelector('.cal').style.width;
       // PNG로 열고 저장 — 저장하면 닫힌다(스모크의 저장 창은 임시 경로)
       if (r.adapter.exportPng) {
         document.getElementById('ex-png').click();
         await sleep(100);
         document.getElementById('xp-go').click();
-        for (let i = 0; i < 100 && ex.exportPreview.active; i++) await sleep(100);
+        // 저장은 미리보기를 닫고 원래 길로 찍는다 — 다 찍을 때까지 기다린다(취소였다면 미리보기가 다시 열린다)
+        await sleep(100);
+        for (let i = 0; i < 100 && document.body.classList.contains('exporting'); i++) await sleep(100);
+        await sleep(200);
         o.savedCloses = !ex.exportPreview.active && !document.body.classList.contains('exporting');
       } else o.savedCloses = true;
       KEYS.forEach((k, i) => (keep.raw[i] == null ? localStorage.removeItem(k) : localStorage.setItem(k, keep.raw[i])));

@@ -27,20 +27,36 @@ body.exporting .gut-m b u{position:static}
 body.exporting .addcol>*{visibility:hidden}
 @media print{.addcol>*{visibility:hidden}}
 
-/* 내보내기 미리보기(export.js openExportPreview) — 보드 자체가 미리보기. 툴바·탭·상태 줄 대신 위에 미리보기 막대, 보드는 고칠 수
-   없다(스크롤·확대만). 내보내기와 같은 것(메모·'+' 칸·트랙 색 범위)을 여기서도 먹인다. */
+/* 내보내기 미리보기(export.js openExportPreview) — 오피스 인쇄 미리보기처럼: 왼쪽 설정 칸(.xp-side), 오른쪽 회색 책상(.scroll) 위에
+   내보낼 그림 한 장(.cal)을 종이처럼(테두리·그림자 — 떠 있는 층). 툴바·탭·상태 줄은 감추고 보드는 고칠 수 없다(스크롤·확대만).
+   내보내기와 같은 것(메모·'+' 칸·트랙 색 범위)을 여기서도 먹인다. .cal 폭·높이는 export.js가 내보낼 크기로 못 박고(넘치는 곳은
+   잘린다), 안쪽(머리·본문)은 100%에서 잰 폭(--xp-w)이라 줄여 보여도 칸이 다시 흐르지 않는다. */
+body.export-preview{--xp-side:304px}
 body.export-preview .tabbar,
+body.export-preview .sessionbar,
 body.export-preview .bar,
 body.export-preview .status,
 body.export-preview .crumbs,
 body.export-preview .panel,
 body.export-preview .note-tip{display:none!important}
+body.export-preview .scroll{margin-left:var(--xp-side);padding:calc(var(--u10) + var(--u2)) var(--u8) var(--u8);background:var(--preview-desk)}
+body.export-preview .cal{min-width:0;overflow:hidden;margin:0 auto;background:var(--bg-canvas);
+  outline:1px solid var(--border-default);box-shadow:var(--shadow-dialog)}
+body.export-preview .cal>*{width:var(--xp-w)}
 body.export-preview .cal,
 body.export-preview .cal *{pointer-events:none!important}
+/* sticky는 책상을 넘길 때 종이 안에서 따라 움직여 그림이 흐트러진다 — 제자리에(내보낸 그림과 같게) */
+body.export-preview .head{position:relative;top:auto}
+body.export-preview .head .cnr{position:static}
+body.export-preview .gut-m,
+body.export-preview .gut-w{position:relative;left:auto}
+body.export-preview .gut-m b u{position:static}
+body.export-preview .ev.container.c-top>.t,
+body.export-preview .ev.container.c-bottom>.t,
+body.export-preview .ev.st-hold .t{position:relative;top:auto;bottom:auto}
 body.export-preview .addcol>*{visibility:hidden}
 body.export-preview.no-memo-export .memos{display:none!important}
-body.exporting .xp-bar{display:none!important}
-@media print{ .xp-bar{display:none!important} }
+@media print{ .xp-side,.xp-zoom,.xp-badge{display:none!important} }
 /* 트랙 색을 머리에만 — 칸은 색 없이(화면은 늘 칸 전체). 채우기 규칙(.col[data-fill="hatch"] 0,2,0)보다 명시도가 높다 */
 body.export-fill-head:is(.export-preview,.exporting) .col[data-fill]{background:var(--surface-track)}
 @media print{ body.export-fill-head .col[data-fill]{background:var(--surface-track)} }

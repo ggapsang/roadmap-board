@@ -36,6 +36,7 @@
      Canvas를 순백으로 두면 카드도 흰색이라 경계가 사라지고,
      결국 Border를 진하게 만들 수밖에 없다 (Light 가이드 §4). */
   --bg-canvas:var(--neutral-50);
+  --preview-desk:var(--neutral-300);   /* 내보내기 미리보기의 책상 — 종이(보드)와 갈리게 */
   --bg-header:#FFFFFF;
   --bg-panel:#FFFFFF;
   --bg-elevated:#FFFFFF;
@@ -128,6 +129,7 @@
      캔버스보다 '확실히' 밝아야 하고(테두리가 아니라 면으로 인식), 트랙은 그 사이 중간 면이다.
      Canvas → Track → Card → Hover → Selected 가 육안으로 구분되게. */
   --bg-canvas:#0F0E0D;
+  --preview-desk:#2A2724;
   --bg-header:#17140F;
   --bg-panel:#1A1613;
   --bg-elevated:#2A2724;
@@ -189,6 +191,7 @@
 :root[data-theme="dark"]{ color-scheme:dark;
   /* Dark 가이드(개정) §3~7 — @media 블록과 동일한 Surface 계층 */
   --bg-canvas:#0F0E0D;
+  --preview-desk:#2A2724;
   --bg-header:#17140F;
   --bg-panel:#1A1613;
   --bg-elevated:#2A2724;

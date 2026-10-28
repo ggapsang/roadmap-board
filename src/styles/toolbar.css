@@ -58,13 +58,25 @@
 .menu-pop button[role="menuitemcheckbox"]::before{content:"";display:inline-block;width:var(--u4)}
 .menu-pop button[role="menuitemcheckbox"][aria-checked="true"]::before{content:"✓"}
 
-/* ── 내보내기 미리보기 막대 (export.js) — 미리보기 동안 툴바 자리에 ── */
-.xp-bar{display:flex;align-items:center;gap:var(--u2);padding:var(--u2-5) var(--u4);
-  background:var(--bg-header);border-bottom:1px solid var(--border-subtle);flex:none;flex-wrap:wrap;min-width:0}
-.xp-bar>.btn,.xp-bar>.seg{flex:none}
-.xp-title{font-size:13px;font-weight:600;color:var(--text-primary);margin-right:var(--u2);white-space:nowrap}
-.xp-lbl{font-size:12px;color:var(--text-tertiary);margin-left:var(--u2);white-space:nowrap}
-.xp-chk{display:inline-flex;align-items:center;gap:var(--u1-5);font-size:13px;color:var(--text-secondary);
-  margin-left:var(--u2);cursor:pointer;white-space:nowrap}
-.xp-hint{font-size:12px;color:var(--text-tertiary);margin-left:var(--u3);white-space:nowrap}
-.xp-bar .seg button:disabled{opacity:.45;cursor:not-allowed}
+/* ── 내보내기 미리보기 (export.js) — 왼쪽 설정 칸 · 책상 위 배지 · 오른쪽 아래 보기 크기 ── */
+.xp-side{position:fixed;left:0;top:0;bottom:0;width:var(--xp-side);z-index:40;display:flex;flex-direction:column;
+  gap:var(--u2);padding:var(--u4);background:var(--bg-panel);border-right:1px solid var(--border-default);overflow-y:auto}
+.xp-head{display:flex;align-items:center;gap:var(--u3);margin-bottom:var(--u1)}
+.xp-head h2{margin:0;font-size:18px;line-height:24px;font-weight:700;color:var(--text-primary)}
+.xp-kicker{font-size:11px;line-height:16px;font-weight:600;letter-spacing:.06em;color:var(--text-tertiary)}
+.xp-note{margin:0 0 var(--u2);font-size:12px;line-height:18px;color:var(--text-secondary)}
+.xp-sect{margin-top:var(--u3);font-size:12px;font-weight:600;color:var(--text-secondary)}
+.xp-seg{display:flex}
+.xp-seg button{flex:1;white-space:nowrap}
+.xp-seg button:disabled{opacity:.45;cursor:not-allowed}
+.xp-desc{font-size:12px;line-height:16px;color:var(--text-tertiary)}
+.xp-chk{display:flex;align-items:center;gap:var(--u2);font-size:13px;color:var(--text-primary);cursor:pointer}
+.xp-side .btn.wide{flex:none}
+.xp-badge{position:fixed;top:var(--u3);left:calc(var(--xp-side) + 50% - var(--xp-side) / 2);transform:translateX(-50%);z-index:40;
+  padding:var(--u1) var(--u3);border-radius:var(--r-pill);background:var(--bg-elevated);border:1px solid var(--border-default);
+  box-shadow:var(--shadow-pop);font-size:12px;line-height:16px;font-weight:600;color:var(--text-secondary);white-space:nowrap}
+.xp-zoom{position:fixed;right:var(--u5);bottom:var(--u5);z-index:40;display:flex;align-items:center;gap:var(--u2);
+  padding:var(--u1-5);border-radius:var(--u2);background:var(--bg-elevated);border:1px solid var(--border-default);box-shadow:var(--shadow-pop)}
+.xp-zoom .seg button{white-space:nowrap}
+.xp-zoom-val{min-width:var(--u10);text-align:right;padding-right:var(--u1);font-size:12px;color:var(--text-secondary);
+  font-variant-numeric:tabular-nums}

@@ -168,7 +168,17 @@ async function boot() {
         // 고른 표시(선택 테두리)는 내보낼 그림이 아니다 — 화면 상태라 비워도 문서·되돌리기와 무관
         view.selectedItem = view.selectedTrack = view.selectedRel = view.selectedMemo = null;
         refresh();
-        openExportPreview({ format, adapter, store, atFullSize });
+        // 배율은 미리보기 동안 빌려 쓴다 — 저장하지 않고(다음 실행의 보드 배율이 바뀌지 않게) 나올 때 되돌린다
+        const zoom = {
+          get: () => view.boardZoom || 1,
+          set: (z) => {
+            if (z === (view.boardZoom || 1)) return;
+            view.boardZoom = z;
+            document.querySelector('.cal').style.zoom = z === 1 ? '' : String(z);
+            board.rebuild();
+          },
+        };
+        openExportPreview({ format, adapter, store, atFullSize, zoom });
       },
       openProjects: () => { panels.close(); tabs.newLauncherTab(); },
       toggleTextSelect: () => {
@@ -431,6 +441,7 @@ async function boot() {
     const now = performance.now();
     if (now - zoomAt < 120 || !e.deltaY) return;
     zoomAt = now;
+    if (exportPreview.active) { exportPreview.wheel(e.deltaY < 0 ? 1 : -1); return; }   // 미리보기 배율만(보드 배율 설정은 그대로)
     stepBoardZoom(e.deltaY < 0 ? 1 : -1, { x: e.clientX, y: e.clientY });
   }, { passive: false });
   window.roadmapDB?.onBoardZoom?.((dir) => { if (!launcher.visible && !tabs?.graphActive) stepBoardZoom(dir); });
