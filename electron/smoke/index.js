@@ -163,6 +163,9 @@ export async function runSmoke(target, lib) {
     console.log('[smoke] launcher ' + (launcherUp ? 'ok' : 'FAIL (첫 화면에 안 떴다)'));
     await capture(target, 'launcher');
 
+    // 보드 배율은 늘 100%에서 — 스모크는 실제 앱과 같은 브라우저 저장소를 써서, 앱에서 줄여 둔 보드 배율(wolfpack:board-zoom)을 읽고
+    // 시작한다(칸 폭·높이·휠 단계를 재는 단계가 어긋난다). 화면 값만 되돌리고 저장된 값은 건드리지 않는다
+    await target.webContents.executeJavaScript(`(() => { const r = window.__roadmap; if (r?.view) { r.view.boardZoom = 1; const c = document.querySelector('.cal'); if (c) c.style.zoom = ''; } return true; })()`);
     // 렌더러에 시드를 넣어 주고 프로젝트를 만들어 연다
     await target.webContents.executeJavaScript(`window.__smokeSeed = ${JSON.stringify(SMOKE_SEED)}; true`);
     opened = await target.webContents.executeJavaScript(`(async () => {

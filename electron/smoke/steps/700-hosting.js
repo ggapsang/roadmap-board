@@ -45,6 +45,9 @@ export default {
     const url = row.urls[0];
     out.plainUrl = url === `http://127.0.0.1:${row.port}/`;
     const guest = new BrowserWindow({ show: !!shotDir(), width: 1300, height: 860, webPreferences: { sandbox: true, contextIsolation: true } });
+    // 이 단계는 아래에서 참가자 이름을 바꾸고, 바꾼 이름은 그 주소(127.0.0.1:포트)의 저장소에 남는다 — 같은 포트로 다시 돌면 '참가자 N'이
+    // 아니라 남은 이름으로 들어온다. 스모크 참가자만 쓰는 주소라 들어가기 전에 비운다
+    await guest.webContents.session.clearStorageData({ origin: new URL(url).origin, storages: ['localstorage'] });
     await guest.loadURL(url);
     out.guestReady = !!(await until(() => js(guest, 'return !!window.__roadmap?.sessionUi && window.__roadmap.store.items.length > 0'), 10000));
     out.noPrompt = await js(guest, `return !document.querySelector('.dlg-scrim:not([hidden]) .dlg') && /^참가자 \\d+$/.test(window.__roadmap.session.me)`);
