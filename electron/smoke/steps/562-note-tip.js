@@ -1,4 +1,4 @@
-// 스모크 단계 'note-tip' — 비고가 있는 카드에 커서를 올리면 카드 옆에 비고(마크다운)가 뜬다(2026-10-15 사용자).
+// 스모크 단계 'note-tip' — 비고가 있는 카드에 커서를 올리면 카드 옆에 이름·날짜·주체와 그 밑에 비고(마크다운)가 뜬다(2026-10-15·10-28 사용자).
 //   비고 없음 → 안 뜸 · 카드에 비고가 다 보이면 안 뜸 · 상위 일정은 제목 바에서만 · 휠·누르기면 닫힘 · 화면 안 · 문서는 그대로
 export default {
   name: 'note-tip',
@@ -25,13 +25,16 @@ export default {
         card(a.id).scrollIntoView({ block: 'center', inline: 'center' }); await sleep(150);
         o.shown = await hover(card(a.id).querySelector(':scope > .t'));
         o.markdown = !!tip()?.querySelector('.note-tip-body strong') && tip().querySelectorAll('.note-tip-body li').length === 2
-          && tip().querySelector('.note-tip-title').textContent === a.ti;
+          && tip().querySelector('.note-tip-title').textContent === (a.alias || a.ti);
+        // 머리에 이름 밑으로 날짜·주체(카드 기본 툴팁과 같은 글), 띄운 동안 카드의 기본 툴팁은 비운다(겹쳐 뜨지 않게)
+        o.head = tip().querySelectorAll('.note-tip-head .note-tip-meta').length >= 1 && card(a.id).title === '';
         const t = tip().getBoundingClientRect(); const c = card(a.id).getBoundingClientRect();
         o.inView = t.left >= 0 && t.top >= 0 && t.right <= document.documentElement.clientWidth && t.bottom <= document.documentElement.clientHeight;
         o.beside = t.left >= c.right || t.right <= c.left || t.top >= c.bottom || t.bottom <= c.top;
         o.noPointer = getComputedStyle(tip()).pointerEvents === 'none';
         card(a.id).dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: 1 }));
         o.closedOnDown = !shown();
+        o.titleBack = card(a.id).title.startsWith(a.alias || a.ti);
         // 비고 없는 카드 — 안 뜬다
         o.emptyNone = !(await hover(card(b.id)));
         // 카드 위에 짧은 비고가 다 보이면 — 안 뜬다
@@ -65,5 +68,5 @@ export default {
   },
   check: (o) => o?.shown === true && o?.markdown === true && o?.inView === true && o?.beside === true && o?.noPointer === true
     && o?.closedOnDown === true && o?.emptyNone === true && (o?.onCardNone === true || o?.onCardNone === 'skip')
-    && o?.containerBody === true && o?.containerTitle === true,
+    && o?.containerBody === true && o?.containerTitle === true && o?.head === true && o?.titleBack === true,
 };

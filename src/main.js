@@ -83,6 +83,7 @@ async function boot() {
   const itemPanel = new ItemPanel({
     store, view, panels, adapter,
     openProject: (id) => tabs.openBoard(id),
+    reorder: (id, how) => reorderCard(id, how),
     // 합치기·되돌리기는 DB 전체를 바꾼다 — 이 보드는 다시 읽고, 다른 탭은 돌아갈 때 다시 읽는다.
     reloadBoard: async () => { tabs.markAllStale(); await tabs.reloadActive(); },
     // 참조 목록에서 그쪽으로 가기 — 그 보드를 열고(이미 이 보드면 그대로) 카드면 열어 보이게, 트랙이면 트랙 편집,
@@ -222,6 +223,14 @@ async function boot() {
     }
   }
 
+  /** 카드 쌓는 순서 바꾸기(스타일 탭·단축키·우클릭) — 더 갈 데가 없으면 알린다 */
+  function reorderCard(id, how) {
+    if (board.reorder(id, how)) return true;
+    const MSG = { front: '이미 맨 앞입니다', forward: '이미 맨 앞입니다', backward: '이미 맨 뒤입니다', back: '이미 맨 뒤입니다' };
+    if (MSG[how]) toast(MSG[how]);
+    return false;
+  }
+
   function refresh() {
     board.render();
     renderStatusBar($('statusBar'), { store, view, onChange: refresh });
@@ -333,6 +342,13 @@ async function boot() {
       e.preventDefault();
       if (e.shiftKey) { if (!store.redo()) toast('다시 실행할 작업이 없습니다'); }
       else if (!store.undo()) toast('되돌릴 작업이 없습니다');
+      return;
+    }
+    // 순서 — 파워포인트처럼 Ctrl+Shift+] 맨 앞 · Ctrl+] 앞 · Ctrl+[ 뒤 · Ctrl+Shift+[ 맨 뒤 (고른 카드)
+    if ((e.ctrlKey || e.metaKey) && (e.code === 'BracketRight' || e.code === 'BracketLeft') && view.selectedItem && !typing) {
+      e.preventDefault();
+      const up = e.code === 'BracketRight';
+      reorderCard(view.selectedItem, up ? (e.shiftKey ? 'front' : 'forward') : (e.shiftKey ? 'back' : 'backward'));
       return;
     }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {

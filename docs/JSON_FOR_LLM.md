@@ -93,7 +93,7 @@
     "t": "track:2:t0",          // 놓인 트랙(홈 트랙) id
     "tracks": ["track:2:t0", "track:2:t1"],  // 걸쳐 있는 트랙들(여러 트랙에 동시에 속한다)
     "slot": null,               // 날짜 없는 보드에서의 칸 위치(§6). 날짜 있는 보드는 null
-    "sp": 2, "x": 0, "w": 1.98, "hd": 27, "oy": null, "fs": null, "align": "middle", "showNote": false, "fill": null  // 화면용 — 무시
+    "sp": 2, "x": 0, "w": 1.98, "hd": 27, "oy": null, "fs": null, "z": null, "align": "middle", "showNote": false, "fill": null  // 화면용 — 무시
   }
 }
 ```
@@ -153,7 +153,7 @@
 
 ## 9. 무시해도 되는 것 (화면 전용)
 
-`bands` 전체, `meta.memos`의 `dy`·`x`·`w`·`h`(메모 모양 — 글·날짜·트랙은 §3), `meta.display`(단 `dated`는 §6. `slotRows`·`rowScales`도 칸·줄 높이일 뿐), `meta.arrows`(사용자가 고친 화살표 모양), `tracks[].w`·`tracks[].fill`, `place`의 `sp`·`x`·`w`·`hd`·`oy`·`fs`(글자 크기)·`align`·`showNote`·`fill`.
+`bands` 전체, `meta.memos`의 `dy`·`x`·`w`·`h`(메모 모양 — 글·날짜·트랙은 §3), `meta.display`(단 `dated`는 §6. `slotRows`·`rowScales`도 칸·줄 높이일 뿐), `meta.arrows`(사용자가 고친 화살표 모양), `tracks[].w`·`tracks[].fill`, `place`의 `sp`·`x`·`w`·`hd`·`oy`·`fs`(글자 크기)·`z`(겹친 카드의 쌓는 순서)·`align`·`showNote`·`fill`.
 이 값들은 칸 높이·카드 폭·색 같은 **보이는 모양**일 뿐, 일정의 의미·순서·기간과 무관하다.
 
 ## 10. 자주 하는 계산

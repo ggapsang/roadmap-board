@@ -571,6 +571,8 @@ export class Board {
 
     // 카드가 붙어 크기가 확정된 뒤 제목이 넘치면 폰트를 줄여 잘리지 않게 한다
     for (const node of cardEls.values()) fitTitle(node);
+    // 늘린 카드(grown)가 정해진 뒤에 층을 매긴다
+    this.#applyStacking(byId);
 
     // 카드가 붙은 뒤에야 offsetLeft/offsetTop이 확정된다
     drawArrows(this.arrowLayer, this.grid, this.store.items, this.store.relations, this.store.meta.display, this.store.meta.arrows ?? {}, this.#arrowForms());
@@ -580,6 +582,95 @@ export class Board {
     // 메모(포스트잇) — 컬럼 폭이 정해진 뒤에 자리를 잰다
     this.memos.draw();
     this.onRendered?.();      // 공유 화면 — 다른 사람이 고른 카드 표식(ui/session.js)
+  }
+
+  /**
+   * 카드 층(z-index) — 같은 자리(보드 최상위끼리, 한 상위 카드 안끼리)를 (쌓는 순서 place.z, 기본 층, 그린 순서)로 늘어놓아
+   * 아래부터 10, 11, …을 --zo로 준다. 상위 카드는 z-index를 받지 않고(규약 10 — 쌓임 맥락이 되면 안의 카드가 갇힌다) 자기 자리에서
+   * 안의 카드들이 이어 받으며, 제목 바(--zt)는 그 바로 위. 기본 층은 예전 고정 층을 그대로 옮긴 것 — 보통 카드 < 늘린 카드·상위 카드
+   * (와 그 안) < 점 마일스톤. 사용자가 순서를 정하면(스타일 탭 맨 앞으로·뒤로, 2026-10-28 사용자) place.z가 먼저다.
+   * 그린 순서(같은 자리 목록)는 #stackLists에 남겨 순서 바꾸기(reorder)가 쓴다.
+   */
+  #applyStacking(byId) {
+    const nodes = [...this.grid.querySelectorAll('.ev')];
+    const dom = new Map(nodes.map((n, i) => [n, i]));
+    const groups = new Map();                       // 담은 카드 노드(null = 보드 최상위) → 노드들
+    for (const n of nodes) {
+      const host = n.parentElement?.closest('.ev') ?? null;
+      if (!groups.has(host)) groups.set(host, []);
+      groups.get(host).push(n);
+    }
+    const tier = (n) => (n.classList.contains('ms') && n.classList.contains('point') ? 2
+      : n.classList.contains('container') || n.classList.contains('grown') ? 1 : 0);
+    const zOf = (n) => byId.get(n.dataset.id)?.place?.z ?? 0;
+    this.#stackLists = new Map();
+    let next = 10;
+    const emit = (host) => {
+      const list = (groups.get(host) ?? []).map((n) => ({ n, z: zOf(n), t: tier(n), d: dom.get(n) }))
+        .sort((a, b) => a.z - b.z || a.t - b.t || a.d - b.d);
+      this.#stackLists.set(host ? host.dataset.id : null, [...new Set(list.map((x) => x.n.dataset.id))]);
+      for (const { n } of list) {
+        const box = n.classList.contains('container');
+        if (!box) n.style.setProperty('--zo', String(next++));
+        if (groups.has(n)) emit(n);
+        if (box) n.style.setProperty('--zt', String(next++));
+      }
+    };
+    emit(null);
+  }
+
+  #stackLists = new Map();
+
+  /** 같은 자리 열쇠 — 상위 카드 안이면 그 id, 보드 최상위(펼쳐 들어간 이벤트의 직속 자식 포함)면 null. 그리기와 같은 규칙 */
+  #stackKey(id) {
+    const item = this.store.item(id);
+    return (item?.parent && item.parent !== this.focus) ? item.parent : null;
+  }
+
+  /**
+   * 쌓는 순서 바꾸기 — 파워포인트의 맨 앞으로(front)·앞으로(forward)·뒤로(backward)·맨 뒤로(back). 같은 자리의 카드끼리만 견준다
+   * (보드 최상위 카드끼리, 한 상위 카드 안의 카드끼리). 한 칸 옮기기는 화면에서 겹친 카드를 하나 넘는다 — 안 겹친 카드를 넘어도
+   * 보이는 것이 없어서(겹친 것이 없으면 바로 옆 하나). 순서는 배치(place.z)에 둔다 — 이 보드의 표현. 되돌리기 한 단계.
+   * @returns {boolean} 바뀌었는가
+   */
+  reorder(id, how) {
+    const item = this.store.item(id);
+    if (!item?.place || this.store.readonly) return false;
+    const key = this.#stackKey(id);
+    const list = [...(this.#stackLists.get(key) ?? [])];
+    const i = list.indexOf(id);
+    if (i < 0) return false;
+    const rects = (x) => [...this.grid.querySelectorAll(`.ev[data-id="${CSS.escape(x)}"]`)]
+      .filter((n) => (n.parentElement?.closest('.ev')?.dataset.id ?? null) === key).map((n) => n.getBoundingClientRect());
+    const mine = rects(id);
+    const overlaps = (x) => rects(x).some((b) => mine.some((a) => Math.min(a.right, b.right) - Math.max(a.left, b.left) > 0.5
+      && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 0.5));
+    let to;
+    if (how === 'front') to = list.length - 1;
+    else if (how === 'back') to = 0;
+    else if (how === 'forward') {
+      if (i === list.length - 1) return false;
+      const j = list.findIndex((x, k) => k > i && overlaps(x));
+      to = j < 0 ? i + 1 : j;
+    } else if (how === 'backward') {
+      if (i === 0) return false;
+      let j = -1;
+      for (let k = i - 1; k >= 0; k -= 1) if (overlaps(list[k])) { j = k; break; }
+      to = j < 0 ? i - 1 : j;
+    } else return false;
+    if (to === i) return false;
+    list.splice(i, 1);
+    list.splice(to, 0, id);
+    // 같은 자리 전부를 0, 1, 2…로 다시 매긴다(0은 null) — 바뀐 카드만 쓴다. 화면에 없는 형제(필터·숨김)는 그대로
+    const LABEL = { front: '맨 앞으로', forward: '앞으로', backward: '뒤로', back: '맨 뒤로' };
+    this.store.commit(LABEL[how], () => {
+      list.forEach((x, k) => {
+        const it = this.store.item(x);
+        const z = k === 0 ? null : k;
+        if (it?.place && (it.place.z ?? null) !== z) it.place.z = z;
+      });
+    });
+    return true;
   }
 
   /** 각 트랙 컬럼의 실제 너비(px) */
@@ -947,6 +1038,13 @@ export class Board {
       if (card) {
         const id = card.dataset.id;
         opts.push({ label: '이벤트 복사', action: () => this.#copyEvent(id) });
+        // 순서 — 겹친 카드 사이에서(파워포인트처럼). 스타일 탭과 같다
+        const list = this.#stackLists.get(this.#stackKey(id)) ?? [];
+        const at = list.indexOf(id);
+        opts.push({ label: '맨 앞으로 가져오기', disabled: at === list.length - 1, action: () => this.reorder(id, 'front') });
+        opts.push({ label: '앞으로 가져오기', disabled: at === list.length - 1, action: () => this.reorder(id, 'forward') });
+        opts.push({ label: '뒤로 보내기', disabled: at <= 0, action: () => this.reorder(id, 'backward') });
+        opts.push({ label: '맨 뒤로 보내기', disabled: at <= 0, action: () => this.reorder(id, 'back') });
       }
       if (col) {
         const at = this.timeline.snap(Math.max(0, Math.floor(this.scale.dayAt((ev.clientY - col.getBoundingClientRect().top) / this.zoom))));

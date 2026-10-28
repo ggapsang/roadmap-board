@@ -2,6 +2,8 @@
  * 비고 미리보기 — 비고가 있는 카드에 커서를 올리고 잠깐 멈추면 카드 옆에 비고를 마크다운으로 띄운다(2026-10-15 사용자).
  * 보기만 한다(pointer-events 없음) — 고치기는 편집 패널에서. 화면 상태만이라 문서·저장·되돌리기와 무관하다.
  *
+ * - 맨 위엔 비고 없는 카드에 뜨는 기본 툴팁(카드 title — 이름·날짜·주체·진척)과 같은 것을, 그 밑에 비고(2026-10-28 사용자).
+ *   띄운 동안은 카드의 기본 툴팁을 잠시 비워 둘이 겹쳐 뜨지 않게 한다(닫을 때 되돌린다).
  * - 카드 위에 비고가 이미 다 보이면(스타일 탭 '비고 표시') 띄우지 않는다. 잘려 숨었으면 띄운다.
  * - 상위 일정은 제목 바에 올렸을 때만 — 안쪽 빈 곳까지 띄우면 자식 카드 사이를 지날 때마다 튄다.
  * - 누르기(끌기 시작)·휠·스크롤·키 입력·문서 변경이면 닫는다.
@@ -56,6 +58,8 @@ export class NoteTip {
   hide() {
     clearTimeout(this.timer);
     this.timer = 0;
+    if (this.card && this.savedTitle != null) this.card.title = this.savedTitle;
+    this.savedTitle = null;
     this.card = null;
     this.id = null;
     if (!this.node.hidden) { this.node.hidden = true; clear(this.node); }
@@ -71,7 +75,17 @@ export class NoteTip {
     const onCard = card.querySelector(':scope > .card-note');
     if (onCard && !onCard.hidden && onCard.scrollHeight <= onCard.clientHeight + 1 && card.scrollHeight <= card.clientHeight + 1) return;
     clear(this.node);
-    this.node.append(el('div.note-tip-title', { text: item.ti || '' }), el('div.note-tip-body.md-body', {}, renderMarkdown(note)));
+    // 머리 — 카드의 기본 툴팁 글(첫 줄 이름, 다음 줄부터 날짜·주체·진척)을 그대로
+    const [name, ...rest] = (card.title || item.ti || '').split('\n').filter((l) => l.trim());
+    this.node.append(
+      el('div.note-tip-head', {}, [
+        el('div.note-tip-title', { text: name ?? '' }),
+        ...rest.map((l) => el('div.note-tip-meta', { text: l })),
+      ]),
+      el('div.note-tip-body.md-body', {}, renderMarkdown(note)),
+    );
+    this.savedTitle = card.title;
+    card.title = '';
     this.node.hidden = false;
     this.node.classList.toggle('long', this.node.scrollHeight > this.node.clientHeight + 1);
     this.#place(card.getBoundingClientRect());

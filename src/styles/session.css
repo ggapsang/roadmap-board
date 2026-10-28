@@ -16,7 +16,7 @@ body.session .tabbar, body.session #btnProjects, body.session #btnGraph, body.se
 .sess-chip{padding:2px var(--u2);border:1px solid var(--border-default);border-radius:var(--u1);font-size:12px}
 
 /* 다른 사람이 고른 카드 — 이름 표식(카드 위 왼쪽) + 옅은 테두리 */
-.presence-layer{position:absolute;inset:0;z-index:19;pointer-events:none}
+.presence-layer{position:absolute;inset:0;z-index:9019;pointer-events:none}
 .presence-tag{position:absolute;transform:translateY(-100%);padding:0 var(--u1-5);border-radius:var(--u1) var(--u1) 0 0;
   background:var(--text-secondary);color:var(--bg-panel);font-size:11px;line-height:16px;white-space:nowrap;max-width:220px;
   overflow:hidden;text-overflow:ellipsis}

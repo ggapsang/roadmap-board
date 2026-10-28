@@ -41,7 +41,8 @@ function autogrow(node) {
 }
 
 export class ItemPanel {
-  constructor({ store, view, panels, adapter, openProject, reloadBoard, onChange, goToEvent }) {
+  constructor({ store, view, panels, adapter, openProject, reloadBoard, onChange, goToEvent, reorder }) {
+    this.reorder = reorder;
     Object.assign(this, { store, view, panels, adapter, openProject, reloadBoard, onChange, goToEvent });
     this._allEvents = [];          // 모든 보드의 이벤트 캐시 — 카드를 열 때마다 갱신하되 비우진 않는다
     this._extraEvents = new Map(); // 어느 보드 화면에도 없는 조합 대상의 본질(이름 표시용)
@@ -168,6 +169,11 @@ export class ItemPanel {
     }
     pal.querySelectorAll('.fill-sw').forEach((b) =>
       b.addEventListener('click', () => this.#setFill(b.dataset.fill || null)));
+
+    // 순서 — 겹친 카드 사이에서 맨 앞으로·앞으로·뒤로·맨 뒤로(파워포인트처럼). 보드가 화면에서 겹친 것을 보고 바꾼다
+    for (const b of $('i-order').querySelectorAll('.seg-btn')) {
+      b.addEventListener('click', () => { if (this.item) this.reorder?.(this.item.id, b.dataset.order); });
+    }
 
     // 글자 크기 — 이 카드만(보드 글자 크기에 곱한다). 가운데는 100%로
     for (const b of $('i-font').querySelectorAll('.seg-btn')) {

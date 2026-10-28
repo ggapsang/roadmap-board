@@ -15,7 +15,7 @@ import {
   RELATION_TYPES, RELATION_KEYS, FILL_KEYS, SCALE_KEYS, SLOT_UNIT_OF, BAND_SCALE, CARD_FONT, MEMO,
 } from '../config/index.js';
 
-export const SCHEMA_VERSION = 24;
+export const SCHEMA_VERSION = 25;
 
 /**
  * v0 = P0 시안 문서(version 필드 없음).
@@ -270,6 +270,13 @@ function v23_to_v24(doc) {
   return doc;
 }
 
+function v24_to_v25(doc) {
+  // 카드 쌓는 순서(place.z — 스타일 탭 맨 앞으로·뒤로) — 옛 문서엔 없다(0, 기본 순서)
+  for (const it of doc.items ?? []) if (it?.place && typeof it.place === 'object') it.place.z = it.place.z ?? null;
+  doc.version = 25;
+  return doc;
+}
+
 const MIGRATIONS = {
   0: v0_to_v1,
   1: v1_to_v2,
@@ -295,6 +302,7 @@ const MIGRATIONS = {
   21: v21_to_v22,
   22: v22_to_v23,
   23: v23_to_v24,
+  24: v24_to_v25,
 };
 
 export const ALIGNS = ['top', 'middle', 'bottom'];
@@ -525,6 +533,8 @@ export function normalize(doc) {
       // 그 카드의 글자 크기 배율(보드 글자 크기에 곱한다) — CARD_FONT 범위, 1이면 없음(null)
       fs: (() => { const v = Number(pl.fs); if (!Number.isFinite(v) || pl.fs == null) return null;
         const c = Math.round(Math.min(CARD_FONT.max, Math.max(CARD_FONT.min, v)) * 100) / 100; return c === 1 ? null : c; })(),
+      // 쌓는 순서 — 같은 자리(최상위끼리·한 상위 카드 안끼리)에서 클수록 위. 정수, 0이면 없음(null)
+      z: Number.isInteger(pl.z) && pl.z !== 0 ? pl.z : null,
       x: ratio(pl.x ?? it.x),
       // 가로 폭 비율. 1 = 한 칸. **크기 강제로 여러 트랙에 걸치면 w>1이 될 수 있다**(sp만큼).
       // 1로 잘라 버리면 걸친 카드가 데이터 적용·재정규화 때 한 칸으로 쪼그라든다. 트랙 수까지 허용.

@@ -1,5 +1,9 @@
 /* ── 캘린더 그리드 ────────────────────────────────── */
-.scroll{flex:1;overflow:auto;background:var(--bg-canvas)}
+/* 보드 안의 층 번호는 이 안에서만 — isolation으로 쌓임 맥락을 만들어 패널·메뉴·팝업(전역 z 40~120) 위로 새지 않게 한다.
+   층(아래→위): 줄(0) · 화살표(5) · 카드(10~, 쌓는 순서대로 Board#applyStacking이 --zo로) · 상위 카드 제목 바(--zt) ·
+   만들기 고스트(9015) · 선택(9016) · 메모·참가자 표식(9019) · 날짜 축(9020·9021) · 오늘선(9022) · 머리(9030) · 화살표 손잡이(9040).
+   카드는 사용자가 정한 순서(place.z, 스타일 탭 맨 앞으로·뒤로 — 2026-10-28 사용자)만큼 층이 늘어나므로 위층은 9000대에 둔다. */
+.scroll{flex:1;overflow:auto;background:var(--bg-canvas);isolation:isolate}
 
 /* 펼침 경로 (드릴다운 브레드크럼) — 카드를 펼쳐 들어가면 나온다. 클릭해 접어 나온다. */
 .crumbs{display:flex;align-items:center;gap:var(--u1);padding:var(--u2) var(--u4);flex:none;
@@ -13,7 +17,7 @@
 /* 내용 폭대로 — 트랙 칸은 최소 폭(LAYOUT.minTrackWidth) 밑으로 줄지 않고, 창에 안 들어가면 가로로 스크롤한다(오른쪽 패널이
    열려도 같다). 왼쪽 날짜 축(gut-m·gut-w)과 그 위 머리 모서리는 가로로 넘겨도 제자리(sticky). */
 .cal{min-width:max-content}
-.head{display:grid;position:sticky;top:0;z-index:30;background:var(--bg-header);
+.head{display:grid;position:sticky;top:0;z-index:9030;background:var(--bg-header);
   border-bottom:1px solid var(--border-default)}
 .head .cnr{border-right:1px solid var(--border-subtle);position:sticky;left:0;z-index:2;background:var(--bg-header)}
 .head .cnr + .cnr{left:var(--gut-m)}
@@ -32,7 +36,7 @@
 /* 일반 날짜는 아주 약하게, 월 경계만 한 단계 강하게 (가이드 5/8) */
 .lines i{position:absolute;left:var(--gut-m);right:0;border-top:1px solid var(--grid-line);display:block}
 .lines i.m{border-top:1px solid var(--grid-line-strong)}
-.gut-m{position:sticky;left:0;z-index:21;border-right:1px solid var(--border-subtle);background:var(--bg-canvas)}
+.gut-m{position:sticky;left:0;z-index:9021;border-right:1px solid var(--border-subtle);background:var(--bg-canvas)}
 .gut-m{cursor:ns-resize}
 .gut-m b{position:absolute;left:0;right:0;border-top:1px solid var(--grid-line-strong);
   user-select:none;
@@ -49,7 +53,7 @@
 .gut-m b.slot u{padding:var(--u1) 0}
 .gut-m b.slot.sized{background:var(--bg-hover)}
 /* 가로로 넘기면 카드가 이 아래로 지나간다 — 면을 깔고, 행선은 칸 안에 따로 긋는다(.lines는 면에 가린다) */
-.gut-w{position:sticky;left:var(--gut-m);z-index:20;background:var(--bg-canvas)}
+.gut-w{position:sticky;left:var(--gut-m);z-index:9020;background:var(--bg-canvas)}
 .gut-w i{position:absolute;left:0;right:0;border-top:1px solid var(--grid-line);pointer-events:none}
 .gut-w i.m{border-top-color:var(--grid-line-strong)}
 .gut-w s{position:absolute;left:0;right:var(--u2);text-align:right;text-decoration:none;pointer-events:none;
@@ -61,7 +65,7 @@
 
 .pad{border-left:1px solid var(--grid-line)}
 /* 오늘 — 화면에서 가장 강한 선이 되지 않게 얇게 긋고 작은 Pill만 붙인다 */
-.now{position:absolute;height:0;border-top:1.5px solid var(--accent);z-index:22;pointer-events:none;
+.now{position:absolute;height:0;border-top:1.5px solid var(--accent);z-index:9022;pointer-events:none;
   left:var(--gut-m);right:0}
 .now::before{content:"";position:absolute;left:-3px;top:-4px;width:7px;height:7px;
   border-radius:50%;background:var(--accent)}
@@ -87,7 +91,7 @@
 /* 눌러 고른 화살표 — Delete로 지운다. 채움은 강조와 같고 테두리를 굵게 */
 .arrow.selected{fill:var(--accent);stroke:var(--accent);stroke-width:2.5}
 .arrow.editing{fill:var(--accent-soft);stroke:var(--accent);stroke-dasharray:4 2}
-.arrow-handles{position:absolute;inset:0;z-index:40;pointer-events:none}
+.arrow-handles{position:absolute;inset:0;z-index:9040;pointer-events:none}
 .ah{position:absolute;width:var(--u3);height:var(--u3);margin:calc(var(--u3) / -2) 0 0 calc(var(--u3) / -2);
   border-radius:50%;background:var(--bg-panel);border:2px solid var(--accent);pointer-events:auto;cursor:move;box-sizing:border-box}
 .ah-mid{border-radius:2px;transform:rotate(45deg);background:var(--accent)}
@@ -101,7 +105,7 @@ body.dragging-arrow, body.dragging-arrow *{cursor:grabbing !important;user-selec
    상태는 카드 배경 전체를 칠하지 않고 좌측 4px Accent indicator로 나타낸다. */
 .ev{position:absolute;border-radius:var(--r-card);
   border:1px solid var(--border-subtle);
-  background:var(--surface-card);cursor:grab;overflow:hidden;z-index:6;
+  background:var(--surface-card);cursor:grab;overflow:hidden;z-index:var(--zo,10);
   display:flex;flex-direction:column;padding:var(--u2) var(--u3) var(--u2) var(--u3);
   user-select:none;transition:background-color .12s ease,border-color .12s ease}
 @media (prefers-reduced-motion:reduce){.ev{transition:none}}
@@ -133,8 +137,7 @@ body.dragging-arrow, body.dragging-arrow *{cursor:grabbing !important;user-selec
 .ev .meta.hidden{display:none}
 /* 제목은 줄어들지 않는다 — 좁아지면 메타·비고가 먼저 숨는다(card.js fitTitle). 줄어들면 높이 0이 되어 제목만 사라진다 */
 .ev>.t{flex-shrink:0}
-/* 제목이 들어가도록 늘린 카드(마지막 수단) — 아래 카드 위로 올라와도 제목이 보이게 */
-.ev.grown:not(.container){z-index:7}
+/* 제목이 들어가도록 늘린 카드(마지막 수단)는 아래 카드 위로 올라와도 제목이 보이게 — 기본 순서에서 보통 카드보다 위(Board#applyStacking) */
 
 /* 별칭(포털) 카드 — 다른 보드를 대신한다. 약한 파선으로 "무언가를 가리킨다"를 표시하고,
    오른쪽 위 ⧉ 표식을 눌러 그 보드로 들어간다(accent는 이동 신호라 허용). */
@@ -169,7 +172,7 @@ body.dragging-arrow, body.dragging-arrow *{cursor:grabbing !important;user-selec
 /* 화살표로 이어진 카드(커서를 올린 카드와 그 양끝) — 테두리만 밝힌다. 선택(.sel, 면까지 칠함)과 헷갈리지 않게 약한 고리.
    z-index를 주지 않는다(규약 10 — 컨테이너가 쌓임 맥락이 되면 안의 카드가 갇힌다). 선택이 뒤에서 이긴다. */
 .ev.linked{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
-.ev.sel{background:var(--surface-sel);border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);z-index:16}
+.ev.sel{background:var(--surface-sel);border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);z-index:9016}
 .ev.dim{opacity:.28}
 .ev.hit{box-shadow:0 0 0 2px var(--warning-500)}
 
@@ -178,7 +181,7 @@ body.dragging-arrow, body.dragging-arrow *{cursor:grabbing !important;user-selec
 .create-preview{position:absolute;left:var(--u1);right:var(--u1);
   border:1.5px dashed var(--accent);border-radius:var(--r-card);
   background:color-mix(in srgb, var(--accent) 12%, transparent);
-  pointer-events:none;z-index:15}
+  pointer-events:none;z-index:9015}
 
 /* 비고를 카드에 함께 보여 줄 때 */
 /* 비고는 카드가 가운데 정렬(.ev.big·컨테이너)이어도 왼쪽 정렬 — 목록·문단은 왼쪽에서 읽힌다. 폭은 카드 안쪽을 다 쓴다 */
@@ -201,10 +204,10 @@ body.dragging-arrow, body.dragging-arrow *{cursor:grabbing !important;user-selec
 .ev.container{overflow:visible;padding-bottom:var(--u2);
   background:var(--surface-group);z-index:auto}
 /* 자식은 날짜 위치대로 들어오므로 상위 제목과 겹칠 수 있다.
-   배경 + 위 레이어(z:8)로 항상 읽히게 하고, 세로 정렬(c-*)에 따라 모양을 바꾼다.
+   배경 + 위 레이어(--zt — 안에 든 카드들 바로 위, Board#applyStacking)로 항상 읽히게 하고, 세로 정렬(c-*)에 따라 모양을 바꾼다.
    제목 바의 면은 그 카드 자신의 면을 그대로 받는다(inherit) — 상위 일정 안에 든 상위 일정(겹 부모)은 몸통이 한 단계 뜬 면이라,
    그룹 면(회색)을 칠하면 이름만 회색으로 강조된 것처럼 보였다(2026-10-02 사용자). 채우기·hover·선택도 몸통과 같이 따라간다. */
-.ev.container>.t{flex:none;text-align:center;z-index:8;
+.ev.container>.t{flex:none;text-align:center;z-index:var(--zt,9000);
   padding:var(--u1) var(--u2);background:inherit}
 /* 위(기본) — 위에 붙는 제목 바, 스크롤해도 보이게 sticky. 카드 안쪽 여백(위 u2, 옆 u3)만큼 당겨 테두리에 붙인다 —
    왼쪽은 상태 표시자(4px)를 비켜 u2만. 폭은 stretch로(width:100%에 음수 여백을 주면 오른쪽이 모자라 가운데가 어긋난다). */
@@ -220,7 +223,7 @@ body.dragging-arrow, body.dragging-arrow *{cursor:grabbing !important;user-selec
 .ev.container>.meta{display:none}
 .ev.container>.card-note{flex:none}
 /* 그룹 안의 카드는 한 단계 떠 보이게. 그룹 면과 같은 색이면 구분이 사라진다. */
-.ev.child{z-index:7;background:var(--bg-elevated)}
+.ev.child{background:var(--bg-elevated)}
 .ev.child:hover{background:var(--surface-card-hover)}
 
 /* 상태 — 색은 좌측 표시자에만 쓴다. 진행중이라고 카드를 주황으로 칠하지 않는다.
@@ -258,7 +261,7 @@ body.dragging-arrow, body.dragging-arrow *{cursor:grabbing !important;user-selec
 
 /* 점(단일 날짜) 마일스톤 — 트랙을 가로지르는 얇은 표식 */
 .ev.ms.point{height:var(--u6);flex-direction:row;align-items:center;gap:var(--u2);padding:0 var(--u2-5);
-  background:var(--bg-elevated);border-color:var(--border-subtle);z-index:18}
+  background:var(--bg-elevated);border-color:var(--border-subtle)}   /* 기본 순서에서 다른 카드 위(Board#applyStacking) */
 .ev.ms.point::before{display:none}
 .ev.ms.point .dia{width:7px;height:7px;background:var(--state-plan);transform:rotate(45deg);flex:none}
 .ev.ms.point.st-run .dia{background:var(--state-run)}
@@ -372,9 +375,9 @@ body.reordering-col{cursor:grabbing!important;user-select:none}
   background:repeating-linear-gradient(135deg,var(--fill-hatch) 0 1.5px,transparent 1.5px 12px),var(--fill-base)}
 .ev.container[data-fill="hatch"]>.t{background:var(--fill-base)}
 
-/* ── 메모(포스트잇) — 이벤트가 아니다, 보드 표시(ui/board/memos.js). 카드·화살표 위(z:19), 왼쪽 날짜 축(20·21)·오늘선(22) 아래.
+/* ── 메모(포스트잇) — 이벤트가 아니다, 보드 표시(ui/board/memos.js). 카드·화살표 위(z:9019), 왼쪽 날짜 축(9020·9021)·오늘선(9022) 아래.
    보드 위에 떠 있는 층이라 그림자를 준다(규약 4 — 떠 있는 계층). 색은 채우기 토큰(노랑) */
-.memos{position:absolute;inset:0;z-index:19;pointer-events:none}
+.memos{position:absolute;inset:0;z-index:9019;pointer-events:none}
 .memo{position:absolute;pointer-events:auto;display:flex;flex-direction:column;
   background:linear-gradient(var(--fill-yellow),var(--fill-yellow)),var(--surface-card);
   border:1px solid var(--border-subtle);border-radius:var(--u1);box-shadow:var(--shadow-pop);
@@ -402,8 +405,9 @@ body.dragging-memo,body.dragging-memo *{cursor:grabbing!important;user-select:no
 .note-tip.long{-webkit-mask-image:linear-gradient(to bottom,black calc(100% - var(--u6)),transparent);
   mask-image:linear-gradient(to bottom,black calc(100% - var(--u6)),transparent)}
 .note-tip[hidden]{display:none}
-.note-tip-title{font-weight:600;font-size:12px;color:var(--text-secondary);margin-bottom:var(--u1-5);
-  padding-bottom:var(--u1-5);border-bottom:1px solid var(--border-subtle)}
+.note-tip-head{margin-bottom:var(--u1-5);padding-bottom:var(--u1-5);border-bottom:1px solid var(--border-subtle)}
+.note-tip-title{font-weight:600;font-size:12px;color:var(--text-primary)}
+.note-tip-meta{font-size:11px;line-height:16px;color:var(--text-tertiary);font-variant-numeric:tabular-nums}
 .note-tip-body{word-break:keep-all;overflow-wrap:anywhere}
 
 /* 하위 카드를 상위의 트랙 밖으로 끌 때 놓을 칸 — 놓으면 모자관계 해제를 묻는다(drag.js). 포커스 표시라 Orange */
