@@ -158,3 +158,34 @@ export function gridTemplate(tracks, trackLanes) {
     .join(' ');
   return `var(--gut-m) var(--gut-w) ${cols} var(--u10)`;
 }
+
+/**
+ * 트랙 단위 ↔ px — 크기 강제(사이즈 수동 설정) 최상위 카드의 가로 위치·폭(place.x·w)은 **트랙 단위**다(2026-10-29 사용자):
+ * 자기 트랙 왼쪽 끝이 0, 자기 트랙 오른쪽 끝이 1, 다음 트랙 오른쪽 끝이 2 … 소수는 그 트랙 안의 비율. 트랙마다 폭이 달라도·창 크기가
+ * 바뀌어도 고른 트랙에 그대로 닿는다(예전엔 자기 트랙 폭의 배수라, 넓은 트랙에서 시작하면 마지막 트랙 밖 '+'까지 넘어갔다).
+ * @param {number[]} widths  트랙 순서대로 칸 폭(px)
+ * @param {number} home  자기 트랙 번호
+ * @param {number} u  트랙 단위 위치 — 0 ~ (남은 트랙 수)로 자른다(마지막 트랙 밖으로 안 나간다)
+ * @returns {number} 자기 트랙 왼쪽 끝에서의 px
+ */
+export function trackUnitsToPx(widths, home, u) {
+  const n = Math.max(0, widths.length - home);
+  const v = Math.max(0, Math.min(n, Number(u) || 0));
+  let px = 0;
+  let k = 0;
+  while (k + 1 <= v) { px += widths[home + k] ?? 0; k += 1; }
+  if (k < n) px += (v - k) * (widths[home + k] ?? 0);
+  return px;
+}
+
+/** trackUnitsToPx의 거꿀 — 자기 트랙 왼쪽 끝에서의 px → 트랙 단위(0 ~ 남은 트랙 수) */
+export function pxToTrackUnits(widths, home, px) {
+  const n = Math.max(0, widths.length - home);
+  let rest = Math.max(0, Number(px) || 0);
+  for (let k = 0; k < n; k += 1) {
+    const w = widths[home + k] ?? 0;
+    if (rest <= w) return k + (w > 0 ? rest / w : 0);
+    rest -= w;
+  }
+  return n;
+}

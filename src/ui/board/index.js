@@ -14,7 +14,7 @@
 import { parseDate, dayIndex, shortMD } from '../../core/dates.js';
 import { TimeScale, SlotScale, topOffset } from '../../core/timescale.js';
 import { DateTimeline, SlotTimeline } from '../../core/timeline.js';
-import { computeLayout, gridTemplate } from '../../core/layout.js';
+import { computeLayout, gridTemplate, trackUnitsToPx } from '../../core/layout.js';
 import { newId } from '../../core/schema.js';
 import { DEFAULT_STATUS, DEFAULT_TYPE, UNIT_DAYS, LAYOUT } from '../../config/index.js';
 import { el } from '../dom.js';
@@ -560,7 +560,8 @@ export class Board {
         const host = this.columns.get(homeTrackId);
         if (!host) return;
         const laneInfo = placement.get(`${item.id}@${homeTrackId}`) ?? placement.get(item.id);
-        const spanBox = this.#spanBox(run, laneInfo, colWidth);
+        // 크기 강제 — 트랙 단위 x·w를 실제 칸 폭으로(트랙마다 폭이 달라도 고른 트랙에 닿게). 자동 — 걸친 트랙 칸 폭으로
+        const spanBox = forced ? this.#forcedBox(item, colWidth) : this.#spanBox(run, laneInfo, colWidth);
         const node = renderCard(item, {
           ...common, laneInfo, laned: !!laneInfo, spanBox, echo: r > 0,
         });
@@ -692,10 +693,28 @@ export class Board {
     const lane = laneInfo?.lane ?? 0;
     const own = colWidth.get(run[0]) ?? 0;
 
-    // 자기 트랙에서는 레인 몫만, 넘어가는 트랙은 통째로 차지한다
-    let width = own / lanes;
+    // 자기 트랙에서는 자기 레인 왼쪽 끝부터 그 트랙 오른쪽 끝까지, 넘어가는 트랙은 통째로 — 예전엔 자기 트랙에서 레인 한 칸 몫만 더해
+    // 첫 레인이 아니면(레인이 여럿인 트랙) 남은 레인 폭만큼 마지막 트랙에 못 미쳤다(2026-10-29 사용자)
+    const left = (lane * own) / lanes;
+    let width = own - left;
     for (let k = 1; k < run.length; k += 1) width += colWidth.get(run[k]) ?? 0;
-    return { left: (lane * own) / lanes, width };
+    return { left, width };
+  }
+
+  /**
+   * 크기 강제 최상위 카드의 가로 상자(px, 자기 트랙 칸 기준) — place.x·w는 트랙 단위(core/layout.js trackUnitsToPx).
+   * 마지막 트랙 밖('+' 칸)으로는 나가지 않는다. 칸 폭을 모르면 null(퍼센트로 그린다).
+   */
+  #forcedBox(item, colWidth) {
+    const tracks = this.store.tracks;
+    const home = tracks.findIndex((t) => t.id === item.place?.t);
+    if (home < 0) return null;
+    const widths = tracks.map((t) => colWidth.get(t.id) ?? 0);
+    if (!widths[home]) return null;
+    const x = item.place.x ?? 0;
+    const w = item.place.w ?? item.place.sp ?? 1;
+    const left = trackUnitsToPx(widths, home, x);
+    return { left, width: Math.max(0, trackUnitsToPx(widths, home, x + w) - left) };
   }
 
   /** 소속 트랙을 연속 구간(run)들로 나눈다 — 사이가 떨어지면 별도 구간. 각 run은 트랙 id 배열. */

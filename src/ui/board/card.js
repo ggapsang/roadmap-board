@@ -90,8 +90,8 @@ export function renderCard(item, ctx) {
     left = (manual ? (item.place.x ?? 0) : lane / lanes) * 100;
     width = (manual ? (item.place.w ?? 1 / lanes) : 1 / lanes) * 100;
   } else if (forced) {
-    // 크기 강제 최상위: 비율 x/w로 자유 조절. 폭 비율이 없으면 걸침 칸수(sp)만큼을 기본으로
-    // 둬 강제해도 트랙 걸침이 무너지지 않는다. 드래그로 트랙 너머까지(w>1) 넓힐 수 있다.
+    // 크기 강제 최상위: x/w(트랙 단위)로 자유 조절 — 보드가 실제 칸 폭으로 바꾼 상자(spanBox)를 쓴다. 여기 %는 칸 폭을 모를 때만.
+    // 폭이 없으면 걸침 칸수(sp)만큼을 기본으로 둬 강제해도 트랙 걸침이 무너지지 않는다. 드래그로 트랙 너머까지(w>1) 넓힐 수 있다.
     left = (item.place?.x ?? 0) * 100;
     width = (item.place?.w ?? (item.place?.sp ?? 1)) * 100;
   } else {
@@ -107,10 +107,9 @@ export function renderCard(item, ctx) {
    * 두 칸 폭과 같지도 않다. 그래서 걸치는 카드만 실제 컬럼 너비로 px를 잡는다.
    */
   const setBox = (node) => {
-    // 자동(강제 아님) 걸침 카드는 실제 컬럼 너비(px)로. 강제 모드는 비율 x/w로 잡아
-    // 좌·우 가장자리를 자유롭게 끈다 — 이때 w는 컬럼 기준 비율이라 1을 넘으면(예 2.0)
-    // 옆 트랙까지 넘나든다(자유롭게 트랙을 가로지른다).
-    if (spanBox && !forced) {
+    // 걸침 카드(자동)·크기 강제 최상위 카드는 보드가 실제 칸 폭으로 잰 상자(px)로. 강제 모드의 x/w는 트랙 단위라(1 = 자기 트랙 끝,
+    // 2 = 다음 트랙 끝) 옆 트랙을 넘나들어도 트랙마다 다른 폭을 그대로 탄다(core/layout.js trackUnitsToPx).
+    if (spanBox) {
       node.style.left = `${spanBox.left + 4}px`;
       node.style.width = `${Math.max(24, spanBox.width - 8)}px`;
     } else {

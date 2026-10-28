@@ -18,6 +18,7 @@
  * 레인 확장 때문에 컬럼 폭이 트랙마다 다르므로, 고정 폭으로 나눠 델타를 구하면
  * 폭이 넓은 트랙 위에서 커서와 카드가 어긋난다.
  */
+import { trackUnitsToPx, pxToTrackUnits } from '../../core/layout.js';
 import { UNIT_DAYS, LAYOUT } from '../../config/index.js';
 import { askConfirm } from '../dialog.js';
 
@@ -109,6 +110,30 @@ export function attachDrag(grid, {
       if (!drag.moved) { store.begin('가로 폭'); drag.moved = true; }
       const MIN = 0.08;
       const ratio = dx / drag.hostWidth;
+      // 크기 강제 최상위 카드는 트랙 단위(자기 트랙 끝 = 1, 다음 트랙 끝 = 2 …) — 칸 폭이 서로 달라도 커서가 있는 트랙의 그 자리로.
+      // 자식 카드는 상위 카드에 대한 비율 그대로
+      if (!drag.child) {
+        const widths = [...grid.querySelectorAll('.col')].map((c) => c.offsetWidth);
+        const home = drag.homeTrack;
+        const dpx = dx / getZoom();
+        store.commit('가로 폭', () => {
+          const item = store.item(drag.id);
+          if (!item) return;
+          const n = Math.max(1, widths.length - home);
+          const right0 = drag.x0 + drag.w0;
+          if (drag.mode === 'hw-right') {
+            const right = pxToTrackUnits(widths, home, trackUnitsToPx(widths, home, right0) + dpx);
+            item.place.x = drag.x0;
+            item.place.w = Math.max(MIN, Math.min(n - drag.x0, right - drag.x0));
+          } else {
+            const left = pxToTrackUnits(widths, home, trackUnitsToPx(widths, home, drag.x0) + dpx);
+            const nextX = Math.min(right0 - MIN, Math.max(0, left));
+            item.place.x = nextX;
+            item.place.w = right0 - nextX;
+          }
+        });
+        return;
+      }
       store.commit('가로 폭', () => {
         const item = store.item(drag.id);
         if (!item) return;
