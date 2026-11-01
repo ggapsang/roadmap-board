@@ -1,7 +1,7 @@
 /* ── 캘린더 그리드 ────────────────────────────────── */
 /* 보드 안의 층 번호는 이 안에서만 — isolation으로 쌓임 맥락을 만들어 패널·메뉴·팝업(전역 z 40~120) 위로 새지 않게 한다.
    층(아래→위): 줄(0) · 화살표(5) · 카드(10~, 쌓는 순서대로 Board#applyStacking이 --zo로) · 상위 카드 제목 바(--zt) ·
-   만들기 고스트(9015) · 선택(9016) · 메모·참가자 표식(9019) · 날짜 축(9020·9021) · 오늘선(9022) · 머리(9030) · 화살표 손잡이(9040).
+   만들기 고스트(9015) · 메모·참가자 표식(9019) · 날짜 축(9020·9021) · 오늘선(9022) · 머리(9030) · 화살표 손잡이(9040).
    카드는 사용자가 정한 순서(place.z, 스타일 탭 맨 앞으로·뒤로 — 2026-10-28 사용자)만큼 층이 늘어나므로 위층은 9000대에 둔다. */
 .scroll{flex:1;overflow:auto;background:var(--bg-canvas);isolation:isolate}
 
@@ -172,7 +172,9 @@ body.dragging-arrow, body.dragging-arrow *{cursor:grabbing !important;user-selec
 /* 화살표로 이어진 카드(커서를 올린 카드와 그 양끝) — 테두리만 밝힌다. 선택(.sel, 면까지 칠함)과 헷갈리지 않게 약한 고리.
    z-index를 주지 않는다(규약 10 — 컨테이너가 쌓임 맥락이 되면 안의 카드가 갇힌다). 선택이 뒤에서 이긴다. */
 .ev.linked{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
-.ev.sel{background:var(--surface-sel);border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);z-index:9016}
+/* 고른 카드도 층은 그대로 — 사용자가 정한 쌓는 순서(맨 앞으로·뒤로)를 덮지 않는다(2026-11-02 사용자: 고른 카드가 늘 위로 올라와
+   맨 앞으로 보낸 카드를 가렸다). 테두리·면만 바뀐다 */
+.ev.sel{background:var(--surface-sel);border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 .ev.dim{opacity:.28}
 .ev.hit{box-shadow:0 0 0 2px var(--warning-500)}
 

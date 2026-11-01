@@ -227,7 +227,10 @@ async function boot() {
   function reorderCard(id, how) {
     if (board.reorder(id, how)) return true;
     const MSG = { front: '이미 맨 앞입니다', forward: '이미 맨 앞입니다', backward: '이미 맨 뒤입니다', back: '이미 맨 뒤입니다' };
-    if (MSG[how]) toast(MSG[how]);
+    // 상위 카드 안의 카드는 그 안에서만 순서를 바꾼다 — 바깥 카드에 가려 있으면 상위 카드를 앞으로 보내야 한다
+    const it = store.item(id);
+    const host = it?.parent && it.parent !== view.focus ? store.item(it.parent) : null;
+    if (MSG[how]) toast(host ? `${MSG[how]} — '${host.alias || host.ti}' 안에서의 순서입니다(바깥 카드에 가리면 상위 카드의 순서를 바꾸세요)` : MSG[how]);
     return false;
   }
 

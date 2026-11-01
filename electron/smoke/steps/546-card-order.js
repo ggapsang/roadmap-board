@@ -37,6 +37,11 @@ export default {
         await sleep(150);
         o.backKey = shown.every((x) => x.id === A.id || zi(x.id) > zi(A.id));
         o.toastAtBack = (() => { const before = r.store.rev; btn('back').click(); return r.store.rev === before; })();
+        // 고른 카드도 층은 그대로 — 맨 앞으로 보낸 카드를 고른 다른 카드가 덮지 않는다(2026-11-02 사용자)
+        r.view.selectedItem = B.id; r.board.render(); await sleep(100);
+        const nB = document.querySelector('.col > .ev[data-id="' + B.id + '"]');
+        o.selKeepsLayer = nB.classList.contains('sel') && Number(getComputedStyle(nB).zIndex) === zi(B.id);
+        r.view.selectedItem = A.id; r.board.render(); await sleep(100);
         // 앞으로 — 겹친 카드를 하나 넘는다: A(맨 뒤) · C(안 겹침) · B(겹침) 순서에서 A는 B 위로(C만 넘는 게 아니라)
         r.store.commit('스모크 순서', () => {
           top().forEach((x, k) => { x.place.z = x.id === A.id ? null : x.id === C.id ? 1 : x.id === B.id ? 2 : 3 + k; });
@@ -89,6 +94,6 @@ export default {
     console.log('[smoke] card-order ' + JSON.stringify(out));
     return out;
   },
-  check: (o) => o?.front === true && o?.undo === true && o?.backKey === true && o?.toastAtBack === true && o?.forwardSkips === true
+  check: (o) => o?.front === true && o?.undo === true && o?.backKey === true && o?.toastAtBack === true && o?.selKeepsLayer === true && o?.forwardSkips === true
     && (o?.nested === true) && o?.menu === true && o?.reloaded === true && o?.db === true,
 };
