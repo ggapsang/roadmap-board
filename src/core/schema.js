@@ -429,7 +429,7 @@ export function normalize(doc) {
     return n;
   });
   if (!doc.tracks.length) {
-    doc.tracks = [{ id: 't0', lab: '', name: '새 트랙 1' }];
+    doc.tracks = [{ id: newId('t'), lab: '', name: '새 트랙 1' }];   // 저장소가 id를 바꾸지 않게 전역 유일 id로('t0'이면 접두가 붙는다)
     warnings.push('트랙이 하나도 없어 기본 트랙을 만들었습니다.');
   }
 
@@ -775,6 +775,12 @@ export function prepare(raw) {
   return { doc: out, warnings, error: null };
 }
 
+/**
+ * 옛 틀·예전 문서의 짧은 트랙 번호 id('t0'·'t1' …) — 보드마다 겹친다. 저장소는 이것만 보드 접두('track:{보드}:')를 붙여 구분하고,
+ * 보드를 만들 때는 새 id로 바꾼다. 그 밖의 트랙 id는 이벤트 id 그대로다(저장이 바꾸지 않는다 — 열린 화면과 DB가 같은 id).
+ */
+export const LEGACY_TRACK_ID = /^t\d+$/;
+
 /** 새 id 생성 — 접두사 + 시각 + 난수 */
 export function newId(prefix) {
   return prefix + Date.now().toString(36) + Math.floor(Math.random() * 1e3).toString(36);
@@ -832,7 +838,8 @@ export function reidentify(doc, { only = null } = {}) {
   if (Array.isArray(doc.meta?.hidden)) doc.meta.hidden = doc.meta.hidden.map(to);
   // 없던 필드는 만들지 않는다 — 정규화 전 옛 문서(선행이 item.dp에 있음)를 그대로 넘겨받을 수 있다.
   if (Array.isArray(doc.relations)) {
-    doc.relations = doc.relations.map((r) => ({ ...r, id: only ? r.id : fresh('r'), from: to(r.from), to: to(r.to) }));
+    // 끝은 카드·태스크·트랙 어느 것이든(참조는 트랙에도 단다) — 새 id를 받은 트랙의 참조도 함께 옮긴다
+    doc.relations = doc.relations.map((r) => ({ ...r, id: only ? r.id : fresh('r'), from: any(r.from), to: any(r.to) }));
   }
   // 조합: 부모(이 보드 트랙·카드)와, 이 보드 안의 대상(카드·트랙·태스크)을 옮긴다. 다른 보드의 대상은
   // 그대로 — 복제본도 같은 이벤트들로 만들어진 것이다.

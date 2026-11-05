@@ -12,7 +12,7 @@
  * **저장은 그 투영이 바뀐 만큼만 적용한다**(docs/SAVE.md) — 기준(그 문서가 나온 상태의 투영)과
  * 비교해 보드가 실제로 고친 것만 쓴다. 다른 보드가 그사이 바꾼 것, 이 보드가 안 본 것은 건드리지 않는다.
  */
-import { reidentify } from '../../src/core/schema.js';
+import { reidentify, LEGACY_TRACK_ID } from '../../src/core/schema.js';
 import { TRASH_GRACE_MIN } from '../../src/config/index.js';
 
 /** 리비전을 남기는 최소 간격(분). 타이핑 한 글자마다 스냅샷이 쌓이는 걸 막는다. */
@@ -341,7 +341,8 @@ export class BoardRepository {
   createProject(doc, name) {
     const exists = this.db.prepare('SELECT 1 FROM event WHERE id = ?');
     const copy = structuredClone(doc);
-    reidentify(copy, { only: (id) => !!exists.get(id) });
+    // 이미 있는 id(복제·반입)와 옛 틀의 짧은 트랙 번호('t0' …)는 새 id로 — 트랙 id를 저장이 바꾸지 않게(#project tkey)
+    reidentify(copy, { only: (id) => !!exists.get(id) || LEGACY_TRACK_ID.test(id) });
     const create = this.db.transaction(() => {
       const info = this.db.prepare(`
         INSERT INTO board (name, start_date, end_date, doc_version, opened_at)
@@ -977,17 +978,12 @@ export class BoardRepository {
    */
   #project(doc, root) {
     const bid = this.boardId;
-    const existsQ = this.db.prepare('SELECT 1 FROM event WHERE id = ?');
-    // 트랙 id는 보드마다 유일해야 한다 — 빈 보드가 모두 't0'을 쓰기 때문. 이 보드 접두를 붙이되 멱등하게.
-    // 이미 이벤트로 있는 id(이 보드 접두, 또는 합치기로 트랙이 된 다른 이벤트)는 그대로 쓴다.
-    const tcache = new Map();
-    const tkey = (raw) => {
-      if (typeof raw !== 'string' || !raw) return raw;
-      if (!tcache.has(raw)) {
-        tcache.set(raw, raw.startsWith(`track:${bid}:`) || existsQ.get(raw) ? raw : `track:${bid}:${raw}`);
-      }
-      return tcache.get(raw);
-    };
+    // 트랙 id = 이벤트 id. 렌더러가 새 트랙에 전역 유일 id(newId)를 주므로 **그대로** 쓴다 — 저장이 id를 바꾸면 열린 문서는
+    // 다시 읽기 전까지 옛 id를 들고 있어, 그 사이 항등설정·다른 보드 자리·항등 해제가 '이벤트를 찾을 수 없음'이 됐다
+    // (예전엔 새 트랙마다 'track:{보드}:' 접두를 붙였다, 2026-11-06 사용자 — 026이 옛 접두 id를 정리했다).
+    // 옛 틀·예전 문서의 짧은 번호 id('t0'·'t1' …)만은 보드마다 겹치므로 이 보드 접두를 붙인다 — 보드를 만들 때(createProject)
+    // 새 id로 바꿔 두므로 열린 화면에서는 생기지 않는다(남은 길의 안전망).
+    const tkey = (raw) => (typeof raw === 'string' && LEGACY_TRACK_ID.test(raw) ? `track:${bid}:${raw}` : raw);
 
     const out = emptyProjection();
     out.root = root;
