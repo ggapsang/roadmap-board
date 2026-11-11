@@ -5,7 +5,7 @@
  * 그래서 커스텀 app:// 프로토콜을 등록해 정적 파일을 돌려준다.
  * nodeIntegration은 끄고, DB 접근은 preload가 노출한 IPC로만 한다.
  */
-import { app, BrowserWindow, protocol, net, ipcMain, shell, dialog, Menu, nativeTheme } from 'electron';
+import { app, BrowserWindow, protocol, net, ipcMain, shell, dialog, Menu, nativeTheme, Tray, nativeImage } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -97,6 +97,51 @@ let hosting = null;
 /** 호스팅 id → 그 호스팅을 고치는 호스트 창(호스팅 창은 같은 렌더러를 ?hosting=id로 띄운다 — 탭·런처 없이 사본 하나만) */
 const hostWindows = new Map();
 
+/**
+ * 시스템 트레이(작업 표시줄 오른쪽 아래 알림 영역, 2026-11-11 사용자) — **최소화하면 작업 표시줄이 아니라 트레이로 숨는다.**
+ * X(닫기)는 그대로 저장하고 종료한다. 아이콘을 누르면 숨은 창이 모두 돌아오고, 오른쪽 클릭 메뉴는 열기·종료.
+ * 트레이에 숨어 있어도 앱은 돈다(호스팅 웹 서버도). 스모크·재현은 트레이를 만들지 않는다(창을 숨기면 캡처가 멈춘다).
+ */
+let tray = null;
+const USE_TRAY = process.platform === 'win32' && !SMOKE && !REPRO;
+
+/** 숨었거나 최소화된 창을 앞으로 — 트레이에 숨은 창은 restore만으로는 안 보인다 */
+function bringBack(w) {
+  if (!w || w.isDestroyed()) return;
+  if (w.isMinimized()) w.restore();
+  if (!w.isVisible()) w.show();
+  w.focus();
+}
+/** 트레이 아이콘을 누르면 — 숨은 창을 모두 돌려놓는다(없으면 첫 창을 앞으로) */
+function showFromTray() {
+  const all = [...winState.values()].map((st) => st.win).filter((w) => !w.isDestroyed());
+  const hidden = all.filter((w) => !w.isVisible() || w.isMinimized());
+  for (const w of hidden) bringBack(w);
+  if (!hidden.length) bringBack(win ?? all[0]);
+}
+function createTray() {
+  // 1024px 아이콘을 그대로 주면 Windows가 거칠게 줄인다 — 배율별 크기를 미리 줄여 넣는다(100%·150%·200%)
+  const src = nativeImage.createFromPath(path.join(ROOT, 'assets', 'icon.png'));
+  const img = nativeImage.createEmpty();
+  for (const [px, scaleFactor] of [[16, 1], [24, 1.5], [32, 2]]) {
+    img.addRepresentation({ scaleFactor, buffer: src.resize({ width: px, height: px, quality: 'best' }).toPNG() });
+  }
+  tray = new Tray(img);
+  tray.setToolTip('WOLFPACK');
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'WOLFPACK 열기', click: showFromTray },
+    { type: 'separator' },
+    { label: '종료', click: () => app.quit() },   // before-quit이 창마다 쓰던 것을 저장하고 끈다
+  ]));
+  tray.on('click', showFromTray);
+}
+
+// 한 번만 실행 — 트레이에 숨어 있으면 꺼진 줄 알고 다시 실행하기 쉽다. 같은 DB를 두 앱이 함께 쓰지 않게, 두 번째 실행은
+// 떠 있는 앱의 숨은 창을 돌려놓고 끝난다. --db로 다른 파일을 고른 실행·스모크·재현은 따로 돌 수 있게 둔다.
+const SECOND = !SMOKE && !REPRO && !process.argv.includes('--db') && !app.requestSingleInstanceLock();
+if (SECOND) app.quit();
+else app.on('second-instance', () => showFromTray());
+
 function registerProtocol() {
   protocol.handle('app', (request) => {
     const { pathname } = new URL(request.url);
@@ -140,7 +185,7 @@ function broadcast(e, channel, payload) {
 /** 화면 좌표(x,y) 위에 있는 다른 창 — 탭을 끌어 놓은 곳 */
 function windowAt(x, y, exceptId) {
   for (const [id, st] of winState) {
-    if (id === exceptId || st.win.isDestroyed() || st.win.isMinimized()) continue;
+    if (id === exceptId || st.win.isDestroyed() || st.win.isMinimized() || !st.win.isVisible()) continue;
     const b = st.win.getBounds();
     if (x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height) return st.win;
   }
@@ -194,6 +239,8 @@ function createWindow(open = null) {
     w.on('closed', () => { if (hostWindows.get(open.hosting) === w) hostWindows.delete(open.hosting); });
   }
   w.loadURL('app://board/index.html' + (q.size ? `?${q}` : ''));
+  // 최소화 — 작업 표시줄 대신 트레이로(위 createTray). 트레이 아이콘이 돌려놓는다
+  if (USE_TRAY) w.on('minimize', () => { if (tray) w.hide(); });
   // 창 닫기(X) — 쓰던 것을 저장하고 닫는다(아래 flushWindow)
   w.on('close', (e) => {
     if (st.flushed || SMOKE || REPRO) return;
@@ -543,7 +590,7 @@ async function askSavePath({ title, defaultPath, filters, parent = null }) {
 /** 호스팅 창을 연다(이미 있으면 앞으로) */
 function openHostWindow(id) {
   const had = hostWindows.get(id);
-  if (had && !had.isDestroyed()) { if (had.isMinimized()) had.restore(); had.focus(); return had; }
+  if (had && !had.isDestroyed()) { bringBack(had); return had; }
   return createWindow({ hosting: id });
 }
 
@@ -641,8 +688,7 @@ function registerIpc() {
     const me = e.sender.id;
     for (const [wid, st] of winState) {
       if (wid === me || !st.boards.has(id) || st.win.isDestroyed()) continue;
-      if (st.win.isMinimized()) st.win.restore();
-      st.win.focus();
+      bringBack(st.win);
       st.win.webContents.send('tab:activate', id);
       return { ok: false, elsewhere: true };
     }
@@ -814,6 +860,7 @@ function registerIpc() {
 }
 
 app.whenReady().then(() => {
+  if (SECOND) return;                // 두 번째 실행 — 떠 있는 앱이 창을 돌려놓는다(위 requestSingleInstanceLock)
   const file = resolveDbPath();
   if (!SMOKE && !REPRO) { adoptLegacyDatabase(file); seedExampleDatabase(file); }
   console.log('[db] 파일:', file);
@@ -827,6 +874,7 @@ app.whenReady().then(() => {
   registerProtocol();
   registerIpc();
   buildMenu();
+  if (USE_TRAY) createTray();
   createWindow();
 
   app.on('activate', () => {
@@ -864,4 +912,5 @@ app.on('before-quit', (e) => {
   }
   try { hosting?.shutdown(); } catch { /* noop */ }
   try { db?.close(); } catch { /* noop */ }
+  try { tray?.destroy(); tray = null; } catch { /* noop */ }
 });
