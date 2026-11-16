@@ -50,7 +50,7 @@ export class MemoLayer {
   /** 보드 px 점 → 메모 자리(날짜·칸 + 트랙 비율) */
   anchor(bx, by) {
     const b = this.board();
-    const cols = [...b.columns.entries()];
+    const cols = [...b.columns.entries()].filter(([t]) => !b._hiddenTracks?.has(t));   // 숨긴 트랙(폭 0)에는 붙이지 않는다
     let pick = cols[0];
     for (const c of cols) if (bx >= c[1].offsetLeft) pick = c;
     const [track, col] = pick ?? [null, null];
@@ -77,7 +77,9 @@ export class MemoLayer {
     const memos = this.store.meta.memos ?? [];
     const keep = this.edit ? this.edit.node : null;
     for (const n of [...this.layer.children]) if (n !== keep) n.remove();
+    const hiddenTracks = this.board()._hiddenTracks;
     for (const m of memos) {
+      if (hiddenTracks?.has(m.track)) continue;           // 숨긴 트랙에 붙인 메모는 그 트랙과 함께 숨는다
       const box = this.box(m);
       const node = this.edit?.id === m.id ? this.edit.node : this.#node(m);
       Object.assign(node.style, {

@@ -91,6 +91,9 @@ export const ICONS = {
   alignTop:    '<path d="M5 4h14"/><rect x="8" y="8" width="8" height="5" rx="1"/>',
   alignMiddle: '<path d="M4 12h3M17 12h3"/><rect x="8" y="9" width="8" height="6" rx="1"/>',
   alignBottom: '<path d="M5 20h14"/><rect x="8" y="11" width="8" height="5" rx="1"/>',
+  alignLeft:   '<path d="M4 6h16M4 10h10M4 14h16M4 18h10"/>',
+  alignCenter: '<path d="M4 6h16M7 10h10M4 14h16M7 18h10"/>',
+  alignRight:  '<path d="M4 6h16M10 10h10M4 14h16M10 18h10"/>',
   // 비고를 카드에 표시 — 텍스트 줄이 있는 카드
   note:   '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h6"/>',
   // 카드 크기 강제 — 자유 리사이즈(대각 화살표)

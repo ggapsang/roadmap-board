@@ -18,6 +18,12 @@ export class ViewState extends Emitter {
     this.boardZoom = 1;
     this.selectedItem = null;
     this.selectedTrack = null;
+    /**
+     * 머리에서 고른 트랙들(Ctrl·Shift+클릭, 구글 스프레드시트의 열 고르기) — 우클릭 숨기기·숨기기 취소, 함께 끌어 옮기기.
+     * trackAnchor는 Shift+클릭 범위의 시작. 화면 상태라 저장·되돌리기와 무관
+     */
+    this.pickedTracks = new Set();
+    this.trackAnchor = null;
     /** 눌러 고른 화살표(선행관계 id) — Delete로 지운다. 화면 상태라 저장·되돌리기와 무관 */
     this.selectedRel = null;
     /** 눌러 고른 메모 id — Delete로 지운다(메모는 이벤트가 아니다, 보드 표시) */

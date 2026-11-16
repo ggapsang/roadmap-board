@@ -251,6 +251,19 @@ body.dragging-arrow, body.dragging-arrow *{cursor:grabbing !important;user-selec
 .ev.big .meta{justify-content:center}
 .ev.big .t{font-size:calc(14px * var(--fs,1));line-height:calc(20px * var(--fs,1))}
 
+/* 글자 가로 정렬(스타일 탭, place.ha) — 고르면 자동 모양(보통 왼쪽 · 큰 카드 가운데)보다 먼저. 보류 카드·상위 카드 제목·낮은 카드도 */
+.ev.ha-left:not(.container){align-items:flex-start;text-align:left}
+.ev.ha-center:not(.container){align-items:center;text-align:center}
+.ev.ha-right:not(.container){align-items:flex-end;text-align:right}
+.ev.ha-left .meta{justify-content:flex-start}
+.ev.ha-center .meta{justify-content:center}
+.ev.ha-right .meta{justify-content:flex-end}
+.ev.ha-left>.t{text-align:left}
+.ev.ha-center>.t{text-align:center}
+.ev.ha-right>.t{text-align:right}
+.ev.container.c-middle.ha-left>.t{align-self:flex-start}
+.ev.container.c-middle.ha-right>.t{align-self:flex-end}
+
 /* 낮은 카드 — 제목을 한 줄에 눕혀 세로 짤림을 막는다 (마일스톤과 같은 방식).
    제목은 왼쪽(넘치면 …로 가로 생략), 기한은 오른쪽. 폰트를 한 단계 줄이고
    여백을 좁혀 minCardHeight 안에 한 줄이 들어가게 한다. 전체 제목은 title 툴팁에. */
@@ -303,6 +316,30 @@ body.resizing-col .th-resize{opacity:1}
 /* 트랙 열 순서 드래그 (엑셀식) — 끄는 헤더는 흐리게, 드롭 위치는 Accent 선으로 */
 body.reordering-col{cursor:grabbing!important;user-select:none}
 .th.dragging{opacity:.4}
+/* 머리에서 고른 트랙(Ctrl·Shift+클릭 — 구글 스프레드시트의 열 고르기). 선택은 Orange(규약 4) — 면은 옅게, 아래 선 */
+.th.picked{background:var(--accent-soft);box-shadow:inset 0 -2px 0 var(--accent)}
+.th.picked:hover{background:var(--accent-soft)}
+/* 숨긴 트랙 — 머리·칸 모두 폭 0(gridTemplate). 경계에 펼치기 화살표 한 쌍만 */
+.th.th-hidden{padding:0;border:0;min-width:0;cursor:default;overflow:visible;z-index:4}
+.th.th-hidden:hover{background:none}
+.col.tr-hidden{border:0;min-width:0;overflow:hidden;visibility:hidden}
+.unhide-pair{position:absolute;top:50%;left:0;transform:translateY(-50%);display:flex;gap:var(--u1)}
+.unhide-pair:has(> .unhide-left:only-child){transform:translate(-100%,-50%)}
+.unhide-pair:has(> .unhide-left + .unhide-right){transform:translate(-50%,-50%)}
+.unhide{appearance:none;width:var(--u4);height:var(--u5);padding:0;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  border:1px solid var(--border-default);border-radius:var(--u1);background:var(--bg-panel);color:var(--text-secondary)}
+.unhide:hover{border-color:var(--accent);color:var(--accent)}
+.unhide::before{content:"";border-style:solid;border-color:transparent}
+.unhide-left::before{border-width:4px 5px 4px 0;border-right-color:currentColor}
+.unhide-right::before{border-width:4px 0 4px 5px;border-left-color:currentColor}
+/* 가운데 버튼으로 보드를 끄는 중 */
+body.panning,body.panning *{cursor:grabbing!important;user-select:none}
+/* 축 끝 '+' — 보드 기간을 가장 큰 눈금 하나만큼 늘리기. 마우스를 올리면 나온다(가로로 넘겨도 날짜 칸 쪽에 제자리) */
+.axis-more{height:var(--u10);border-top:1px solid var(--grid-line-strong);background:var(--bg-canvas)}
+.axis-more[hidden]{display:none}
+.axis-add{position:sticky;left:var(--u2);margin-top:var(--u1);opacity:0;transition:opacity .12s}
+.axis-more:hover .axis-add,.axis-add:focus-visible{opacity:1}
+@media (prefers-reduced-motion:reduce){.axis-add{transition:none}}
 .th-drop{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;
   background:var(--accent);z-index:40;pointer-events:none}
 

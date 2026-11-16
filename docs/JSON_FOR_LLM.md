@@ -48,6 +48,7 @@
 | `display` | 화면 설정. 대부분 무시. 단 **`display.dated === false`면 날짜 없는 보드**다(§6) |
 | `memos` | (있으면) 보드에 붙인 **메모(포스트잇)** — 일정이 아니다. 아래 표 |
 | `hidden` | (있으면) 이 보드 화면에서 숨겨 둔 하위 카드 id 목록 — **표시만** 숨긴 것이다. 그 카드와 모자관계(`parent`)는 그대로 유효하니 일정·관계 계산에는 그대로 넣는다 |
+| `hiddenTracks` | (있으면) 이 보드 화면에서 숨겨 둔(칸을 접은) 트랙 id 목록 — **표시만** 숨긴 것이다. 그 트랙과 그 위 일정은 그대로 유효하니 일정·관계 계산에는 그대로 넣는다 |
 
 `meta.memos[]` — 사람이 보드 위에 붙여 둔 메모. **일정·관계가 아니므로 일정 수·순서·관계 계산에 넣지 않는다.** 다만 글(`text`, 마크다운)은
 그 보드에 대한 사람의 주석이라 답할 때 참고할 수 있다. 자리는 화면 픽셀이 아니라 보드 좌표다:
@@ -93,7 +94,7 @@
     "t": "track:2:t0",          // 놓인 트랙(홈 트랙) id
     "tracks": ["track:2:t0", "track:2:t1"],  // 걸쳐 있는 트랙들(여러 트랙에 동시에 속한다)
     "slot": null,               // 날짜 없는 보드에서의 칸 위치(§6). 날짜 있는 보드는 null
-    "sp": 2, "x": 0, "w": 1.98, "hd": 27, "oy": null, "fs": null, "z": null, "align": "middle", "showNote": false, "fill": null  // 화면용 — 무시
+    "sp": 2, "x": 0, "w": 1.98, "hd": 27, "oy": null, "fs": null, "z": null, "align": "middle", "ha": null, "showNote": false, "fill": null  // 화면용 — 무시
   }
 }
 ```
@@ -153,7 +154,7 @@
 
 ## 9. 무시해도 되는 것 (화면 전용)
 
-`bands` 전체, `meta.memos`의 `dy`·`x`·`w`·`h`(메모 모양 — 글·날짜·트랙은 §3), `meta.display`(단 `dated`는 §6. `slotRows`·`rowScales`도 칸·줄 높이일 뿐), `meta.arrows`(사용자가 고친 화살표 모양), `tracks[].w`·`tracks[].fill`, `place`의 `sp`·`x`·`w`·`hd`·`oy`·`fs`(글자 크기)·`z`(겹친 카드의 쌓는 순서)·`align`·`showNote`·`fill`.
+`bands` 전체, `meta.memos`의 `dy`·`x`·`w`·`h`(메모 모양 — 글·날짜·트랙은 §3), `meta.display`(단 `dated`는 §6. `slotRows`·`rowScales`도 칸·줄 높이일 뿐), `meta.arrows`(사용자가 고친 화살표 모양), `tracks[].w`·`tracks[].fill`, `place`의 `sp`·`x`·`w`·`hd`·`oy`·`fs`(글자 크기)·`z`(겹친 카드의 쌓는 순서)·`align`·`ha`(글자 가로 정렬)·`showNote`·`fill`.
 이 값들은 칸 높이·카드 폭·색 같은 **보이는 모양**일 뿐, 일정의 의미·순서·기간과 무관하다.
 
 ## 10. 자주 하는 계산

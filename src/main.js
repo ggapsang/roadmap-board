@@ -168,6 +168,7 @@ async function boot() {
         panels.close();
         // 고른 표시(선택 테두리)는 내보낼 그림이 아니다 — 화면 상태라 비워도 문서·되돌리기와 무관
         view.selectedItem = view.selectedTrack = view.selectedRel = view.selectedMemo = null;
+        view.pickedTracks = new Set();
         refresh();
         // 배율은 미리보기 동안 빌려 쓴다 — 저장하지 않고(다음 실행의 보드 배율이 바뀌지 않게) 나올 때 되돌린다
         const zoom = {
@@ -268,6 +269,8 @@ async function boot() {
     view.selectedItem = null;
     view.selectedTrack = null;
     view.selectedMemo = null;
+    view.pickedTracks = new Set();     // 머리에서 고른 트랙(Ctrl·Shift+클릭)도 보드마다
+    view.trackAnchor = null;
     view.focus = null;                 // 새 프로젝트를 열면 펼침(드릴다운) 초기화
     view.orgFilter.clear();
     view.query = '';

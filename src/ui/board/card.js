@@ -155,6 +155,9 @@ export function renderCard(item, ctx) {
   node.style.height = height + 'px';
   setBox(node);
 
+  // 글자 가로 정렬(스타일 탭, place.ha) — 고르지 않았으면 지금까지의 모양(보통 왼쪽, 큰 카드·상위 카드 제목은 가운데)
+  if (item.place?.ha) node.classList.add('ha-' + item.place.ha);
+
   // 너무 낮아 제목이 세로로 짤리는 카드. 마일스톤처럼 한 줄 row로 눕힌다.
   const isShort = !hasChildren && height < LAYOUT.compactCardHeight;
 

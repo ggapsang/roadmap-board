@@ -146,9 +146,11 @@ export function laneWidthFactor(lanes) {
  * CSS grid-template-columns 문자열 생성.
  * track.w가 지정돼 있으면 그 폭을 쓰고, 없으면 레인 수에 비례해 자동으로 잡는다.
  */
-export function gridTemplate(tracks, trackLanes) {
+export function gridTemplate(tracks, trackLanes, hidden = null) {
   const cols = tracks
     .map((t) => {
+      // 숨긴 트랙은 칸을 0으로 접는다 — 칸(.col)과 머리는 남겨 트랙 순서 = 칸 순서를 지킨다(끌기·걸침이 칸 순서로 센다)
+      if (hidden?.has(t.id)) return '0px';
       // 폭을 정한 트랙은 그 폭 그대로. 자동 폭 트랙은 남는 공간을 비율(f)로 나눠 채우되 최소 폭(LAYOUT.minTrackWidth × f)
       // 밑으로는 줄이지 않는다 — 트랙이 많아 창(패널이 열리면 더 좁은)에 안 들어가면 보드가 가로로 스크롤된다(2026-10-07 사용자).
       if (t.w) return `${t.w}px`;

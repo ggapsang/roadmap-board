@@ -15,7 +15,7 @@ import {
   RELATION_TYPES, RELATION_KEYS, FILL_KEYS, SCALE_KEYS, SLOT_UNIT_OF, BAND_SCALE, CARD_FONT, MEMO,
 } from '../config/index.js';
 
-export const SCHEMA_VERSION = 25;
+export const SCHEMA_VERSION = 26;
 
 /**
  * v0 = P0 시안 문서(version 필드 없음).
@@ -277,6 +277,15 @@ function v24_to_v25(doc) {
   return doc;
 }
 
+function v25_to_v26(doc) {
+  // 이 보드에서 숨긴 트랙(머리 우클릭 '트랙 숨기기') — 보드 표시 값(트랙·포함은 그대로). 옛 문서엔 없다
+  if (doc.meta && typeof doc.meta === 'object') doc.meta.hiddenTracks = doc.meta.hiddenTracks ?? [];
+  // 카드 글자 가로 정렬(place.ha — 스타일 탭) — 옛 문서엔 없다(null = 자동: 보통 왼쪽, 큰 카드·상위 카드 제목은 가운데)
+  for (const it of doc.items ?? []) if (it?.place && typeof it.place === 'object') it.place.ha = it.place.ha ?? null;
+  doc.version = 26;
+  return doc;
+}
+
 const MIGRATIONS = {
   0: v0_to_v1,
   1: v1_to_v2,
@@ -303,9 +312,12 @@ const MIGRATIONS = {
   22: v22_to_v23,
   23: v23_to_v24,
   24: v24_to_v25,
+  25: v25_to_v26,
 };
 
 export const ALIGNS = ['top', 'middle', 'bottom'];
+/** 카드 글자 가로 정렬(place.ha). null = 자동(지금까지의 모양) */
+export const HALIGNS = ['left', 'center', 'right'];
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -517,6 +529,8 @@ export function normalize(doc) {
       sp: run,
       tracks: members,
       align: ALIGNS.includes(align) ? align : 'middle',
+      // 글자 가로 정렬 — 고르지 않았으면 null(자동)
+      ha: HALIGNS.includes(pl.ha) ? pl.ha : null,
       showNote: (pl.showNote ?? it.showNote) === true,   // 비고를 카드에 보일지 — 기본은 숨김
       // 색 채우기 — 팔레트 key만(모르는 값·HEX는 버린다). null = 채우지 않음.
       fill: FILL_KEYS.includes(fill) ? fill : null,
@@ -639,6 +653,12 @@ export function normalize(doc) {
   //    이 보드에 있는 하위 카드(parent가 있는 것)만, 한 번씩
   const childIds = new Set(doc.items.filter((i) => i.parent).map((i) => i.id));
   doc.meta.hidden = [...new Set((Array.isArray(doc.meta.hidden) ? doc.meta.hidden : []).filter((id) => childIds.has(id)))];
+
+  // ── 이 보드에서 숨긴 트랙(머리 우클릭, 2026-11-17 사용자) — 보드 표시 값. 트랙(구성)·그 위 카드는 그대로 두고 칸만 접는다.
+  //    이 보드의 트랙만, 한 번씩, 트랙 순서대로. 모두 숨기면 보드가 비므로 하나는 남긴다(다 숨긴 값이면 비운다)
+  const hiddenT = new Set(Array.isArray(doc.meta.hiddenTracks) ? doc.meta.hiddenTracks : []);
+  doc.meta.hiddenTracks = doc.tracks.filter((t) => hiddenT.has(t.id)).map((t) => t.id);
+  if (doc.meta.hiddenTracks.length >= doc.tracks.length) doc.meta.hiddenTracks = [];
 
   doc.version = SCHEMA_VERSION;
   return { doc, warnings };
@@ -836,6 +856,7 @@ export function reidentify(doc, { only = null } = {}) {
   }
   const any = (id) => tto(taskMap.get(id) ?? to(id));
   if (Array.isArray(doc.meta?.hidden)) doc.meta.hidden = doc.meta.hidden.map(to);
+  if (Array.isArray(doc.meta?.hiddenTracks)) doc.meta.hiddenTracks = doc.meta.hiddenTracks.map(tto);
   // 없던 필드는 만들지 않는다 — 정규화 전 옛 문서(선행이 item.dp에 있음)를 그대로 넘겨받을 수 있다.
   if (Array.isArray(doc.relations)) {
     // 끝은 카드·태스크·트랙 어느 것이든(참조는 트랙에도 단다) — 새 id를 받은 트랙의 참조도 함께 옮긴다

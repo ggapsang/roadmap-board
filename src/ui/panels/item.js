@@ -9,7 +9,7 @@
  *   상세   태스크 + 세부내역(조합한 이벤트와 그 안쪽 카드, 조합이 없으면 하위 카드 트리)
  */
 import { shortMD, dayIndex, parseDate, inclusiveDays } from '../../core/dates.js';
-import { newId, ALIGNS } from '../../core/schema.js';
+import { newId, ALIGNS, HALIGNS } from '../../core/schema.js';
 import { STATUSES, ITEM_TYPES, FILLS, CARD_FONT, statusList } from '../../config/index.js';
 import { $, el, clear, icon, ICONS, editGroup } from '../dom.js';
 import { askConfirm, askChoice, askTree, askTreeTabs } from '../dialog.js';
@@ -33,6 +33,8 @@ const NOTE_AUTOSAVE_MS = 1000;
 
 const ALIGN_ICON = { top: ICONS.alignTop, middle: ICONS.alignMiddle, bottom: ICONS.alignBottom };
 const ALIGN_LABEL = { top: '위', middle: '가운데', bottom: '아래' };
+const HALIGN_ICON = { left: ICONS.alignLeft, center: ICONS.alignCenter, right: ICONS.alignRight };
+const HALIGN_LABEL = { left: '왼쪽', center: '가운데', right: '오른쪽' };
 
 /** 여러 줄 제목 입력이 내용에 맞게 높이를 늘리도록 */
 function autogrow(node) {
@@ -153,6 +155,18 @@ export class ItemPanel {
     }
     align.querySelectorAll('.seg-btn').forEach((b) =>
       b.addEventListener('click', () => this.#setAlign(b.dataset.align)));
+
+    // 글자 가로 정렬 — 아이콘 세그먼트. 누른 것을 다시 누르면 자동(지금까지의 모양)으로
+    const halign = $('i-halign');
+    clear(halign);
+    for (const key of HALIGNS) {
+      halign.append(el('button', {
+        type: 'button', className: 'seg-btn', dataset: { ha: key },
+        title: `글자 ${HALIGN_LABEL[key]} 정렬 · 다시 누르면 자동`, attrs: { 'aria-label': `글자 ${HALIGN_LABEL[key]} 정렬` },
+      }, [icon(HALIGN_ICON[key])]));
+    }
+    halign.querySelectorAll('.seg-btn').forEach((b) =>
+      b.addEventListener('click', () => this.#setHAlign(b.dataset.ha)));
 
     // 채우기 팔레트 — '없음' + FILLS. 색은 토큰(--fill-*)이 테마별로 정한다.
     const pal = $('i-fill');
@@ -450,6 +464,15 @@ export class ItemPanel {
     this.#syncAlign(item);
   }
 
+  /** 글자 가로 정렬 — 같은 것을 다시 누르면 자동(null) */
+  #setHAlign(key) {
+    const item = this.item;
+    if (!item) return;
+    const next = item.place?.ha === key ? null : key;
+    this.store.commit('글자 가로 정렬', () => { item.place.ha = next; });
+    this.#syncAlign(item);
+  }
+
   /** 채우기 — 팔레트 key 또는 null(없음). 이 보드에서의 표현이라 place에 둔다. */
   #setFill(key) {
     const track = this.track;
@@ -504,6 +527,9 @@ export class ItemPanel {
   #syncAlign(item) {
     for (const b of $('i-align').querySelectorAll('.seg-btn')) {
       b.setAttribute('aria-pressed', String(b.dataset.align === item.place?.align));
+    }
+    for (const b of $('i-halign').querySelectorAll('.seg-btn')) {
+      b.setAttribute('aria-pressed', String(b.dataset.ha === (item.place?.ha ?? null)));
     }
   }
 

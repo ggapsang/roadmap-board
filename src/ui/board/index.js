@@ -11,15 +11,16 @@
  * 화살표는 DOM 좌표를 읽으므로 컬럼 폭이 확정된 뒤에 그려야 한다.
  * (P0 시안은 buildHead()를 drawArrows() 뒤에 호출해 한 프레임 어긋났다.)
  */
-import { parseDate, dayIndex, shortMD } from '../../core/dates.js';
+import { parseDate, dayIndex, shortMD, formatDate } from '../../core/dates.js';
 import { TimeScale, SlotScale, topOffset } from '../../core/timescale.js';
-import { DateTimeline, SlotTimeline } from '../../core/timeline.js';
+import { DateTimeline, SlotTimeline, unitStart, addUnits } from '../../core/timeline.js';
 import { computeLayout, gridTemplate, trackUnitsToPx } from '../../core/layout.js';
 import { newId } from '../../core/schema.js';
 import { DEFAULT_STATUS, DEFAULT_TYPE, UNIT_DAYS, LAYOUT } from '../../config/index.js';
-import { el } from '../dom.js';
+import { el, button, ICONS } from '../dom.js';
 import { openCtxMenu } from '../ctxmenu.js';
 import { toast } from '../toast.js';
+import { askText } from '../dialog.js';
 import { renderHead } from './head.js';
 import { renderAxis, makeTodayLine, rowRanges } from './axis.js';
 import { attachBandEditing, attachRowEditing } from './bands.js';
@@ -49,6 +50,12 @@ export class Board {
     this._layout = { placement: new Map(), trackLanes: new Map() };
 
     this.#attachEvents();
+    this.#attachPan();
+    // 축 끝 '+' — 마우스를 올리면 나오고, 누르면 보드 기간을 가장 큰 눈금 하나만큼 늘린다(구글 스프레드시트의 '행 더 추가')
+    this.moreBar = el('div.axis-more', {}, [
+      button({ className: 'btn axis-add', iconPath: ICONS.plus, onClick: () => this.extendAxis() }),
+    ]);
+    grid.after(this.moreBar);
     attachBandEditing(gutM, {
       store,
       getOrigin: () => this.origin,
@@ -86,6 +93,8 @@ export class Board {
   #trackResizer = {
     start: (trackId, ev) => {
       if (this.store.readonly) return;
+      // 고른 트랙(여럿) 중 하나의 경계를 끌면 고른 트랙이 모두 같은 너비가 된다(구글 스프레드시트처럼, 2026-11-17 사용자)
+      const targets = this.#widthTargets(trackId);
 
       const column = this.columns.get(trackId);
       const startWidth = column ? column.offsetWidth : 200;       // 보드 px (확대와 무관)
@@ -96,8 +105,7 @@ export class Board {
         const next = Math.min(1200, Math.max(120, Math.round(startWidth + (e.clientX - startX) / this.zoom)));
         if (!began) { this.store.begin('트랙 너비'); began = true; }
         this.store.commit('트랙 너비', (doc) => {
-          const track = doc.tracks.find((t) => t.id === trackId);
-          if (track) track.w = next;
+          for (const track of doc.tracks) if (targets.includes(track.id)) track.w = next;
         });
       };
 
@@ -115,33 +123,75 @@ export class Board {
       document.body.classList.add('resizing-col');
     },
 
-    reset: (trackId) => {
-      this.store.commit('트랙 너비 자동', (doc) => {
-        const track = doc.tracks.find((t) => t.id === trackId);
-        if (track) track.w = null;
-      });
-    },
+    reset: (trackId) => this.setTrackWidths(this.#widthTargets(trackId), null),
   };
+
+  /** 너비를 바꿀 트랙 — 고른 트랙(여럿)에 든 트랙이면 고른 것 모두(보이는 것만), 아니면 그 트랙만 */
+  #widthTargets(trackId) {
+    const picked = this.view.pickedTracks;
+    if (picked.size > 1 && picked.has(trackId)) {
+      return this.store.tracks.filter((t) => picked.has(t.id) && !this._hiddenTracks?.has(t.id)).map((t) => t.id);
+    }
+    return [trackId];
+  }
+
+  /** 트랙 너비 정하기 — px(120~1200) 또는 null(자동). 되돌리기 1단계 */
+  setTrackWidths(ids, w) {
+    if (this.store.readonly || !ids?.length) return false;
+    const want = w == null ? null : Math.min(1200, Math.max(120, Math.round(w)));
+    const set = new Set(ids);
+    this.store.commit(want == null ? '트랙 너비 자동' : '트랙 너비 맞추기', (doc) => {
+      for (const t of doc.tracks) if (set.has(t.id)) t.w = want;
+    });
+    return true;
+  }
+
+  /** 우클릭 '트랙 너비 지정…' — 숫자(px)로 고른 트랙 모두 같은 너비 */
+  async #askTrackWidth(ids) {
+    const widths = ids.map((id) => this.columns.get(id)?.offsetWidth ?? 0).filter((x) => x > 0);
+    const now = widths.length ? Math.round(widths.reduce((a, b) => a + b, 0) / widths.length) : 200;
+    const v = await askText({
+      title: ids.length > 1 ? `트랙 ${ids.length}개 너비` : '트랙 너비',
+      label: '너비(px, 120~1200) — 자동은 우클릭 메뉴의 「트랙 너비 자동」',
+      value: String(now),
+      confirmLabel: '맞추기',
+    });
+    if (v == null) return;                       // 취소
+    const n = Number(String(v).replace(/px$/i, '').trim());
+    if (!Number.isFinite(n) || n <= 0) { toast('너비는 숫자(px)로 넣어 주세요', 'warn'); return; }
+    this.setTrackWidths(ids, n);
+  }
 
   /**
    * 트랙 열 순서 드래그 (엑셀식). 헤더를 잡아 옆으로 끌면 트랙 순서가 바뀐다.
    * #trackResizer와 같은 이유로 window에 리스너를 붙인다 — 드롭 시 재렌더가
    * 헤더를 통째로 새로 그리기 때문이다. 순서는 드롭할 때 한 번만 커밋한다.
    * 살짝 눌렀다 떼면(임계값 미만) 드래그가 아니라 클릭 — 트랙 구성 패널을 연다.
+   * 고른 트랙(Ctrl·Shift+클릭) 중 하나를 끌면 고른 것을 함께 옮긴다(순서 그대로). 숨긴 트랙은 제자리.
+   * 보드 가장자리(왼쪽 날짜 칸·오른쪽 끝) 가까이 끌면 그쪽으로 저절로 스크롤해 화면 밖 자리에도 놓는다(2026-11-17 사용자).
    */
   #trackReorder = {
     start: (trackId, ev) => {
       if (this.store.readonly) return;
 
-      const headers = [...this.head.querySelectorAll('.th')];
+      const headers = [...this.head.querySelectorAll('.th:not(.th-hidden)')];
       const cell = headers.find((h) => h.dataset.t === trackId);
-      const fromIndex = this.store.tracks.findIndex((t) => t.id === trackId);
-      if (fromIndex < 0 || !cell) return;
+      if (!cell) return;
+      const hidden = this._hiddenTracks ?? new Set();
+      const picked = this.view.pickedTracks;
+      const moving = picked.size > 1 && picked.has(trackId)
+        ? this.store.tracks.filter((t) => picked.has(t.id) && !hidden.has(t.id)).map((t) => t.id)
+        : [trackId];
+      const movingSet = new Set(moving);
+      const cells = headers.filter((h) => movingSet.has(h.dataset.t));
 
       const startX = ev.clientX;
+      let lastX = startX;
       const indicator = el('div.th-drop', { attrs: { 'aria-hidden': 'true' } });
       let dragging = false;
-      let targetIndex = fromIndex;
+      let targetIndex = headers.indexOf(cell);
+      let raf = 0;
+      const scroller = this.head.closest('.scroll');
 
       const place = () => {
         const rects = headers.map((h) => h.getBoundingClientRect());
@@ -149,39 +199,80 @@ export class Board {
         const x = targetIndex >= rects.length ? rects[rects.length - 1].right : rects[targetIndex].left;
         indicator.style.left = `${(x - headLeft) / this.zoom}px`;   // 헤더 안(확대된 곳)의 px
       };
+      const aim = () => {
+        const rects = headers.map((h) => h.getBoundingClientRect());
+        let idx = rects.findIndex((r) => lastX < r.left + r.width / 2);
+        if (idx < 0) idx = rects.length;
+        targetIndex = idx;
+        place();
+      };
+      // 가장자리 자동 스크롤 — 왼쪽은 날짜 칸(sticky) 오른쪽 끝, 오른쪽은 보드 오른쪽 끝. 가까울수록(넘을수록) 빠르게
+      const tick = () => {
+        raf = 0;
+        if (!dragging || !scroller) return;
+        const sr = scroller.getBoundingClientRect();
+        const gut = this.head.querySelectorAll('.cnr')[1]?.getBoundingClientRect();
+        const left = Math.max(sr.left, gut ? gut.right : sr.left);
+        const right = sr.left + scroller.clientWidth;
+        const EDGE = 40;
+        let v = 0;
+        if (lastX < left + EDGE) v = -Math.min(48, Math.ceil((left + EDGE - lastX) / 3));
+        else if (lastX > right - EDGE) v = Math.min(48, Math.ceil((lastX - (right - EDGE)) / 3));
+        if (!v) return;
+        const before = scroller.scrollLeft;
+        scroller.scrollLeft += v;
+        if (scroller.scrollLeft !== before) aim();
+        raf = requestAnimationFrame(tick);
+      };
 
       const move = (e) => {
         if (!dragging && Math.abs(e.clientX - startX) < 5) return;
         if (!dragging) {
           dragging = true;
-          cell.classList.add('dragging');
+          for (const c of cells) c.classList.add('dragging');
           this.head.append(indicator);
           document.body.classList.add('reordering-col');
+          // 창 밖으로 끌어도 이어지게 — 끌기가 시작된 뒤에만 잡는다(누르고 바로 떼면 클릭이 칸에 가야 한다)
+          try { this.head.setPointerCapture(e.pointerId); } catch { /* 이미 끝난 포인터 */ }
         }
         e.preventDefault();
-        const rects = headers.map((h) => h.getBoundingClientRect());
-        let idx = rects.findIndex((r) => e.clientX < r.left + r.width / 2);
-        if (idx < 0) idx = rects.length;
-        targetIndex = idx;
-        place();
+        lastX = e.clientX;
+        aim();
+        if (!raf) raf = requestAnimationFrame(tick);
       };
 
-      const up = () => {
+      const up = (e) => {
         window.removeEventListener('pointermove', move);
         window.removeEventListener('pointerup', up);
         window.removeEventListener('pointercancel', up);
+        if (raf) cancelAnimationFrame(raf);
+        raf = 0;
+        try { if (this.head.hasPointerCapture(e.pointerId)) this.head.releasePointerCapture(e.pointerId); } catch { /* 없음 */ }
         indicator.remove();
-        cell.classList.remove('dragging');
+        for (const c of cells) c.classList.remove('dragging');
         document.body.classList.remove('reordering-col');
         if (!dragging) return;                       // 클릭이었다 — onSelect가 처리
+        if (e.type === 'pointercancel') return;
 
-        // 끌어낸 자리를 빼고 나면 뒤쪽 인덱스가 하나 당겨진다
-        let to = targetIndex > fromIndex ? targetIndex - 1 : targetIndex;
-        to = Math.max(0, Math.min(this.store.tracks.length - 1, to));
-        if (to !== fromIndex) {
-          this.store.commit('트랙 순서', (doc) => {
-            const [moved] = doc.tracks.splice(fromIndex, 1);
-            doc.tracks.splice(to, 0, moved);
+        // 놓은 자리 = 그 뒤에 오는 첫 (옮기지 않는) 보이는 트랙 앞. 없으면 보이는 마지막 트랙 뒤
+        const order = this.store.tracks.map((t) => t.id);
+        const rest = order.filter((id) => !movingSet.has(id));
+        let before = null;
+        for (let k = targetIndex; k < headers.length; k += 1) {
+          const id = headers[k].dataset.t;
+          if (!movingSet.has(id)) { before = id; break; }
+        }
+        let at;
+        if (before) at = rest.indexOf(before);
+        else {
+          const lastShown = [...rest].reverse().find((id) => !hidden.has(id));
+          at = lastShown ? rest.indexOf(lastShown) + 1 : rest.length;
+        }
+        rest.splice(at, 0, ...moving);
+        if (rest.join('|') !== order.join('|')) {
+          this.store.commit(moving.length > 1 ? `트랙 ${moving.length}개 순서` : '트랙 순서', (doc) => {
+            const byId = new Map(doc.tracks.map((t) => [t.id, t]));
+            doc.tracks = rest.map((id) => byId.get(id)).filter(Boolean);
           });
         }
         // 드래그 끝의 click이 트랙 패널을 열지 않도록 한 번 삼킨다
@@ -194,6 +285,194 @@ export class Board {
       window.addEventListener('pointercancel', up);
     },
   };
+
+  // ── 트랙 고르기·숨기기 (구글 스프레드시트의 열 머리처럼, 2026-11-17 사용자) ─────────
+  // 클릭 = 그 트랙만 고르고 트랙 편집, Ctrl+클릭 = 더하고 빼기, Shift+클릭 = 범위. 우클릭 = 숨기기·숨기기 취소.
+  // 숨기기는 보드 표시 값(doc.meta.hiddenTracks, 문서 v26) — 트랙(구성)과 그 위 카드는 그대로, 칸만 접는다(되돌리기 1단계).
+  // 고르기는 화면 상태(view.pickedTracks).
+
+  /** 이 보드에서 숨긴 트랙 id — 문서에 있는 트랙만 */
+  #hiddenTrackSet() {
+    const ids = new Set(this.store.tracks.map((t) => t.id));
+    return new Set((this.store.meta.hiddenTracks ?? []).filter((id) => ids.has(id)));
+  }
+
+  /** 보이는 트랙(순서 그대로) — 레인 배치·걸침 구간은 이것으로 센다(숨긴 트랙을 건너 이웃이 붙는다) */
+  #shownTracks() {
+    const h = this._hiddenTracks ?? this.#hiddenTrackSet();
+    return this.store.tracks.filter((t) => !h.has(t.id));
+  }
+
+  /** 머리 고른 표시만 바꾼다(다시 그리지 않는다) */
+  #markPicked() {
+    const picked = this.view.pickedTracks;
+    for (const th of this.head.querySelectorAll('.th[data-t]')) th.classList.toggle('picked', picked.has(th.dataset.t));
+  }
+
+  /** 고른 트랙을 푼다(보드 빈 곳을 누를 때 등) */
+  clearPickedTracks() {
+    if (!this.view.pickedTracks.size) return;
+    this.view.pickedTracks = new Set();
+    this.view.trackAnchor = null;
+    this.#markPicked();
+  }
+
+  #pickTrack(id, ev) {
+    if (this._suppressHeadClick) return;
+    const v = this.view;
+    if (ev?.ctrlKey || ev?.metaKey) {
+      const next = new Set(v.pickedTracks);
+      // 처음 Ctrl+클릭이면 지금 편집 중인 트랙부터 함께 — 스프레드시트처럼 이어 고른다
+      if (!next.size && v.selectedTrack && v.selectedTrack !== id && this.store.track(v.selectedTrack)) next.add(v.selectedTrack);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      v.pickedTracks = next;
+      v.trackAnchor = id;
+      this.#markPicked();
+      return;
+    }
+    if (ev?.shiftKey) {
+      const shown = this.#shownTracks().map((t) => t.id);
+      const from = shown.indexOf(v.trackAnchor ?? v.selectedTrack ?? id);
+      const to = shown.indexOf(id);
+      if (from >= 0 && to >= 0) {
+        const [a, b] = from < to ? [from, to] : [to, from];
+        v.pickedTracks = new Set(shown.slice(a, b + 1));
+        this.#markPicked();
+        return;
+      }
+    }
+    v.pickedTracks = new Set([id]);
+    v.trackAnchor = id;
+    this.handlers.openTrack(id);
+  }
+
+  /** 머리 우클릭 — 고른 트랙 숨기기 · 그 사이에 숨긴 트랙 보이기 · 숨긴 트랙 모두 보이기 */
+  #trackMenu(id, ev) {
+    const v = this.view;
+    if (!v.pickedTracks.has(id)) { v.pickedTracks = new Set([id]); v.trackAnchor = id; this.#markPicked(); }
+    if (this.store.readonly) return;
+    const tracks = this.store.tracks;
+    const hidden = this._hiddenTracks ?? new Set();
+    const picked = tracks.filter((t) => v.pickedTracks.has(t.id) && !hidden.has(t.id)).map((t) => t.id);
+    const shownLeft = tracks.filter((t) => !hidden.has(t.id) && !v.pickedTracks.has(t.id)).length;
+    // 고른 범위(맨 왼쪽~맨 오른쪽) 안의 숨긴 트랙 — 스프레드시트처럼 양옆을 함께 골라 '숨기기 취소'
+    const idx = picked.map((x) => tracks.findIndex((t) => t.id === x));
+    const lo = Math.min(...idx), hi = Math.max(...idx);
+    const inside = tracks.filter((t, k) => k > lo && k < hi && hidden.has(t.id)).map((t) => t.id);
+    const n = picked.length;
+    // 너비 맞추기 — 여럿이면 가장 넓은 것에 같게, 숫자로 지정, 자동
+    const widest = Math.max(0, ...picked.map((x) => this.columns.get(x)?.offsetWidth ?? 0));
+    openCtxMenu(ev.clientX, ev.clientY, [
+      n > 1 ? { label: `트랙 ${n}개 너비 같게 — 가장 넓은 ${widest}px`, action: () => this.setTrackWidths(picked, widest) } : null,
+      { label: n > 1 ? `트랙 ${n}개 너비 지정…` : '트랙 너비 지정…', disabled: !n, action: () => this.#askTrackWidth(picked) },
+      { label: n > 1 ? `트랙 ${n}개 너비 자동` : '트랙 너비 자동', disabled: !n || picked.every((x) => !this.store.track(x)?.w), action: () => this.setTrackWidths(picked, null) },
+      { label: n > 1 ? `트랙 ${n}개 숨기기` : '트랙 숨기기', disabled: !n || shownLeft < 1, action: () => this.hideTracks(picked) },
+      { label: inside.length ? `트랙 숨기기 취소 (${inside.length}개)` : '트랙 숨기기 취소', disabled: !inside.length, action: () => this.unhideTracks(inside) },
+      hidden.size ? { label: `숨긴 트랙 모두 보이기 (${hidden.size}개)`, action: () => this.unhideTracks([...hidden]) } : null,
+    ]);
+  }
+
+  /** 트랙 숨기기 — 보드 표시 값. 보이는 트랙이 하나는 남아야 한다 */
+  hideTracks(ids) {
+    if (this.store.readonly || !ids?.length) return false;
+    const want = new Set([...(this._hiddenTracks ?? []), ...ids]);
+    const tracks = this.store.tracks;
+    if (tracks.every((t) => want.has(t.id))) { toast('트랙을 모두 숨길 수는 없습니다', 'warn'); return false; }
+    this.view.pickedTracks = new Set();
+    this.view.trackAnchor = null;
+    this.store.commit(ids.length > 1 ? `트랙 ${ids.length}개 숨기기` : '트랙 숨기기', (doc) => {
+      doc.meta.hiddenTracks = doc.tracks.filter((t) => want.has(t.id)).map((t) => t.id);
+    });
+    // 편집 중인 트랙을 숨겼으면 편집 창을 닫는다
+    if (this.view.selectedTrack && want.has(this.view.selectedTrack)) this.handlers.closePanel?.();
+    toast(`트랙 ${ids.length}개를 숨겼습니다 — 머리의 화살표나 우클릭 '숨기기 취소'로 다시 보입니다`);
+    return true;
+  }
+
+  /** 숨긴 트랙 다시 보이기 */
+  unhideTracks(ids) {
+    if (this.store.readonly || !ids?.length) return false;
+    const off = new Set(ids);
+    // 다시 보인 트랙을 골라 둔다(스프레드시트처럼 — 어디가 펼쳐졌는지 보이게)
+    this.view.pickedTracks = new Set(ids.filter((id) => this.store.track(id)));
+    this.view.trackAnchor = ids[0] ?? null;
+    this.store.commit('트랙 숨기기 취소', (doc) => {
+      doc.meta.hiddenTracks = (doc.meta.hiddenTracks ?? []).filter((id) => !off.has(id));
+    });
+    this.#markPicked();
+    return true;
+  }
+
+  // ── 가운데 버튼(휠 누르고 끌기)으로 보드 옮기기 — 가로·세로 스크롤 대신 손으로 잡아 끌듯(2026-11-17 사용자) ──
+  #attachPan() {
+    const scrollerOf = (t) => {
+      const sc = t?.closest?.('.scroll');
+      return sc && sc.contains(this.grid) ? sc : null;
+    };
+    document.addEventListener('mousedown', (ev) => {
+      if (ev.button !== 1) return;
+      const scroller = scrollerOf(ev.target);
+      if (!scroller) return;
+      ev.preventDefault();                     // 가운데 버튼 자동 스크롤(원형 커서)을 막는다
+      let x = ev.clientX, y = ev.clientY;
+      const stop = () => {
+        window.removeEventListener('mousemove', move, true);
+        window.removeEventListener('mouseup', up, true);
+        window.removeEventListener('blur', stop);
+        document.body.classList.remove('panning');
+      };
+      const move = (e) => {
+        if (!(e.buttons & 4)) { stop(); return; }     // 창 밖에서 뗐다
+        scroller.scrollLeft -= e.clientX - x;
+        scroller.scrollTop -= e.clientY - y;
+        x = e.clientX; y = e.clientY;
+        e.preventDefault();
+      };
+      const up = (e) => { if (e.button === 1) stop(); };
+      window.addEventListener('mousemove', move, true);
+      window.addEventListener('mouseup', up, true);
+      window.addEventListener('blur', stop);
+      document.body.classList.add('panning');
+    });
+    // 가운데 클릭이 다른 동작(링크 열기 등)으로 새지 않게
+    document.addEventListener('auxclick', (e) => { if (e.button === 1 && scrollerOf(e.target)) e.preventDefault(); });
+  }
+
+  // ── 축 끝 '+' — 보드 기간 늘리기 ───────────────────────────
+  /** 늘릴 단위 — 눈금 모드의 가장 큰 칸(주-일 주 · 월-주 월 · 분기-월 분기), 눈금 없음이면 한 칸의 단위. 날짜 없는 보드는 없다 */
+  #extendUnit() {
+    const tl = this.timeline;
+    if (!tl.dated) return null;
+    return tl.mode.outer ?? (tl.slotUnit && tl.slotUnit !== 'slot' ? tl.slotUnit : null);
+  }
+
+  #syncMoreBar() {
+    const unit = this.#extendUnit();
+    const off = !unit || this.store.readonly;
+    this.moreBar.hidden = off;
+    if (off) return;
+    const name = { day: '1일', week: '1주', month: '1개월', quarter: '1분기' }[unit] ?? '한 칸';
+    const btn = this.moreBar.querySelector('.axis-add');
+    const label = `${name} 추가`;
+    if (btn.lastChild?.nodeType === Node.TEXT_NODE) btn.lastChild.textContent = label; else btn.append(label);
+    btn.title = `보드 기간을 ${name} 늘립니다 — 끝 ${formatDate(this.#extendedEnd(unit))}까지`;
+  }
+
+  /** 늘린 끝 — 지금 끝(일정이 더 뒤면 그 끝)이 든 단위의 다음 단위 마지막 날 */
+  #extendedEnd(unit) {
+    const next = addUnits(unitStart(this.endDate, unit), unit, 2);
+    return new Date(next.getFullYear(), next.getMonth(), next.getDate() - 1);
+  }
+
+  /** 보드 기간을 가장 큰 눈금 하나만큼 늘린다(되돌리기 1단계) */
+  extendAxis() {
+    const unit = this.#extendUnit();
+    if (!unit || this.store.readonly) return false;
+    const end = formatDate(this.#extendedEnd(unit));
+    this.store.commit('보드 기간 늘리기', (doc) => { doc.meta.end = end; });
+    toast(`보드 기간을 늘렸습니다 — 끝 ${end}`);
+    return true;
+  }
 
   /**
    * 축 범위 = 선언한 기간(meta) ∪ 모든 일정. 일정을 meta 밖(예: 8월)으로 옮기면
@@ -373,9 +652,10 @@ export class Board {
     // 펼침(드릴다운)이면 focus의 자식이 최상위가 되고 자손만 보인다.
     this._scope = this.#focusScope();
     this._hidden = this.#hiddenSet();
+    this._hiddenTracks = this.#hiddenTrackSet();
     const visible = (i) => this.view.isVisible(i) && !this._hidden.has(i.id) && (this._scope === null || this._scope.has(i.id));
     this._layout = computeLayout(
-      this.store.tracks, this.store.items, this.timeline, visible, this.focus, (i) => this.#pixelExtent(i),
+      this.#shownTracks(), this.store.items, this.timeline, visible, this.focus, (i) => this.#pixelExtent(i),
     );
   }
 
@@ -432,23 +712,32 @@ export class Board {
 
   /** 트랙 칸 채우기(스타일 탭) — 칸은 골격이 바뀔 때만 새로 만들므로 그릴 때마다 표시를 맞춘다 */
   #syncColumnFill() {
+    const hidden = this._hiddenTracks ?? new Set();
     for (const t of this.store.tracks) {
       const col = this.columns.get(t.id);
       if (!col) continue;
       if (t.fill) col.dataset.fill = t.fill; else delete col.dataset.fill;
+      col.classList.toggle('tr-hidden', hidden.has(t.id));     // 숨긴 트랙 — 칸은 남기고 0 폭(gridTemplate)
     }
   }
 
   #renderHead() {
     this.#syncColumnFill();
-    const template = gridTemplate(this.store.tracks, this._layout.trackLanes);
+    const template = gridTemplate(this.store.tracks, this._layout.trackLanes, this._hiddenTracks);
     this.grid.style.gridTemplateColumns = template;
+    // 문서에서 사라졌거나 숨긴 트랙은 고른 것에서 뺀다
+    const picked = this.view.pickedTracks;
+    for (const id of [...picked]) if (!this.store.track(id) || this._hiddenTracks?.has(id)) picked.delete(id);
     renderHead(this.head, {
       tracks: this.store.tracks,
       items: this.store.items,
       selectedTrack: this.view.selectedTrack,
       template,
-      onSelect: (id) => { if (!this._suppressHeadClick) this.handlers.openTrack(id); },
+      hidden: this._hiddenTracks,
+      picked,
+      onSelect: (id, ev) => this.#pickTrack(id, ev),
+      onContext: (id, ev) => this.#trackMenu(id, ev),
+      onUnhide: (ids) => this.unhideTracks(ids),
       dateLabel: (t) => this.#trackDates(t),
       onAddTrack: () => this.handlers.addTrack(),
       onResize: this.#trackResizer,
@@ -491,6 +780,7 @@ export class Board {
 
     // 다음 render()에서 범위/모드 변화를 감지하려고 방금 그린 축을 기록한다
     this._axis = this.#axisKey();
+    this.#syncMoreBar();
   }
 
   /**
@@ -557,6 +847,7 @@ export class Board {
 
       runs.forEach((run, r) => {
         const homeTrackId = run[0];
+        if (this._hiddenTracks?.has(homeTrackId)) return;          // 숨긴 트랙의 카드(크기 강제 카드는 자기 트랙에만 놓인다)
         const host = this.columns.get(homeTrackId);
         if (!host) return;
         const laneInfo = placement.get(`${item.id}@${homeTrackId}`) ?? placement.get(item.id);
@@ -719,7 +1010,8 @@ export class Board {
 
   /** 소속 트랙을 연속 구간(run)들로 나눈다 — 사이가 떨어지면 별도 구간. 각 run은 트랙 id 배열. */
   #trackRuns(item) {
-    const tracks = this.store.tracks;
+    // 보이는 트랙끼리 센다 — 숨긴 트랙을 사이에 둔 두 트랙은 화면에서 붙어 있으니 한 장으로(숨긴 칸은 폭 0)
+    const tracks = this.#shownTracks();
     const index = new Map(tracks.map((t, i) => [t.id, i]));
     const members = (Array.isArray(item.place?.tracks) && item.place.tracks.length
       ? item.place.tracks : [item.place?.t]).filter((id) => index.has(id));
@@ -962,6 +1254,8 @@ export class Board {
   // ── 입력 ────────────────────────────────────────────────
 
   #attachEvents() {
+    // 보드를 누르면 머리에서 고른 트랙을 푼다(스프레드시트에서 칸을 누르면 열 고르기가 풀리듯)
+    this.grid.addEventListener('pointerdown', (ev) => { if (ev.button === 0) this.clearPickedTracks(); });
     // 이어진 카드 강조 — 가장 안쪽 카드 기준(하위 카드에 올리면 그 하위 카드)
     this.grid.addEventListener('pointerover', (ev) => {
       const id = ev.target.closest?.('.ev')?.dataset.id ?? null;
