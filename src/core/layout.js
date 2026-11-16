@@ -34,12 +34,15 @@ function assignLanes(siblings, timeline, placement, { includeMilestones = false,
   // 위치는 timeline이 읽는다 — 날짜 있는 보드는 일 인덱스, 날짜 없는 보드는 칸 인덱스.
   // 범위는 [s, e) — 끝은 포함하지 않는다. 날짜 위치면 끝 다음 칸(e+1)이 끝이다.
   const span = extentOf ?? ((i) => { const p = timeline.pos(i); return p ? { s: p.s, e: p.e + 1 } : null; });
+  // 시작이 같으면 문서 순서(만든 순서)로 — 길이로 세우면(짧은 것 먼저) 카드 하나를 늘리거나 줄이는 것만으로 레인이 바뀌어
+  // 늘린 카드가 오른쪽으로 밀려나고 옆 카드들이 자리를 바꿨다(끄는 동안에도 — 다른 카드가 늘어나는 것처럼 보였다, 2026-11-17 사용자).
+  const order = new Map(siblings.map((it, k) => [it, k]));
   const bars = siblings
     .filter((i) => includeMilestones || !timeline.isPoint(i))
     .map((i) => ({ item: i, x: span(i) }))
     .filter((b) => b.x)
     .map((b) => ({ item: b.item, s: b.x.s, e: b.x.e }))
-    .sort((a, b) => a.s - b.s || a.e - b.e);
+    .sort((a, b) => a.s - b.s || order.get(a.item) - order.get(b.item));
 
   let maxLanes = 1;
   let cluster = [];
