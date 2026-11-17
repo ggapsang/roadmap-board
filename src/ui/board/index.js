@@ -812,8 +812,12 @@ export class Board {
     this._axisTracks = this.#axisTrackList();
     this._collapsed = new Set([...this._hiddenTracks, ...this._axisTracks.map((t) => t.id)]);
     const visible = (i) => this.view.isVisible(i) && !this._hidden.has(i.id) && (this._scope === null || this._scope.has(i.id));
+    // 축 트랙의 카드는 열에 그리지 않는다 — 열이던 때의 걸침(sp·tracks)이 남아 있어도 다른 트랙의 레인을 차지하면 안 된다
+    // (빈 레인이 생겨 그 트랙 카드가 좁아지던 것, 2026-11-17 사용자)
+    const axisIds = new Set(this._axisTracks.map((t) => t.id));
     this._layout = computeLayout(
-      this.#shownTracks(), this.store.items, this.timeline, visible, this.focus, (i) => this.#pixelExtent(i),
+      this.#shownTracks(), this.store.items, this.timeline, (i) => visible(i) && !axisIds.has(i.place?.t), this.focus,
+      (i) => this.#pixelExtent(i),
     );
     // 축 띠 열 안의 레인 — 겹치는 카드는 축 안에서 가는 하위 열로 나란히(3.3)
     this._axisLayout = this._axisTracks.length

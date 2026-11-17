@@ -178,6 +178,22 @@ export default {
       return { dated: r.board.dated, strip: !!strip, band: !!band && band.offsetHeight > 20, contains: (r.store.doc.contains ?? []).length === 1 };
     `);
 
+    // 열이던 때 다른 트랙까지 걸쳐 둔 축 카드가 그 트랙의 레인을 차지하지 않는다(빈 레인에 밀려 카드가 좁아지던 것, 2026-11-17 사용자)
+    o.spanLane = await js(`
+      const b4 = await r.adapter.createProject({ version: 26, meta: { name: '축 걸침 보드', start: '2026-12-01', end: '2027-02-28' }, orgs: ['A'],
+        tracks: [{ id: 'tAx4_S', name: '흐름', axis: 'left' }, { id: 'tAx4_A', name: 'A' }],
+        items: [
+          { id: 'eAx4_s', ti: '분석', s: '2026-12-01', e: '2026-12-31', place: { t: 'tAx4_S', tracks: ['tAx4_S', 'tAx4_A'] } },
+          { id: 'eAx4_a', ti: '설계', s: '2026-12-05', e: '2026-12-20', place: { t: 'tAx4_A' } },
+        ] }, '축 걸침 보드');
+      T.b4 = b4;
+      await r.tabs.openBoard(b4); await sleep(350);
+      const A = r.store.tracks.find((t) => t.name === 'A').id;
+      const card = document.querySelector('.col[data-t="' + A + '"] .ev');
+      const col = document.querySelector('.col[data-t="' + A + '"]');
+      return { lanes: r.board._layout.trackLanes.get(A), full: !!card && card.offsetWidth > col.offsetWidth * 0.8 };
+    `);
+
     // 9 — 전용 객체·스키마·테이블이 없다: 이벤트 표에 축 칸이 없고, 새 표가 없다. 축은 배치(disp) 칸 하나
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((t) => t.name);
     const evCols = db.prepare('PRAGMA table_info(event)').all().map((c) => c.name);
@@ -186,7 +202,7 @@ export default {
 
     // 정리 — 시험 보드 지우고 처음 보드로
     await js(`
-      for (const id of [T.b3, T.b2, T.b]) { if (id) { await r.adapter.deleteProject(id); r.tabs.boardClosed?.(id); } }
+      for (const id of [T.b4, T.b3, T.b2, T.b]) { if (id) { await r.adapter.deleteProject(id); r.tabs.boardClosed?.(id); } }
       await r.tabs.openBoard(T.b0); await sleep(300); window.__axisT = null; return true;
     `);
     console.log('[smoke] axis-track ' + JSON.stringify(o));
@@ -195,5 +211,6 @@ export default {
   check: (o) => o && o.setup?.ok && o.toAxis?.dialog && o.toAxis?.strip && o.toAxis?.bandsInStrip && o.toAxis?.colZero && o.toAxis?.allInCols
     && o.toAxis?.noContains && o.q1on && o.offerOk && o.q1off && o.left?.side === 'left' && o.left?.contains && o.left?.lit1 && o.left?.lit2
     && o.left?.x1InCol && o.right?.side === 'right' && o.right?.lit && o.q4 && o.drag?.moved && o.drag?.track && o.reload
-    && o.q2ok && o.q5 && o.q5db && o.q6?.strip && o.q6?.band && o.q6?.contains && o.q6?.dated === false && o.q9,
+    && o.q2ok && o.q5 && o.q5db && o.q6?.strip && o.q6?.band && o.q6?.contains && o.q6?.dated === false && o.q9
+    && o.spanLane?.lanes === 1 && o.spanLane?.full,
 };
