@@ -316,8 +316,8 @@ export class Board {
     return this.store.tracks.filter((t) => (t.axis === 'left' || t.axis === 'right') && !h.has(t.id));
   }
 
-  /** 축 띠 열 폭(보드 px) — 트랙 폭을 정했으면 그것, 아니면 기본 */
-  #axisWidth(t) { return t.w ?? 168; }
+  /** 축 띠 열 폭(보드 px) — 트랙 폭을 정했으면 그것, 아니면 기본(날짜 칸처럼 좁게) */
+  #axisWidth(t) { return t.w ?? 136; }
 
   /** 축 띠 열 — 왼쪽은 날짜 칸 뒤에서부터, 오른쪽은 보드 오른쪽 끝에서부터 쌓는다(sticky 자리) */
   #axisPlan() {
@@ -344,7 +344,7 @@ export class Board {
         if (!st) continue;
         st.style.left = side === 'left' ? at : '';
         st.style.right = side === 'right' ? at : '';
-        if (track.fill) st.dataset.fill = track.fill; else delete st.dataset.fill;
+        // 트랙 채우기는 칠하지 않는다 — 축은 날짜 칸과 같은 바탕이어야 열이 아니라 축으로 읽힌다(2026-11-17 사용자)
       }
     }
   }
@@ -1024,6 +1024,16 @@ export class Board {
         const laneInfo = this._axisLayout.placement.get(`${item.id}@${item.place.t}`) ?? null;
         const node = renderCard(item, { ...common, laneInfo, laned: !!laneInfo, spanBox: null });
         node.classList.add('axis-card');
+        // 축의 구간 — 왼쪽 달력 칸처럼 기간 그대로 위아래로 붙이고(카드 간격·안쪽 여백 없이) 열 폭을 꽉 채운다. 겹치면 하위 열로 나눈다(3.3)
+        const pos = this.timeline.pos(item);
+        if (pos) {
+          const top = this.scale.y(pos.s);
+          node.style.top = `${top}px`;
+          node.style.height = `${Math.max(LAYOUT.pointCardHeight, this.scale.y(pos.e) + this.scale.dayHeight(pos.e) - top)}px`;
+        }
+        const lanes = Math.max(1, laneInfo?.lanes ?? 1), lane = laneInfo?.lane ?? 0;
+        node.style.left = `${(lane * 100) / lanes}%`;
+        node.style.width = `${100 / lanes}%`;
         // 담은 카드 수·범위 밖(4.1)을 툴팁에
         const kids = new Set((this.store.doc.contains ?? []).filter((c) => c.parent === item.id).map((c) => c.child));
         if (kids.size) {
