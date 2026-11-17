@@ -507,8 +507,12 @@ export class Board {
     const lo = Math.min(...idx), hi = Math.max(...idx);
     const inside = tracks.filter((t, k) => k > lo && k < hi && hidden.has(t.id)).map((t) => t.id);
     const n = picked.length;
-    // 너비 맞추기 — 여럿이면 가장 넓은 것에 같게, 숫자로 지정, 자동
-    const widest = Math.max(0, ...picked.map((x) => this.columns.get(x)?.offsetWidth ?? 0));
+    // 너비 맞추기 — 여럿이면 가장 넓은 것에 같게, 지금 폭의 합을 똑같이 나누기(전체 폭은 그대로, 2026-11-17 사용자), 숫자로 지정, 자동
+    const widthOf = (x) => this.columns.get(x)?.offsetWidth ?? 0;
+    const widest = Math.max(0, ...picked.map(widthOf));
+    const sized = picked.filter((x) => widthOf(x) > 0);                 // 숨긴·축 트랙(0 폭)은 나누기에서 뺀다
+    const total = sized.reduce((a, x) => a + widthOf(x), 0);
+    const share = sized.length ? Math.round(total / sized.length) : 0;
     // 축 표시 — 누른 트랙 하나에. 배치 표시 방식만 바꾼다(데이터는 그대로)
     const t0 = this.store.track(id);
     const axisItems = t0?.axis
@@ -519,6 +523,7 @@ export class Board {
     openCtxMenu(ev.clientX, ev.clientY, [
       ...axisItems,
       n > 1 ? { label: `트랙 ${n}개 너비 같게 — 가장 넓은 ${widest}px`, action: () => this.setTrackWidths(picked, widest) } : null,
+      sized.length > 1 ? { label: `트랙 ${sized.length}개 너비 고르게 나누기 — 합 ${total}px ÷ ${sized.length} = ${share}px`, action: () => this.setTrackWidths(sized, share) } : null,
       { label: n > 1 ? `트랙 ${n}개 너비 지정…` : '트랙 너비 지정…', disabled: !n, action: () => this.#askTrackWidth(picked) },
       { label: n > 1 ? `트랙 ${n}개 너비 자동` : '트랙 너비 자동', disabled: !n || picked.every((x) => !this.store.track(x)?.w), action: () => this.setTrackWidths(picked, null) },
       { label: n > 1 ? `트랙 ${n}개 숨기기` : '트랙 숨기기', disabled: !n || shownLeft < 1, action: () => this.hideTracks(picked) },

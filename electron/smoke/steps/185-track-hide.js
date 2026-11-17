@@ -92,6 +92,13 @@ export default {
         o.widthMenu = wBtns.map((b) => b.textContent).filter((t) => t.includes('너비'));
         wBtns.find((b) => b.textContent.startsWith('트랙 2개 너비 같게'))?.click(); await sleep(150);
         o.widthSame = r.store.track(A).w === r.store.track(C).w && r.store.track(A).w === o.widthDrag.C;
+        // 6c. 고르게 나누기 — 지금 두 폭의 합을 반씩(전체 폭 그대로)
+        r.board.setTrackWidths([A], 160); await sleep(150);
+        const sum = col(A).offsetWidth + col(C).offsetWidth;
+        menuAt(C); await sleep(80);
+        [...document.querySelectorAll('.ctx-menu button')].find((b) => b.textContent.startsWith('트랙 2개 너비 고르게 나누기'))?.click(); await sleep(150);
+        o.widthSplit = { sum, A: r.store.track(A).w, C: r.store.track(C).w };
+        o.widthSplitOk = sum > 0 && o.widthSplit.A === o.widthSplit.C && Math.abs(o.widthSplit.A * 2 - sum) <= 1;
         menuAt(C); await sleep(80);
         [...document.querySelectorAll('.ctx-menu button')].find((b) => b.textContent === '트랙 2개 너비 자동')?.click(); await sleep(150);
         o.widthAuto = r.store.track(A).w == null && r.store.track(C).w == null;
@@ -162,5 +169,5 @@ export default {
     return out;
   },
   check: (o) => o && !o.error && o.picked && o.hidden && o.arrows && o.reloaded && o.unhidden && o.undo && o.spanOk
-    && o.allBlocked && o.widthDragOk && o.widthSame && o.widthAuto && o.multiDrag && o.autoScrolled && o.movedFar && o.panDefault && o.panned && o.moreShown && o.extendOk && o.restored,
+    && o.allBlocked && o.widthDragOk && o.widthSame && o.widthSplitOk && o.widthAuto && o.multiDrag && o.autoScrolled && o.movedFar && o.panDefault && o.panned && o.moreShown && o.extendOk && o.restored,
 };
