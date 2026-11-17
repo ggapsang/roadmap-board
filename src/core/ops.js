@@ -19,7 +19,7 @@ const KEYED = [['items', 'item'], ['tracks', 'track'], ['relations', 'rel'], ['b
 /** meta에서 하위 키마다 따로 다루는 것 — 표시 설정 하나·화살표 모양 하나를 둘이 고쳐도 서로 덮지 않게 */
 const META_SUB = new Set(['display', 'arrows']);
 /** id 없는 최상위 통값 */
-const DOC_WHOLE = ['orgs', 'compose'];
+const DOC_WHOLE = ['orgs', 'compose', 'contains'];
 
 const clone = (v) => (v === undefined ? null : JSON.parse(JSON.stringify(v)));
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);

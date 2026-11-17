@@ -122,7 +122,7 @@ export default {
     && styleUi?.hiddenByDefault === true
     && styleUi?.noteShown === true
     && styleUi?.noteHidden === true
-    && JSON.stringify(styleUi?.titles) === JSON.stringify(['항등설정', '조합설정', '모자관계설정', '선행관계설정', '참조관계설정'])
+    && JSON.stringify(styleUi?.titles) === JSON.stringify(['항등설정', '조합설정', '모자관계설정', '포함설정', '선행관계설정', '참조관계설정'])
     && (styleUi?.btns ?? []).length === 5
     && styleUi.btns.every((t) => t === '편집')
     && styleUi?.moved === true

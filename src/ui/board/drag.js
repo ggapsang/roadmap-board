@@ -84,6 +84,8 @@ export function attachDrag(grid, {
       x0: item.place?.x ?? (rect.left - hostLeft) / hostWidth,
       w0: item.place?.w ?? rect.width / hostWidth,
       child: !!item.parent,
+      // 축 표시 트랙의 카드(가장자리 띠 열) — 세로 이동·기간 조절만, 트랙은 바꾸지 않는다(축 밖으로 끌려 나가지 않게)
+      axis: !!card.closest('.axis-strip'),
       leave: null,          // 하위 카드를 상위의 트랙 밖에 놓으려는 트랙 인덱스
       moved: false,
     };
@@ -102,6 +104,9 @@ export function attachDrag(grid, {
     const dDays = n;                  // 0이 아니면 움직였다
     const pointerTrack = trackIndexAt(ev.clientX);
     const dTrack = pointerTrack - drag.startTrack;
+
+    // 축 카드는 가로(트랙 걸침·폭)를 바꾸지 않는다
+    if (drag.axis && (drag.mode === 'span' || drag.mode.startsWith('hw'))) return;
 
     // 상위 카드 안에서의 가로 위치·폭
     if (drag.mode.startsWith('hw')) {
@@ -239,6 +244,7 @@ export function attachDrag(grid, {
         let dn = n;
         while (dn < 0 && tl.add(drag.startDay, dn) < 0) dn += 1;
         tl.set(item, tl.add(drag.startDay, dn), endAdd(drag.endDay, dn));
+        if (drag.axis) return;                     // 축 카드 — 세로만
         if (drag.child) {
           // 하위 카드는 상위 트랙에 묶여 있다 — 옮길 트랙은 놓을 때 묻는다. 그 칸만 표시
           const k = Math.max(0, Math.min(store.tracks.length - 1, pointerTrack));

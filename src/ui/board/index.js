@@ -14,13 +14,13 @@
 import { parseDate, dayIndex, shortMD, formatDate } from '../../core/dates.js';
 import { TimeScale, SlotScale, topOffset } from '../../core/timescale.js';
 import { DateTimeline, SlotTimeline, unitStart, addUnits } from '../../core/timeline.js';
-import { computeLayout, gridTemplate, trackUnitsToPx } from '../../core/layout.js';
+import { computeLayout, gridTemplate, trackUnitsToPx, overlapShare } from '../../core/layout.js';
 import { newId } from '../../core/schema.js';
 import { DEFAULT_STATUS, DEFAULT_TYPE, UNIT_DAYS, LAYOUT } from '../../config/index.js';
 import { el, button, ICONS } from '../dom.js';
 import { openCtxMenu } from '../ctxmenu.js';
 import { toast } from '../toast.js';
-import { askText } from '../dialog.js';
+import { askText, askTree } from '../dialog.js';
 import { renderHead } from './head.js';
 import { renderAxis, makeTodayLine, rowRanges } from './axis.js';
 import { attachBandEditing, attachRowEditing } from './bands.js';
@@ -96,8 +96,9 @@ export class Board {
       // 고른 트랙(여럿) 중 하나의 경계를 끌면 고른 트랙이 모두 같은 너비가 된다(구글 스프레드시트처럼, 2026-11-17 사용자)
       const targets = this.#widthTargets(trackId);
 
-      const column = this.columns.get(trackId);
-      const startWidth = column ? column.offsetWidth : 200;       // 보드 px (확대와 무관)
+      // 축 표시 트랙은 제자리 칸이 0 폭이다 — 가장자리 띠 열의 폭에서 시작한다
+      const column = this.#strip(trackId) ?? this.columns.get(trackId);
+      const startWidth = column?.offsetWidth || 200;              // 보드 px (확대와 무관)
       const startX = ev.clientX;
       let began = false;
 
@@ -174,7 +175,7 @@ export class Board {
     start: (trackId, ev) => {
       if (this.store.readonly) return;
 
-      const headers = [...this.head.querySelectorAll('.th:not(.th-hidden)')];
+      const headers = [...this.head.querySelectorAll('.th:not(.th-hidden):not(.th-axis)')];
       const cell = headers.find((h) => h.dataset.t === trackId);
       if (!cell) return;
       const hidden = this._hiddenTracks ?? new Set();
@@ -299,8 +300,154 @@ export class Board {
 
   /** 보이는 트랙(순서 그대로) — 레인 배치·걸침 구간은 이것으로 센다(숨긴 트랙을 건너 이웃이 붙는다) */
   #shownTracks() {
-    const h = this._hiddenTracks ?? this.#hiddenTrackSet();
+    const h = this._collapsed ?? this.#hiddenTrackSet();
     return this.store.tracks.filter((t) => !h.has(t.id));
+  }
+
+  // ── 축 표시 트랙 (2026-11-17 사용자 — 「축 표시 트랙 개발 요청서」) ─────────────────────────────
+  // 트랙의 배치 표시 방식(tracks[].axis = 'left'·'right', 루트→트랙 배치)이 축이면 열 대신 보드 가장자리 띠 열(.axis-strip)에 그린다.
+  // 판정은 그 값 하나다(자식 수·걸친 트랙 수·이름으로 정하지 않는다 — A-05·A-06). 제자리 칸은 0 폭으로 남겨 칸 순서 = 트랙 순서
+  // (drag.js)를 지키고, 다른 트랙의 순서·배치는 그대로다(A-11). 왼쪽·오른쪽은 놓는 자리만 다르다(A-12). 그 트랙의 카드는 일반 카드와
+  // 같은 길로 그리고 고친다(A-14) — 띠에 올리면 그 카드가 담은 카드(doc.contains)를 강조한다(3.5).
+
+  /** 축으로 그리는 트랙 — 숨긴 트랙은 빼고, 트랙 순서대로 */
+  #axisTrackList() {
+    const h = this._hiddenTracks ?? this.#hiddenTrackSet();
+    return this.store.tracks.filter((t) => (t.axis === 'left' || t.axis === 'right') && !h.has(t.id));
+  }
+
+  /** 축 띠 열 폭(보드 px) — 트랙 폭을 정했으면 그것, 아니면 기본 */
+  #axisWidth(t) { return t.w ?? 168; }
+
+  /** 축 띠 열 — 왼쪽은 날짜 칸 뒤에서부터, 오른쪽은 보드 오른쪽 끝에서부터 쌓는다(sticky 자리) */
+  #axisPlan() {
+    const left = this._axisTracks.filter((t) => t.axis === 'left');
+    const right = this._axisTracks.filter((t) => t.axis === 'right');
+    let acc = 0;
+    const L = left.map((t) => { const at = `calc(var(--gut-m) + var(--gut-w) + ${acc}px)`; acc += this.#axisWidth(t); return { track: t, at }; });
+    acc = 0;
+    const R = [...right].reverse().map((t) => { const at = `${acc}px`; acc += this.#axisWidth(t); return { track: t, at }; }).reverse();
+    return { left: L, right: R };
+  }
+
+  /** 그 트랙의 축 띠 열 요소 */
+  #strip(trackId) {
+    return this.grid.querySelector(`:scope > .axis-strip[data-t="${CSS.escape(trackId)}"]`);
+  }
+
+  /** 축 띠 열의 sticky 자리·채우기를 지금 값에 맞춘다(골격은 축 구성이 바뀔 때만 새로 만든다) */
+  #syncStrips() {
+    const plan = this.#axisPlan();
+    for (const side of ['left', 'right']) {
+      for (const { track, at } of plan[side]) {
+        const st = this.#strip(track.id);
+        if (!st) continue;
+        st.style.left = side === 'left' ? at : '';
+        st.style.right = side === 'right' ? at : '';
+        if (track.fill) st.dataset.fill = track.fill; else delete st.dataset.fill;
+      }
+    }
+  }
+
+  /** 축 구성 열쇠 — 바뀌면 골격(띠 열)을 다시 만든다 */
+  #axisKeyOf() { return this._axisTracks.map((t) => `${t.id}:${t.axis}`).join('|'); }
+
+  /** 축 표시 방식 바꾸기 — 배치 값만(이벤트·포함·관계는 그대로, A-16). 처음 축으로 바꾸면 날짜로 포함 후보를 한 번 묻는다(4.7) */
+  async setTrackAxis(id, side) {
+    const t = this.store.track(id);
+    if (!t || this.store.readonly) return false;
+    const next = side === 'left' || side === 'right' ? side : null;
+    if ((t.axis ?? null) === next) return false;
+    const was = t.axis ?? null;
+    this.store.commit(next ? '축으로 표시' : '열로 되돌리기', () => { t.axis = next; });
+    if (!was && next) await this.#proposeContains(id);
+    return true;
+  }
+
+  /**
+   * 축으로 바꿀 때 포함 제안 — 그 트랙의 카드(띠)마다, 다른 트랙의 최상위 카드 가운데 기간이 절반 넘게 겹치는 것을 후보로. 카드 하나는
+   * 가장 많이 겹치는 띠 하나에만. 미리 체크만 하고 확정은 사용자가 한다(A-07). 이미 그 트랙의 어느 카드에 담긴 카드는 빼고,
+   * 담아도 원래 트랙에서 빼지 않는다(포함 추가, A-08). 후보가 없으면 묻지 않는다.
+   */
+  async #proposeContains(trackId) {
+    const tl = this.timeline;
+    const bands = this.store.items.filter((i) => !i.parent && i.place?.t === trackId);
+    if (!bands.length) return;
+    const bandIds = new Set(bands.map((b) => b.id));
+    const held = new Set((this.store.doc.contains ?? []).filter((c) => bandIds.has(c.parent)).map((c) => c.child));
+    const axisIds = new Set(this.store.tracks.filter((t) => t.axis).map((t) => t.id));
+    const pick = new Map(bands.map((b) => [b.id, []]));
+    for (const it of this.store.items) {
+      if (it.parent || bandIds.has(it.id) || held.has(it.id) || axisIds.has(it.place?.t)) continue;
+      let best = null, share = 0;
+      for (const b of bands) { const v = overlapShare(tl, b, it); if (v > share) { share = v; best = b; } }
+      if (best && share >= 0.5) pick.get(best.id).push(it);
+    }
+    const nodes = bands.filter((b) => pick.get(b.id).length).map((b) => ({
+      id: `band:${b.id}`, label: b.alias || b.ti || '(제목 없음)', sub: '이 트랙의 카드', checkable: false,
+      children: pick.get(b.id).map((it) => ({
+        id: `${b.id}\u0001${it.id}`, label: it.alias || it.ti || '(제목 없음)',
+        sub: this.store.track(it.place?.t)?.name ?? '',
+      })),
+    }));
+    if (!nodes.length) return;
+    const checked = new Set(nodes.flatMap((n) => n.children.map((c) => c.id)));
+    const res = await askTree({
+      title: '포함 제안 — 기간이 겹치는 카드',
+      message: '축으로 그릴 트랙의 카드마다 기간이 절반 넘게 겹치는 다른 트랙의 카드를 골라 두었습니다. 확인한 것만 담습니다(원래 트랙에는 그대로 있습니다). 취소하면 축으로만 그립니다.',
+      nodes, checked,
+    });
+    if (!res || !res.size) return;
+    const pairs = [...res].map((k) => k.split('\u0001')).filter((x) => x.length === 2);
+    this.store.commit('포함 설정', (doc) => {
+      doc.contains = [...(doc.contains ?? []), ...pairs.map(([parent, child]) => ({ parent, child }))];
+    });
+    toast(`카드 ${pairs.length}개를 담았습니다 — 축의 카드에 마우스를 올리면 담은 카드가 강조됩니다`);
+  }
+
+  /** 축 띠 열에 그려진 카드인가 */
+  #isAxisCard(id) { return this._axisCardIds?.has(id) ?? false; }
+
+  /** 화살표로 그릴 관계 — 축 띠 열의 카드가 끝인 것은 뺀다(sticky라 가로로 넘기면 어긋난다, 띠는 축 안에만 — A-13) */
+  #arrowRelations() {
+    const rels = this.store.relations;
+    if (!this._axisCardIds?.size) return rels;
+    return rels.filter((r) => !this._axisCardIds.has(r.from) && !this._axisCardIds.has(r.to));
+  }
+
+  /**
+   * 축 카드 강조(3.5) — 축 띠 열의 카드에 올리면 그 카드가 담은 카드(doc.contains)를 밝히고 나머지를 흐린다. 다른 카드에 올리면 그 카드를
+   * 담은 축 카드를 모두 밝힌다. 색·불투명도만(배치는 그대로). 담긴 카드가 축 카드의 범위를 벗어나면 점선(.band-out, 4.1).
+   */
+  #axisHighlight(id) {
+    for (const n of this.grid.querySelectorAll('.ev.band-lit, .ev.band-dim, .ev.band-out')) n.classList.remove('band-lit', 'band-dim', 'band-out');
+    if (!id || !this._axisCardIds?.size) return;
+    const contains = this.store.doc.contains ?? [];
+    const nodes = (x) => this.grid.querySelectorAll(`.ev[data-id="${CSS.escape(x)}"]`);
+    if (this.#isAxisCard(id)) {
+      const kids = new Set(contains.filter((c) => c.parent === id).map((c) => c.child));
+      const out = this.#outOfRange(id, kids);
+      for (const n of this.grid.querySelectorAll('.col .ev')) {
+        if (kids.has(n.dataset.id)) { n.classList.add('band-lit'); if (out.has(n.dataset.id)) n.classList.add('band-out'); }
+        else if (!n.parentElement?.closest('.ev') || !kids.has(n.parentElement.closest('.ev').dataset.id)) n.classList.add('band-dim');
+      }
+      for (const n of nodes(id)) n.classList.add('band-lit');
+      return;
+    }
+    for (const c of contains) if (c.child === id && this.#isAxisCard(c.parent)) for (const n of nodes(c.parent)) n.classList.add('band-lit');
+  }
+
+  /** 담긴 카드 가운데 담은 카드의 범위(위치)를 벗어난 것 */
+  #outOfRange(parentId, kids) {
+    const tl = this.timeline;
+    const pp = tl.pos(this.store.item(parentId) ?? {});
+    const out = new Set();
+    if (!pp) return out;
+    for (const k of kids) {
+      const p = tl.pos(this.store.item(k) ?? {});
+      if (p && (p.s < pp.s || p.e > pp.e)) out.add(k);
+    }
+    return out;
   }
 
   /** 머리 고른 표시만 바꾼다(다시 그리지 않는다) */
@@ -362,7 +509,15 @@ export class Board {
     const n = picked.length;
     // 너비 맞추기 — 여럿이면 가장 넓은 것에 같게, 숫자로 지정, 자동
     const widest = Math.max(0, ...picked.map((x) => this.columns.get(x)?.offsetWidth ?? 0));
+    // 축 표시 — 누른 트랙 하나에. 배치 표시 방식만 바꾼다(데이터는 그대로)
+    const t0 = this.store.track(id);
+    const axisItems = t0?.axis
+      ? [{ label: '열로 되돌리기', action: () => this.setTrackAxis(id, null) },
+        { label: t0.axis === 'left' ? '축을 오른쪽으로' : '축을 왼쪽으로', action: () => this.setTrackAxis(id, t0.axis === 'left' ? 'right' : 'left') }]
+      : [{ label: '축으로 표시 — 왼쪽', action: () => this.setTrackAxis(id, 'left') },
+        { label: '축으로 표시 — 오른쪽', action: () => this.setTrackAxis(id, 'right') }];
     openCtxMenu(ev.clientX, ev.clientY, [
+      ...axisItems,
       n > 1 ? { label: `트랙 ${n}개 너비 같게 — 가장 넓은 ${widest}px`, action: () => this.setTrackWidths(picked, widest) } : null,
       { label: n > 1 ? `트랙 ${n}개 너비 지정…` : '트랙 너비 지정…', disabled: !n, action: () => this.#askTrackWidth(picked) },
       { label: n > 1 ? `트랙 ${n}개 너비 자동` : '트랙 너비 자동', disabled: !n || picked.every((x) => !this.store.track(x)?.w), action: () => this.setTrackWidths(picked, null) },
@@ -642,6 +797,7 @@ export class Board {
   }
 
   #columnsMatchTracks() {
+    if (this._stripsKey !== this.#axisKeyOf()) return false;     // 축 구성이 바뀌었다 — 띠 열을 다시
     const tracks = this.store.tracks;
     if (this.columns.size !== tracks.length) return false;
     const rendered = [...this.grid.querySelectorAll('.col')].map((c) => c.dataset.t);
@@ -653,10 +809,16 @@ export class Board {
     this._scope = this.#focusScope();
     this._hidden = this.#hiddenSet();
     this._hiddenTracks = this.#hiddenTrackSet();
+    this._axisTracks = this.#axisTrackList();
+    this._collapsed = new Set([...this._hiddenTracks, ...this._axisTracks.map((t) => t.id)]);
     const visible = (i) => this.view.isVisible(i) && !this._hidden.has(i.id) && (this._scope === null || this._scope.has(i.id));
     this._layout = computeLayout(
       this.#shownTracks(), this.store.items, this.timeline, visible, this.focus, (i) => this.#pixelExtent(i),
     );
+    // 축 띠 열 안의 레인 — 겹치는 카드는 축 안에서 가는 하위 열로 나란히(3.3)
+    this._axisLayout = this._axisTracks.length
+      ? computeLayout(this._axisTracks, this.store.items, this.timeline, visible, this.focus, (i) => this.#pixelExtent(i))
+      : { placement: new Map(), trackLanes: new Map() };
   }
 
   /**
@@ -717,23 +879,29 @@ export class Board {
       const col = this.columns.get(t.id);
       if (!col) continue;
       if (t.fill) col.dataset.fill = t.fill; else delete col.dataset.fill;
-      col.classList.toggle('tr-hidden', hidden.has(t.id));     // 숨긴 트랙 — 칸은 남기고 0 폭(gridTemplate)
+      col.classList.toggle('tr-hidden', hidden.has(t.id) || !!this._collapsed?.has(t.id));     // 숨긴·축 트랙 — 칸은 남기고 0 폭(gridTemplate)
     }
   }
 
   #renderHead() {
     this.#syncColumnFill();
-    const template = gridTemplate(this.store.tracks, this._layout.trackLanes, this._hiddenTracks);
+    const axisPlan = this.#axisPlan();
+    const template = gridTemplate(this.store.tracks, this._layout.trackLanes, this._collapsed, {
+      left: axisPlan.left.map((a) => this.#axisWidth(a.track)), right: axisPlan.right.map((a) => this.#axisWidth(a.track)),
+    });
     this.grid.style.gridTemplateColumns = template;
     // 문서에서 사라졌거나 숨긴 트랙은 고른 것에서 뺀다
     const picked = this.view.pickedTracks;
     for (const id of [...picked]) if (!this.store.track(id) || this._hiddenTracks?.has(id)) picked.delete(id);
+    this.#syncStrips();
     renderHead(this.head, {
       tracks: this.store.tracks,
       items: this.store.items,
       selectedTrack: this.view.selectedTrack,
       template,
       hidden: this._hiddenTracks,
+      collapsed: this._collapsed,
+      axis: axisPlan,
       picked,
       onSelect: (id, ev) => this.#pickTrack(id, ev),
       onContext: (id, ev) => this.#trackMenu(id, ev),
@@ -758,8 +926,12 @@ export class Board {
       rowScales: tl.dated ? (this.store.meta.display?.rowScales?.[tl.mode.key] ?? {}) : {},
     });
 
-    for (const node of this.grid.querySelectorAll('.col,.pad,.now,.arrows,.memos')) node.remove();
+    for (const node of this.grid.querySelectorAll('.col,.pad,.now,.arrows,.memos,.axis-strip')) node.remove();
     this.columns.clear();
+
+    // 축 띠 열 — 왼쪽은 날짜 칸 바로 뒤(트랙 칸 앞), 오른쪽은 '+' 칸 뒤. grid 열 순서 = DOM 순서
+    const strip = (t) => el('div.axis-strip', { dataset: { t: t.id, side: t.axis } });
+    for (const t of this._axisTracks.filter((x) => x.axis === 'left')) this.grid.append(strip(t));
 
     for (const track of this.store.tracks) {
       const col = el('div.col', { dataset: { t: track.id } });
@@ -769,6 +941,9 @@ export class Board {
     // 머리는 골격보다 먼저 그려지므로(rebuild) 새 칸에도 채우기를 다시 붙인다 — 빠지면 머리에만 색이 남는다
     this.#syncColumnFill();
     this.grid.append(el('div.pad'));
+    for (const t of this._axisTracks.filter((x) => x.axis === 'right')) this.grid.append(strip(t));
+    this._stripsKey = this.#axisKeyOf();
+    this.#syncStrips();
     this.grid.append(this.arrowLayer);
     this.grid.append(this.memos.layer);
 
@@ -810,6 +985,8 @@ export class Board {
     );
 
     const focus = this.focus;
+    const axisIds = new Set(this._axisTracks.map((t) => t.id));
+    this._axisCardIds = new Set();
     for (const item of ordered) {
       if (!this.view.isVisible(item)) continue;
       if (this._hidden?.has(item.id)) continue;                  // 이 보드에서 숨긴 하위 카드(관계는 그대로)
@@ -836,6 +1013,26 @@ export class Board {
         });
         host.append(node);
         cardEls.set(item.id, node);
+        if (this._axisCardIds.has(parent.id)) this._axisCardIds.add(item.id);   // 축 카드 안의 카드도 축 열 안
+        continue;
+      }
+
+      // 축 표시 트랙의 카드 — 가장자리 띠 열에 한 장(걸침 없음). 같은 renderCard·같은 조작 길(A-14)
+      if (axisIds.has(item.place?.t)) {
+        const host = this.#strip(item.place.t);
+        if (!host) continue;
+        const laneInfo = this._axisLayout.placement.get(`${item.id}@${item.place.t}`) ?? null;
+        const node = renderCard(item, { ...common, laneInfo, laned: !!laneInfo, spanBox: null });
+        node.classList.add('axis-card');
+        // 담은 카드 수·범위 밖(4.1)을 툴팁에
+        const kids = new Set((this.store.doc.contains ?? []).filter((c) => c.parent === item.id).map((c) => c.child));
+        if (kids.size) {
+          const out = this.#outOfRange(item.id, kids).size;
+          node.title = `${node.title ?? ''}\n담은 카드 ${kids.size}개${out ? ` · 범위 밖 ${out}개` : ''}`;
+        }
+        host.append(node);
+        cardEls.set(item.id, node);
+        this._axisCardIds.add(item.id);
         continue;
       }
 
@@ -867,7 +1064,7 @@ export class Board {
     this.#applyStacking(byId);
 
     // 카드가 붙은 뒤에야 offsetLeft/offsetTop이 확정된다
-    drawArrows(this.arrowLayer, this.grid, this.store.items, this.store.relations, this.store.meta.display, this.store.meta.arrows ?? {}, this.#arrowForms());
+    drawArrows(this.arrowLayer, this.grid, this.store.items, this.#arrowRelations(), this.store.meta.display, this.store.meta.arrows ?? {}, this.#arrowForms());
     this.#linkHighlight(this._hoverId ?? null);
     this.#markSelectedRel();
     this.#drawArrowHandles();
@@ -1028,7 +1225,7 @@ export class Board {
   }
 
   redrawArrows() {
-    drawArrows(this.arrowLayer, this.grid, this.store.items, this.store.relations, this.store.meta.display, this.store.meta.arrows ?? {}, this.#arrowForms());
+    drawArrows(this.arrowLayer, this.grid, this.store.items, this.#arrowRelations(), this.store.meta.display, this.store.meta.arrows ?? {}, this.#arrowForms());
     this.#linkHighlight(this._hoverId ?? null);
     this.#markSelectedRel();
     this.#drawArrowHandles();
@@ -1259,9 +1456,9 @@ export class Board {
     // 이어진 카드 강조 — 가장 안쪽 카드 기준(하위 카드에 올리면 그 하위 카드)
     this.grid.addEventListener('pointerover', (ev) => {
       const id = ev.target.closest?.('.ev')?.dataset.id ?? null;
-      if (id !== (this._hoverId ?? null)) this.#linkHighlight(id);
+      if (id !== (this._hoverId ?? null)) { this.#linkHighlight(id); this.#axisHighlight(id); }
     });
-    this.grid.addEventListener('pointerleave', () => this.#linkHighlight(null));
+    this.grid.addEventListener('pointerleave', () => { this.#linkHighlight(null); this.#axisHighlight(null); });
 
     this.grid.addEventListener('click', (ev) => {
       // 텍스트 선택 모드에서는 패널을 열지 않는다.
@@ -1343,7 +1540,7 @@ export class Board {
         return;
       }
       const card = ev.target.closest('.ev');
-      const col = ev.target.closest('.col');
+      const col = ev.target.closest('.col, .axis-strip');
       const pad = ev.target.closest('.pad');
       if (!card && !col && !pad) return;
       ev.preventDefault();
@@ -1468,7 +1665,7 @@ export class Board {
       if (this.store.readonly || ev.button !== 0) return;
       if (this.view.textSelect) return;
       if (ev.target.closest('.ev')) return;      // 카드 이동은 drag.js 몫
-      const col = ev.target.closest('.col');
+      const col = ev.target.closest('.col, .axis-strip');          // 축 띠 열 빈 곳도 그 트랙에 만든다
       if (!col) return;
       const startDay = dayAt(col, ev.clientY);
       const preview = el('div.create-preview', { attrs: { 'aria-hidden': 'true' } });

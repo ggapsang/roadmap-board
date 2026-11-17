@@ -107,7 +107,7 @@ export default {
     return saveModel;
   },
   check: (saveModel) => saveModel?.seedCollision === true
-    && saveModel?.schema === 27
+    && saveModel?.schema === 28
     && saveModel?.stale1?.merged === true
     && saveModel?.stale1?.kids === 2
     && saveModel?.stale1?.zGone === true

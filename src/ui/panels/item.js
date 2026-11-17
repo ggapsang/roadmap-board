@@ -10,6 +10,8 @@
  */
 import { shortMD, dayIndex, parseDate, inclusiveDays } from '../../core/dates.js';
 import { newId, ALIGNS, HALIGNS } from '../../core/schema.js';
+import { overlapShare } from '../../core/layout.js';
+import { DateTimeline, SlotTimeline } from '../../core/timeline.js';
 import { STATUSES, ITEM_TYPES, FILLS, CARD_FONT, statusList } from '../../config/index.js';
 import { $, el, clear, icon, ICONS, editGroup } from '../dom.js';
 import { askConfirm, askChoice, askTree, askTreeTabs } from '../dialog.js';
@@ -43,8 +45,9 @@ function autogrow(node) {
 }
 
 export class ItemPanel {
-  constructor({ store, view, panels, adapter, openProject, reloadBoard, onChange, goToEvent, reorder }) {
+  constructor({ store, view, panels, adapter, openProject, reloadBoard, onChange, goToEvent, reorder, setTrackAxis }) {
     this.reorder = reorder;
+    this.setTrackAxis = setTrackAxis;
     Object.assign(this, { store, view, panels, adapter, openProject, reloadBoard, onChange, goToEvent });
     this._allEvents = [];          // 모든 보드의 이벤트 캐시 — 카드를 열 때마다 갱신하되 비우진 않는다
     this._extraEvents = new Map(); // 어느 보드 화면에도 없는 조합 대상의 본질(이름 표시용)
@@ -109,6 +112,7 @@ export class ItemPanel {
     this._noteFor = track.id;
     $('i-title-drop').hidden = true;
     this.#syncFill(track.fill ?? '');
+    this.#syncAxis(track);
     if (!Array.isArray(this._allEvents)) this._allEvents = [];
     const subj = this.#subject();
     this.#renderSame(subj);
@@ -155,6 +159,19 @@ export class ItemPanel {
     }
     align.querySelectorAll('.seg-btn').forEach((b) =>
       b.addEventListener('click', () => this.#setAlign(b.dataset.align)));
+
+    // 트랙 표시 방식 — 열 · 축(왼쪽) · 축(오른쪽). 배치 값만 바꾼다(트랙·일정은 그대로)
+    const axis = $('i-axis');
+    clear(axis);
+    for (const [key, label] of [['', '열'], ['left', '축 · 왼쪽'], ['right', '축 · 오른쪽']]) {
+      axis.append(el('button', { type: 'button', className: 'seg-btn', text: label, dataset: { axis: key } }));
+    }
+    axis.querySelectorAll('.seg-btn').forEach((b) => b.addEventListener('click', async () => {
+      const track = this.track;
+      if (!track || this.store.readonly) return;
+      await this.setTrackAxis?.(track.id, b.dataset.axis || null);
+      this.#syncAxis(this.track);
+    }));
 
     // 글자 가로 정렬 — 아이콘 세그먼트. 누른 것을 다시 누르면 자동(지금까지의 모양)으로
     const halign = $('i-halign');
@@ -426,6 +443,7 @@ export class ItemPanel {
     this.#renderDeps(item);
     this.#renderRefs();
     this.#renderParents(item);
+    this.#renderContains(item);
     this.#renderSame(this.#subject()); // 동일 후보 (자기 자신 항상 체크)
     this.#renderCombine();             // 조합 후보
     this.#renderTasks(item);
@@ -521,6 +539,13 @@ export class ItemPanel {
     const on = item.place?.showNote === true;
     for (const b of $('i-shownote').querySelectorAll('.seg-btn')) {
       b.setAttribute('aria-pressed', String((b.dataset.note === 'on') === on));
+    }
+  }
+
+  /** 트랙 표시 방식 단추 — 지금 값 표시 */
+  #syncAxis(track) {
+    for (const b of $('i-axis').querySelectorAll('.seg-btn')) {
+      b.setAttribute('aria-pressed', String((b.dataset.axis || null) === (track?.axis ?? null)));
     }
   }
 
@@ -1082,6 +1107,98 @@ export class ItemPanel {
       list.append(row);
     }
     box.append(list);
+  }
+
+  /**
+   * 포함설정 — 그리는 부모 밖의 순서 있는 포함(doc.contains). 이 카드가 다른 트랙의 카드를 담는다(축 표시 트랙의 카드가 그 시기의 카드를
+   * 담는 것 — 2026-11-17 사용자). 담아도 원래 트랙에서 빼지 않는다(포함 추가). '날짜로 제안'은 기간이 겹치는 카드를 미리 체크만 하고
+   * 확정은 적용이다(요청서 A-07). 아래에 이 카드를 담은 카드(담긴 곳)를 읽기만으로 보인다.
+   */
+  #renderContains(item) {
+    const box = $('i-contains');
+    clear(box);
+    const contains = this.store.doc.contains ?? [];
+    box.append(el('div.contains-actions', {}, [
+      el('button.btn.outline.sm', { type: 'button', text: '편집', title: '포함설정 — 이 카드가 담을 카드 고르기', on: { click: () => this.#openContainsPicker(false) } }),
+      el('button.btn.outline.sm', { type: 'button', text: '날짜로 제안', title: '기간이 절반 넘게 겹치는 카드를 미리 체크한 채로 엽니다 — 확정은 적용', on: { click: () => this.#openContainsPicker(true) } }),
+    ]));
+    const list = el('div.combine-summary');
+    const mine = contains.filter((c) => c.parent === item.id);
+    list.append(el('div.pc-head', { text: `담은 카드${mine.length ? ` ${mine.length}` : ''}` }));
+    if (!mine.length) list.append(el('div.empty', { text: '없음' }));
+    for (const c of mine) {
+      const k = this.store.item(c.child);
+      list.append(el('div.combine-chip', {}, [
+        el('span.combine-chip-name', { text: k?.ti || '(제목 없음)' }),
+        el('button.task-del', { type: 'button', title: '담은 것에서 빼기(원래 트랙에는 그대로)', on: { click: () => this.#applyContains(item, new Set(mine.filter((x) => x.child !== c.child).map((x) => x.child))) } }, [icon(ICONS.close)]),
+      ]));
+    }
+    const held = contains.filter((c) => c.child === item.id);
+    list.append(el('div.pc-head', { text: `담긴 곳${held.length ? ` ${held.length}` : ''}` }));
+    if (!held.length) list.append(el('div.empty', { text: '없음' }));
+    for (const c of held) list.append(el('div.combine-chip', {}, [el('span.combine-chip-name', { text: this.store.item(c.parent)?.ti || '(제목 없음)' })]));
+    box.append(list);
+  }
+
+  /** 포함 후보에서 뺄 것 — 자기 자신, 이 카드의 조상(그리는 부모·담긴 곳을 따라 — 순환), 이 카드의 하위 카드(이미 포함) */
+  #containsExcluded(item) {
+    const contains = this.store.doc.contains ?? [];
+    const out = new Set([item.id, ...this.#descendantsOf(item.id)]);
+    const stack = [item.id];
+    while (stack.length) {
+      const n = stack.pop();
+      const ups = [this.store.item(n)?.parent, ...contains.filter((c) => c.child === n).map((c) => c.parent)].filter(Boolean);
+      for (const u of ups) if (!out.has(u)) { out.add(u); stack.push(u); }
+    }
+    return out;
+  }
+
+  async #openContainsPicker(suggest) {
+    const item = this.item;
+    if (!item || this.store.readonly) return;
+    const exclude = this.#containsExcluded(item);
+    const checked = new Set((this.store.doc.contains ?? []).filter((c) => c.parent === item.id).map((c) => c.child));
+    if (suggest) {
+      const tl = this.#timeline();
+      for (const x of this.store.items) {
+        if (x.parent || exclude.has(x.id) || x.place?.t === item.place?.t) continue;
+        if (overlapShare(tl, item, x) >= 0.5) checked.add(x.id);
+      }
+    }
+    const res = await askTree({
+      title: '포함설정',
+      message: suggest
+        ? '기간이 절반 넘게 겹치는 카드를 미리 체크했습니다 — 확인한 것만 담습니다(적용). 담아도 원래 트랙에 그대로 있습니다.'
+        : '이 카드가 담을 카드를 고릅니다. 담아도 원래 트랙에 그대로 있습니다. 체크를 풀면 담은 것에서만 빠집니다.',
+      nodes: this.#boardTreeNodes({ self: item.id, exclude }),
+      checked,
+      emptyText: '이 보드에 담을 카드가 없습니다.',
+    });
+    if (!res) return;
+    this.#applyContains(item, res);
+  }
+
+  /** 이 카드가 담은 카드를 kids로 맞춘다(되돌리기 1단계) */
+  #applyContains(item, kids) {
+    if (this.store.readonly) return;
+    const before = new Set((this.store.doc.contains ?? []).filter((c) => c.parent === item.id).map((c) => c.child));
+    if (before.size === kids.size && [...kids].every((k) => before.has(k))) return;
+    this.store.commit('포함 설정', (doc) => {
+      doc.contains = [
+        ...(doc.contains ?? []).filter((c) => c.parent !== item.id),
+        ...[...kids].map((child) => ({ parent: item.id, child })),
+      ];
+    });
+    this.#renderContains(item);
+  }
+
+  /** 보드와 같은 위치 읽기(날짜 있는 보드 = 날짜, 날짜 없는 보드 = 칸) */
+  #timeline() {
+    const d = this.store.meta.display ?? {};
+    if (d.dated === false) return new SlotTimeline();
+    let min = this.store.meta.start;
+    for (const it of this.store.items) if (it.s && it.s < min) min = it.s;
+    return new DateTimeline(parseDate(min), d);
   }
 
   /** 하위 카드를 이 보드에서 숨기기·보이기 — 보드 표시 값(meta.hidden). 관계는 고치지 않는다 */

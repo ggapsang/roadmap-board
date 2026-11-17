@@ -26,7 +26,7 @@ const key = (parent, child) => parent + SEP + child;
 /** 이벤트 본질 컬럼 — 동적 UPDATE는 이 목록 안에서만 만든다 */
 const ESSENCE = ['title', 'start_date', 'end_date', 'type', 'status', 'org', 'progress', 'note'];
 const INSERT_DEFAULTS = { title: '', type: 'bar', status: 'plan', org: '', progress: 0, note: '' };
-const DISP_COLS = ['pos_x', 'pos_w', 'pos_y', 'height_days', 'align', 'show_note', 'alias', 'lab', 'px_width', 'fill', 'slot_start', 'slot_len', 'font_scale', 'z_order', 'halign'];
+const DISP_COLS = ['pos_x', 'pos_w', 'pos_y', 'height_days', 'align', 'show_note', 'alias', 'lab', 'px_width', 'fill', 'slot_start', 'slot_len', 'font_scale', 'z_order', 'halign', 'axis'];
 
 /** 빈 투영 — 새 보드의 기준 */
 const emptyProjection = () => ({
@@ -39,7 +39,7 @@ const dispRow = (parent, child, v = {}) => ({
   align: v.align ?? 'middle', show_note: v.show_note ?? 0, alias: v.alias ?? null,
   lab: v.lab ?? null, px_width: v.px_width ?? null, fill: v.fill ?? null,
   slot_start: v.slot_start ?? null, slot_len: v.slot_len ?? null, font_scale: v.font_scale ?? null,
-  z_order: v.z_order ?? null, halign: v.halign ?? null,
+  z_order: v.z_order ?? null, halign: v.halign ?? null, axis: v.axis ?? null,
 });
 
 export class BoardRepository {
@@ -517,8 +517,8 @@ export class BoardRepository {
       boardNames: this.db.prepare('SELECT id, name FROM board WHERE root_event_id IN (?,?)').all(keepId, dropId),
     };
     const insCont = this.db.prepare('INSERT OR IGNORE INTO containment (parent_id,child_id,ordered,compose,ord) VALUES (?,?,?,?,?)');
-    const insDispRow = this.db.prepare('INSERT OR IGNORE INTO disp (parent_id,child_id,pos_x,pos_w,pos_y,height_days,align,show_note,alias,lab,px_width,fill,slot_start,slot_len,font_scale,z_order,halign) VALUES (@parent_id,@child_id,@pos_x,@pos_w,@pos_y,@height_days,@align,@show_note,@alias,@lab,@px_width,@fill,@slot_start,@slot_len,@font_scale,@z_order,@halign)');
-    const insDisp = { run: (d) => insDispRow.run({ fill: null, slot_start: null, slot_len: null, pos_y: null, font_scale: null, z_order: null, halign: null, ...d }) };
+    const insDispRow = this.db.prepare('INSERT OR IGNORE INTO disp (parent_id,child_id,pos_x,pos_w,pos_y,height_days,align,show_note,alias,lab,px_width,fill,slot_start,slot_len,font_scale,z_order,halign,axis) VALUES (@parent_id,@child_id,@pos_x,@pos_w,@pos_y,@height_days,@align,@show_note,@alias,@lab,@px_width,@fill,@slot_start,@slot_len,@font_scale,@z_order,@halign,@axis)');
+    const insDisp = { run: (d) => insDispRow.run({ fill: null, slot_start: null, slot_len: null, pos_y: null, font_scale: null, z_order: null, halign: null, axis: null, ...d }) };
     const run = this.db.transaction(() => {
       // 포함: dropId를 keepId로. 자기순환(부모=자식)은 버린다. 같은 쌍이 이미 있으면 IGNORE.
       for (const c of this.db.prepare('SELECT * FROM containment WHERE parent_id=?').all(dropId)) {
@@ -580,8 +580,8 @@ export class BoardRepository {
       if (s.keepEvent) upEv.run(s.keepEvent);
       const insCont = this.db.prepare('INSERT OR REPLACE INTO containment (parent_id,child_id,ordered,compose,ord) VALUES (?,?,?,?,?)');
       for (const c of s.containment) insCont.run(c.parent_id, c.child_id, c.ordered, c.compose ?? 0, c.ord);
-      const insDisp = this.db.prepare('INSERT OR REPLACE INTO disp (parent_id,child_id,pos_x,pos_w,pos_y,height_days,align,show_note,alias,lab,px_width,fill,slot_start,slot_len,font_scale,z_order,halign) VALUES (@parent_id,@child_id,@pos_x,@pos_w,@pos_y,@height_days,@align,@show_note,@alias,@lab,@px_width,@fill,@slot_start,@slot_len,@font_scale,@z_order,@halign)');
-      for (const d of s.disp) insDisp.run({ fill: null, slot_start: null, slot_len: null, font_scale: null, z_order: null, halign: null, ...d });   // 020·021 이전 스냅샷엔 없는 칸
+      const insDisp = this.db.prepare('INSERT OR REPLACE INTO disp (parent_id,child_id,pos_x,pos_w,pos_y,height_days,align,show_note,alias,lab,px_width,fill,slot_start,slot_len,font_scale,z_order,halign,axis) VALUES (@parent_id,@child_id,@pos_x,@pos_w,@pos_y,@height_days,@align,@show_note,@alias,@lab,@px_width,@fill,@slot_start,@slot_len,@font_scale,@z_order,@halign,@axis)');
+      for (const d of s.disp) insDisp.run({ fill: null, slot_start: null, slot_len: null, font_scale: null, z_order: null, halign: null, axis: null, ...d });   // 020·021 이전 스냅샷엔 없는 칸
       const insRel = this.db.prepare('INSERT OR REPLACE INTO rel (id,type,from_id,to_id) VALUES (?,?,?,?)');
       for (const r of s.rel) insRel.run(r.id, r.type, r.from_id, r.to_id);
       for (const bid of (s.board ?? [])) this.db.prepare('UPDATE board SET root_event_id=? WHERE id=?').run(s.dropId, bid);
@@ -723,8 +723,8 @@ export class BoardRepository {
     const delCont = this.db.prepare('DELETE FROM containment WHERE parent_id=? AND child_id=?');
     const getDisp = this.db.prepare('SELECT * FROM disp WHERE parent_id=? AND child_id=?');
     const delDisp = this.db.prepare('DELETE FROM disp WHERE parent_id=? AND child_id=?');
-    const insDisp = this.db.prepare('INSERT OR REPLACE INTO disp (parent_id,child_id,pos_x,pos_w,pos_y,height_days,align,show_note,alias,lab,px_width,fill,slot_start,slot_len,font_scale,z_order,halign) VALUES (@parent_id,@child_id,@pos_x,@pos_w,@pos_y,@height_days,@align,@show_note,@alias,@lab,@px_width,@fill,@slot_start,@slot_len,@font_scale,@z_order,@halign)');
-    const withDefaults = (d) => ({ fill: null, slot_start: null, slot_len: null, pos_y: null, font_scale: null, z_order: null, halign: null, ...d });
+    const insDisp = this.db.prepare('INSERT OR REPLACE INTO disp (parent_id,child_id,pos_x,pos_w,pos_y,height_days,align,show_note,alias,lab,px_width,fill,slot_start,slot_len,font_scale,z_order,halign,axis) VALUES (@parent_id,@child_id,@pos_x,@pos_w,@pos_y,@height_days,@align,@show_note,@alias,@lab,@px_width,@fill,@slot_start,@slot_len,@font_scale,@z_order,@halign,@axis)');
+    const withDefaults = (d) => ({ fill: null, slot_start: null, slot_len: null, pos_y: null, font_scale: null, z_order: null, halign: null, axis: null, ...d });
     let relN = 0;
 
     const run = this.db.transaction(() => {
@@ -775,8 +775,8 @@ export class BoardRepository {
       this.#purge(snap.created);
       const insCont = this.db.prepare('INSERT OR REPLACE INTO containment (parent_id,child_id,ordered,compose,ord) VALUES (?,?,?,?,?)');
       for (const c of snap.movedEdges ?? []) insCont.run(c.parent_id, c.child_id, c.ordered, c.compose ?? 0, c.ord);
-      const insDisp = this.db.prepare('INSERT OR REPLACE INTO disp (parent_id,child_id,pos_x,pos_w,pos_y,height_days,align,show_note,alias,lab,px_width,fill,slot_start,slot_len,font_scale,z_order,halign) VALUES (@parent_id,@child_id,@pos_x,@pos_w,@pos_y,@height_days,@align,@show_note,@alias,@lab,@px_width,@fill,@slot_start,@slot_len,@font_scale,@z_order,@halign)');
-      for (const d of snap.movedDisp ?? []) insDisp.run({ fill: null, slot_start: null, slot_len: null, pos_y: null, font_scale: null, z_order: null, halign: null, ...d });
+      const insDisp = this.db.prepare('INSERT OR REPLACE INTO disp (parent_id,child_id,pos_x,pos_w,pos_y,height_days,align,show_note,alias,lab,px_width,fill,slot_start,slot_len,font_scale,z_order,halign,axis) VALUES (@parent_id,@child_id,@pos_x,@pos_w,@pos_y,@height_days,@align,@show_note,@alias,@lab,@px_width,@fill,@slot_start,@slot_len,@font_scale,@z_order,@halign,@axis)');
+      for (const d of snap.movedDisp ?? []) insDisp.run({ fill: null, slot_start: null, slot_len: null, pos_y: null, font_scale: null, z_order: null, halign: null, axis: null, ...d });
       const insRel = this.db.prepare('INSERT OR REPLACE INTO rel (id,type,from_id,to_id) VALUES (?,?,?,?)');
       for (const r of snap.relsBefore ?? []) insRel.run(r.id, r.type, r.from_id, r.to_id);
     });
@@ -823,7 +823,7 @@ export class BoardRepository {
     const base = {
       version: board.doc_version,
       meta: { start: board.start_date, end: board.end_date, name: board.name, ...metaExtra },
-      orgs, bands, tracks: [], relations: [], items: [], compose: [],
+      orgs, bands, tracks: [], relations: [], items: [], compose: [], contains: [],
     };
     if (!root) return base;
 
@@ -860,6 +860,7 @@ export class BoardRepository {
       return {
         id: c.child_id, lab: d.lab ?? '', name: ev.title ?? '', w: d.px_width ?? null,
         s: ev.start_date ?? null, e: ev.end_date ?? null, note: ev.note ?? '', alias: d.alias ?? null, fill: d.fill ?? null,
+        axis: d.axis === 'left' || d.axis === 'right' ? d.axis : null,       // 배치 표시 방식 — 축(보드 가장자리) 또는 열(null)
       };
     });
 
@@ -951,6 +952,18 @@ export class BoardRepository {
       if (it.parent) relations.push({ id: `c_${it.id}`, type: 'contain', from: it.parent, to: it.id });
     }
 
+    // 그리는 부모 밖의 순서 있는 포함 — 이 보드 카드끼리(예: 축 표시 트랙의 띠가 다른 트랙의 카드를 담는다, 2026-11-17 사용자).
+    // 카드는 원래 트랙(그리는 부모)에 그대로 있고, 이 간선은 그리지 않고 강조·편집 창에서만 쓴다. 한 쌍에 간선 하나.
+    const contains = [];
+    for (const c of edges) {
+      if (c.ordered !== 1 || c.compose !== 0) continue;
+      if (!homeTrack.has(c.parent_id) || !homeTrack.has(c.child_id)) continue;
+      if ((docParent.get(c.child_id) ?? null) === c.parent_id) continue;      // 그리는 부모(하위 카드)
+      contains.push({ parent: c.parent_id, child: c.child_id, _o: c.ord });
+    }
+    contains.sort((a, b) => (a.parent < b.parent ? -1 : a.parent > b.parent ? 1 : a._o - b._o));
+    contains.forEach((c) => { delete c._o; });
+
     // 조합(구성) — 이 보드의 트랙·카드가 구성으로 품은 이벤트. 보드에 카드로 그리지 않고 상세에서 보인다.
     const compose = [];
     for (const c of edges) {
@@ -964,7 +977,7 @@ export class BoardRepository {
     return {
       version: board.doc_version,
       meta: { start: board.start_date, end: board.end_date, name: evById.get(root)?.title ?? board.name, ...metaExtra },
-      orgs, bands, tracks, relations, items, compose,
+      orgs, bands, tracks, relations, items, compose, contains,
     };
   }
 
@@ -1017,7 +1030,7 @@ export class BoardRepository {
       const note = 'note' in t ? { note: t.note ?? '' } : {};
       addEvent(tid, { title: t.name ?? '', ...dates, ...note }, { ...INSERT_DEFAULTS, start_date: meta.start, end_date: meta.end });
       addEdge(root, tid, 0, 1, i);
-      disp.set(key(root, tid), dispRow(root, tid, { lab: t.lab ?? '', px_width: t.w ?? null, alias: t.alias ?? null, fill: t.fill ?? null }));
+      disp.set(key(root, tid), dispRow(root, tid, { lab: t.lab ?? '', px_width: t.w ?? null, alias: t.alias ?? null, fill: t.fill ?? null, axis: t.axis ?? null }));
     });
     const trackOf = (raw) => docTrack.get(raw) ?? tkey(raw);
     const trackSet = new Set(docTrack.values());
@@ -1058,6 +1071,12 @@ export class BoardRepository {
           { ...INSERT_DEFAULTS, start_date: it.s, end_date: it.e, type: 'task' });
         addEdge(it.id, t.id, 0, 0, ti);
       });
+    }
+
+    // 그리는 부모 밖의 순서 있는 포함(doc.contains) — 이 보드 카드끼리. 다른 보드의 놓임과 같이 '포함 추가'다(원래 트랙에서 빼지 않는다)
+    for (const c of (Array.isArray(doc.contains) ? doc.contains : [])) {
+      if (!c || !itemIds.has(c.parent) || !itemIds.has(c.child)) continue;
+      addEdge(c.parent, c.child, 1, 0, nextOrd(c.parent));
     }
 
     // 조합(구성) — 이 보드의 트랙·카드가 품은 다른 보드의 이벤트. 이 보드 화면에 있는 이벤트(합치기로
@@ -1243,8 +1262,8 @@ export class BoardRepository {
 
     // 3) 배치(disp) — 간선을 따라간다
     const upDisp = this.db.prepare(`
-      INSERT OR REPLACE INTO disp (parent_id, child_id, pos_x, pos_w, pos_y, height_days, align, show_note, alias, lab, px_width, fill, slot_start, slot_len, font_scale, z_order, halign)
-      VALUES (@parent_id, @child_id, @pos_x, @pos_w, @pos_y, @height_days, @align, @show_note, @alias, @lab, @px_width, @fill, @slot_start, @slot_len, @font_scale, @z_order, @halign)
+      INSERT OR REPLACE INTO disp (parent_id, child_id, pos_x, pos_w, pos_y, height_days, align, show_note, alias, lab, px_width, fill, slot_start, slot_len, font_scale, z_order, halign, axis)
+      VALUES (@parent_id, @child_id, @pos_x, @pos_w, @pos_y, @height_days, @align, @show_note, @alias, @lab, @px_width, @fill, @slot_start, @slot_len, @font_scale, @z_order, @halign, @axis)
     `);
     for (const [k, n] of next.disp) {
       if (rejectedKeys.has(k)) continue;

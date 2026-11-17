@@ -332,6 +332,20 @@ body.reordering-col{cursor:grabbing!important;user-select:none}
 .unhide::before{content:"";border-style:solid;border-color:transparent}
 .unhide-left::before{border-width:4px 5px 4px 0;border-right-color:currentColor}
 .unhide-right::before{border-width:4px 0 4px 5px;border-left-color:currentColor}
+/* 축 표시 트랙 — 열 대신 보드 가장자리 띠 열(왼쪽은 날짜 칸 뒤, 오른쪽은 끝). 가로로 넘겨도 제자리(sticky, 자리는 Board#syncStrips).
+   트랙 칸이 그 아래로 지나가므로 면을 깐다. 층은 날짜 칸(9020)·메모(9019) 아래. 그 카드들은 띠 열 안의 층에서 쌓인다 */
+.axis-strip{position:sticky;z-index:9018;background:var(--surface-track);min-width:0}
+.axis-strip[data-side="left"]{border-right:1px solid var(--border-default)}
+.axis-strip[data-side="right"]{border-left:1px solid var(--border-default)}
+.th.th-axis{position:sticky;z-index:3;background:var(--bg-header);cursor:pointer}
+.th.th-axis-left{border-right:1px solid var(--border-default)}
+.th.th-axis-right{border-left:1px solid var(--border-default)}
+.th.th-axis[data-fill]{background:linear-gradient(var(--fill),var(--fill)),var(--bg-header)}
+/* 축 카드 강조(요청서 3.5) — 축 카드에 올리면 담은 카드를 밝히고 나머지를 흐린다. 카드에 올리면 담은 축 카드를. 색·불투명도만 */
+.ev.band-lit{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+.ev.band-dim{opacity:.35}
+/* 담은 카드의 범위를 벗어난 담긴 카드(4.1) — 점선 */
+.ev.band-lit.band-out{border-style:dashed}
 /* 가운데 버튼으로 보드를 끄는 중 */
 body.panning,body.panning *{cursor:grabbing!important;user-select:none}
 /* 축 끝 '+' — 보드 기간을 가장 큰 눈금 하나만큼 늘리기. 마우스를 올리면 나온다(가로로 넘겨도 날짜 칸 쪽에 제자리) */
@@ -396,15 +410,15 @@ body.panning,body.panning *{cursor:grabbing!important;user-select:none}
 .ev[data-fill="purple"]{--fill:var(--fill-purple)}
 .ev[data-fill="pink"]{--fill:var(--fill-pink)}
 /* 트랙 칸 채우기(트랙 편집 › 스타일) — 머리와 그 아래 세로 띠 전체를 옅게. 카드는 그 위에 그대로 뜬다 */
-.col[data-fill="gray"],.th[data-fill="gray"]{--fill:var(--fill-gray)}
-.col[data-fill="red"],.th[data-fill="red"]{--fill:var(--fill-red)}
-.col[data-fill="yellow"],.th[data-fill="yellow"]{--fill:var(--fill-yellow)}
-.col[data-fill="green"],.th[data-fill="green"]{--fill:var(--fill-green)}
-.col[data-fill="teal"],.th[data-fill="teal"]{--fill:var(--fill-teal)}
-.col[data-fill="blue"],.th[data-fill="blue"]{--fill:var(--fill-blue)}
-.col[data-fill="purple"],.th[data-fill="purple"]{--fill:var(--fill-purple)}
-.col[data-fill="pink"],.th[data-fill="pink"]{--fill:var(--fill-pink)}
-.col[data-fill]{background:linear-gradient(var(--fill),var(--fill)),var(--surface-track)}
+.col[data-fill="gray"],.th[data-fill="gray"],.axis-strip[data-fill="gray"]{--fill:var(--fill-gray)}
+.col[data-fill="red"],.th[data-fill="red"],.axis-strip[data-fill="red"]{--fill:var(--fill-red)}
+.col[data-fill="yellow"],.th[data-fill="yellow"],.axis-strip[data-fill="yellow"]{--fill:var(--fill-yellow)}
+.col[data-fill="green"],.th[data-fill="green"],.axis-strip[data-fill="green"]{--fill:var(--fill-green)}
+.col[data-fill="teal"],.th[data-fill="teal"],.axis-strip[data-fill="teal"]{--fill:var(--fill-teal)}
+.col[data-fill="blue"],.th[data-fill="blue"],.axis-strip[data-fill="blue"]{--fill:var(--fill-blue)}
+.col[data-fill="purple"],.th[data-fill="purple"],.axis-strip[data-fill="purple"]{--fill:var(--fill-purple)}
+.col[data-fill="pink"],.th[data-fill="pink"],.axis-strip[data-fill="pink"]{--fill:var(--fill-pink)}
+.col[data-fill],.axis-strip[data-fill]{background:linear-gradient(var(--fill),var(--fill)),var(--surface-track)}
 .th[data-fill]{background:linear-gradient(var(--fill),var(--fill)),var(--bg-header)}
 .col[data-fill="hatch"]{background:repeating-linear-gradient(135deg,var(--fill-hatch) 0 1.5px,transparent 1.5px 12px),var(--surface-track)}
 .th[data-fill="hatch"]{background:repeating-linear-gradient(135deg,var(--fill-hatch) 0 1.5px,transparent 1.5px 12px),var(--bg-header)}

@@ -84,6 +84,7 @@ async function boot() {
     store, view, panels, adapter,
     openProject: (id) => tabs.openBoard(id),
     reorder: (id, how) => reorderCard(id, how),
+    setTrackAxis: (id, side) => board.setTrackAxis(id, side),
     // 합치기·되돌리기는 DB 전체를 바꾼다 — 이 보드는 다시 읽고, 다른 탭은 돌아갈 때 다시 읽는다.
     reloadBoard: async () => { tabs.markAllStale(); await tabs.reloadActive(); },
     // 참조 목록에서 그쪽으로 가기 — 그 보드를 열고(이미 이 보드면 그대로) 카드면 열어 보이게, 트랙이면 트랙 편집,

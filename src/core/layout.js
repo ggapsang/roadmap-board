@@ -149,7 +149,11 @@ export function laneWidthFactor(lanes) {
  * CSS grid-template-columns 문자열 생성.
  * track.w가 지정돼 있으면 그 폭을 쓰고, 없으면 레인 수에 비례해 자동으로 잡는다.
  */
-export function gridTemplate(tracks, trackLanes, hidden = null) {
+/**
+ * @param {Set<string>} [hidden] 칸을 0으로 접는 트랙 — 숨긴 트랙·축 표시 트랙(제자리 칸은 남겨 칸 순서 = 트랙 순서)
+ * @param {{left:number[], right:number[]}} [axis] 축 표시 트랙 띠 열 폭(px) — 왼쪽은 날짜 칸 뒤, 오른쪽은 '+' 칸 뒤
+ */
+export function gridTemplate(tracks, trackLanes, hidden = null, axis = null) {
   const cols = tracks
     .map((t) => {
       // 숨긴 트랙은 칸을 0으로 접는다 — 칸(.col)과 머리는 남겨 트랙 순서 = 칸 순서를 지킨다(끌기·걸침이 칸 순서로 센다)
@@ -161,7 +165,20 @@ export function gridTemplate(tracks, trackLanes, hidden = null) {
       return `minmax(${Math.round(LAYOUT.minTrackWidth * factor)}px,${factor.toFixed(2)}fr)`;
     })
     .join(' ');
-  return `var(--gut-m) var(--gut-w) ${cols} var(--u10)`;
+  const px = (list) => (list ?? []).map((w) => ` ${Math.round(w)}px`).join('');
+  return `var(--gut-m) var(--gut-w)${px(axis?.left)} ${cols} var(--u10)${px(axis?.right)}`;
+}
+
+/**
+ * b의 길이 가운데 a와 겹치는 몫(0~1) — 위치(timeline.pos) 범위로 센다(날짜 없는 보드는 칸). 포함 제안(날짜 겹침)에 쓴다 —
+ * 제안까지만, 확정은 사용자가 한다(축 표시 트랙 요청서 A-07).
+ */
+export function overlapShare(timeline, a, b) {
+  const pa = timeline.pos(a), pb = timeline.pos(b);
+  if (!pa || !pb) return 0;
+  const len = pb.e - pb.s + 1;
+  const ov = Math.min(pa.e, pb.e) - Math.max(pa.s, pb.s) + 1;
+  return len > 0 && ov > 0 ? ov / len : 0;
 }
 
 /**

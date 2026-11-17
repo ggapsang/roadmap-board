@@ -282,6 +282,9 @@ function v25_to_v26(doc) {
   if (doc.meta && typeof doc.meta === 'object') doc.meta.hiddenTracks = doc.meta.hiddenTracks ?? [];
   // 카드 글자 가로 정렬(place.ha — 스타일 탭) — 옛 문서엔 없다(null = 자동: 보통 왼쪽, 큰 카드·상위 카드 제목은 가운데)
   for (const it of doc.items ?? []) if (it?.place && typeof it.place === 'object') it.place.ha = it.place.ha ?? null;
+  // 트랙 배치 표시 방식(tracks[].axis — 축 표시 트랙)·그리는 부모 밖의 순서 있는 포함(doc.contains) — 옛 문서엔 없다
+  for (const t of doc.tracks ?? []) if (t && typeof t === 'object') t.axis = t.axis ?? null;
+  doc.contains = Array.isArray(doc.contains) ? doc.contains : [];
   doc.version = 26;
   return doc;
 }
@@ -430,6 +433,8 @@ export function normalize(doc) {
       // 이 보드에서만 보이는 이름·트랙 칸 채우기(표현, 보드마다) — 카드의 별칭·채우기와 같은 값
       alias: typeof t.alias === 'string' && t.alias.trim() ? t.alias.trim() : null,
       fill: FILL_KEYS.includes(t.fill) ? t.fill : null,
+      // 배치 표시 방식 — 'left'·'right'면 열 대신 보드 가장자리의 축으로 그린다(축 표시 트랙). 이벤트 속성이 아니다(배치)
+      axis: t.axis === 'left' || t.axis === 'right' ? t.axis : null,
     };
     // 비고(본질) — 키가 있을 때만. 없으면 저장이 트랙 이벤트의 비고를 건드리지 않는다(기간과 같은 까닭)
     if ('note' in t) n.note = typeof t.note === 'string' ? t.note : '';
@@ -607,6 +612,7 @@ export function normalize(doc) {
 
   // ── 조합(구성) — 태스크와 본질이 다른 순서 없는 포함 (docs/SAVE.md §5)
   normalizeCompose(doc, warnings);
+  normalizeContains(doc, warnings);
 
   // ── 사용자가 고친 화살표 모양(보드 표시) — 관계 id → { a:{side,t}, b:{side,t}, m }. 없는 관계·틀린 값은 버린다
   //    (화살표는 자동 경로로 돌아간다). 끝점 = 카드 테두리 위 점(변·비율), m = 가운데 구간 위치(A→B 비율).
@@ -755,6 +761,42 @@ function normalizeCompose(doc, warnings) {
   if (doc.compose.length < before) warnings.push('같은 보드 이벤트 등 맞지 않는 조합(구성)을 정리했습니다.');
 }
 
+/**
+ * 그리는 부모 밖의 순서 있는 포함 — doc.contains = [{parent, child}] (docs/SAVE.md §5). 이 보드 카드끼리, 카드는 원래 트랙(그리는 부모)에
+ * 그대로 있고 이 간선은 그리지 않는다(축 표시 트랙의 띠가 그 시기의 카드를 담는 것 — 2026-11-17 사용자). 새 관계가 아니라 포함이다.
+ * 양끝은 이 보드 카드, 자기 자신·그리는 부모와 같은 쌍(한 쌍에 간선 하나)·순환(item.parent 사슬과 함께)은 버린다.
+ */
+function normalizeContains(doc, warnings) {
+  const byId = new Map(doc.items.map((i) => [i.id, i]));
+  const before = Array.isArray(doc.contains) ? doc.contains.length : 0;
+  const up = new Map();                      // 자식 → 부모들(그리는 부모 + 받아들인 contains)
+  for (const it of doc.items) if (it.parent && byId.has(it.parent)) up.set(it.id, [it.parent]);
+  const reaches = (from, to) => {            // from에서 부모 쪽으로 올라가 to에 닿는가
+    const seen = new Set([from]);
+    const stack = [from];
+    while (stack.length) {
+      const n = stack.pop();
+      if (n === to) return true;
+      for (const p of up.get(n) ?? []) if (!seen.has(p)) { seen.add(p); stack.push(p); }
+    }
+    return false;
+  };
+  const seen = new Set();
+  doc.contains = (Array.isArray(doc.contains) ? doc.contains : []).filter((c) => {
+    if (!isObj(c) || typeof c.parent !== 'string' || typeof c.child !== 'string') return false;
+    if (c.parent === c.child || !byId.has(c.parent) || !byId.has(c.child)) return false;
+    if (byId.get(c.child).parent === c.parent) return false;            // 그리는 부모와 같은 쌍
+    const key = `${c.parent}\u0001${c.child}`;
+    if (seen.has(key)) return false;
+    if (reaches(c.parent, c.child)) return false;                        // 자식이 부모의 조상 — 순환
+    seen.add(key);
+    if (!up.has(c.child)) up.set(c.child, []);
+    up.get(c.child).push(c.parent);
+    return true;
+  }).map((c) => ({ parent: c.parent, child: c.child }));
+  if (doc.contains.length < before) warnings.push('맞지 않는 포함(자기 자신·순환·없는 카드)을 정리했습니다.');
+}
+
 /** 0~1 비율. 비어 있으면 null (= 자동 배치) */
 function ratio(v) {
   if (v == null || v === '') return null;
@@ -866,6 +908,9 @@ export function reidentify(doc, { only = null } = {}) {
   // 그대로 — 복제본도 같은 이벤트들로 만들어진 것이다.
   if (Array.isArray(doc.compose)) {
     doc.compose = doc.compose.map((c) => ({ parent: any(c.parent), child: any(c.child) }));
+  }
+  if (Array.isArray(doc.contains)) {
+    doc.contains = doc.contains.map((c) => ({ parent: any(c.parent), child: any(c.child) }));
   }
   return doc;
 }
