@@ -63,11 +63,13 @@ export class BoardRepository {
 
   // ── 포함 그래프 헬퍼 ────────────────────────────────────
 
-  /** 포함 간선 전부. 보드 루트를 자식으로 담는 간선은 무시한다 — 보드는 최상위다(옛 오염은 019가 걷었다). */
+  /**
+   * 포함 간선 전부. 보드 루트도 자식이 될 수 있다 — 트랙과 보드를 항등설정하면 그 노드가 한 보드의 트랙이자 다른 보드의 루트다.
+   * (예전엔 id가 'board:'로 시작하는 자식을 옛 오염이라며 버렸다 — 019가 이미 걷은 것이고, '상대(보드)를 남긴다'로 합친 트랙이
+   * 그 id를 받아 보드에서 통째로 사라졌다, 2026-11-17 사용자. 순환은 합치기·조합이 적용 전에 막는다.)
+   */
   #edges() {
-    return this.db.prepare(
-      "SELECT parent_id, child_id, ordered, compose, ord FROM containment WHERE child_id NOT LIKE 'board:%'",
-    ).all();
+    return this.db.prepare('SELECT parent_id, child_id, ordered, compose, ord FROM containment').all();
   }
 
   /** parent -> [간선] (ord 오름차순) */
@@ -282,7 +284,7 @@ export class BoardRepository {
     return {
       root,
       events: this.db.prepare('SELECT id, title, status FROM event ORDER BY id').all(),
-      contain: this.db.prepare("SELECT parent_id, child_id, ordered, compose FROM containment WHERE child_id NOT LIKE 'board:%' ORDER BY parent_id, child_id").all(),
+      contain: this.db.prepare('SELECT parent_id, child_id, ordered, compose FROM containment ORDER BY parent_id, child_id').all(),
       rels: this.db.prepare('SELECT id, type, from_id, to_id FROM rel ORDER BY id').all(),
     };
   }

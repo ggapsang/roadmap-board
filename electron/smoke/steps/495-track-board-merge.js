@@ -33,12 +33,21 @@ export default {
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await sleep(100);
         document.querySelector('#pItem [data-close]')?.click();
         const cardsOfT = r.store.items.filter((x) => x.place.t === t.id).map((x) => x.id).sort();
+        const n0 = r.store.tracks.length;
+        // 합치기 — 상대(보드)를 남긴다: 트랙이 보드 루트 id('board:N')를 받아도 이 보드에 그대로(통째로 사라지던 것, 2026-11-17 사용자)
+        const th = await r.adapter.mergeEvents(b2root, t.id);
+        r.tabs.markAllStale(); await r.tabs.reloadActive(); await sleep(300);
+        const theirs = { ok: th?.ok === true, rootId: /^board:/.test(String(b2root)), n: r.store.tracks.length === n0, kept: !!r.store.track(b2root),
+          cards: JSON.stringify(r.store.items.filter((x) => x.place.t === b2root).map((x) => x.id).sort()) === JSON.stringify(cardsOfT) };
+        if (th?.ok) await r.adapter.unmergeEvents(th.undo);
+        r.tabs.markAllStale(); await r.tabs.reloadActive(); await sleep(300);
+        theirs.undone = !!r.store.track(t.id) && r.store.tracks.length === n0;
         // 합치기 — 트랙을 남긴다(본질 = 트랙)
         const res = await r.adapter.mergeEvents(t.id, b2root);
         r.tabs.markAllStale(); await r.tabs.reloadActive(); await sleep(300);
         const tAfter = r.store.track(t.id);
         const cardsAfter = r.store.items.filter((x) => x.place.t === t.id).map((x) => x.id).sort();
-        return { b1, b2, b2root, track: t.id, fromTrack, fromCard, merged: res?.ok === true,
+        return { b1, b2, b2root, track: t.id, fromTrack, fromCard, theirs, merged: res?.ok === true,
           trackKept: !!tAfter, cardsSame: JSON.stringify(cardsAfter) === JSON.stringify(cardsOfT), nTracks: r.store.tracks.length };
       })();
       const guard = new Promise((res) => setTimeout(() => res({ error: 'timeout' }), 15000));
@@ -72,7 +81,7 @@ export default {
     console.log('[smoke] track-board-merge ' + JSON.stringify(out));
     return out;
   },
-  check: (x) => x?.fromTrack === true && x?.fromCard === false && x?.merged === true && x?.trackKept === true && x?.cardsSame === true
+  check: (x) => x?.fromTrack === true && x?.fromCard === false && x?.theirs && Object.values(x.theirs).every((v) => v === true) && x?.merged === true && x?.trackKept === true && x?.cardsSame === true
     && x?.rootIsTrack === true && x?.b2Name === true && x?.b2Tracks === true && x?.b2NoCardsAsTracks === true && x?.b1NoTracksAsCards === true
     && x?.deleteKeeps === true,
 };
