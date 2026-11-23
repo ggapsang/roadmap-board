@@ -730,7 +730,25 @@ export class Board {
   #modeBands() {
     const key = this.timeline.mode.key;
     if (key === 'none') return [];
-    return (this.store.doc.bands ?? []).filter((b) => (b.mode ?? 'month-week') === key);
+    const list = (this.store.doc.bands ?? []).filter((b) => (b.mode ?? 'month-week') === key)
+      .sort((a, b) => a.from.localeCompare(b.from));
+    const outer = this.timeline.mode.outer;
+    if (!outer) return list;
+    // 구간 양 끝을 바깥 칸(월·주·분기) 경계로 넓혀 읽는다. 구간은 칸 단위로만 만들지만, 보드 기간 끝(처음)에서 잘린 칸을 줄이면
+    // 잘린 날까지만 저장된다 — 그 뒤 기간을 늘리면 그 칸의 나머지 날이 칸·손잡이 없이 원래 높이로 남아 줄일 수 없었다
+    // (4.09에 끝나던 보드의 4월, 2026-11-24 사용자). 이웃 구간과 겹치게 되면 그쪽 끝은 저장된 그대로 둔다.
+    const snapped = list.map((b) => {
+      const s = unitStart(parseDate(b.from), outer);
+      const n = addUnits(unitStart(parseDate(b.to), outer), outer, 1);
+      const e = new Date(n.getFullYear(), n.getMonth(), n.getDate() - 1);     // 다음 칸 첫날 하루 전(로컬 날짜, 규약 3)
+      return { from: formatDate(s), to: formatDate(e) };
+    });
+    return list.map((b, i) => {
+      const prev = list[i - 1], next = list[i + 1];
+      const from = prev && snapped[i].from <= prev.to ? b.from : snapped[i].from;
+      const to = next && snapped[i].to >= next.from ? b.to : snapped[i].to;
+      return from === b.from && to === b.to ? b : { ...b, from, to };
+    });
   }
 
   // ── 렌더 ────────────────────────────────────────────────
