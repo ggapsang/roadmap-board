@@ -15,11 +15,44 @@ import { askText } from '../dialog.js';
 import { openCtxMenu } from '../ctxmenu.js';
 import { toast } from '../toast.js';
 
+/**
+ * 높이 손잡이 잡기 — 칸 아래 경계선의 **위아래** EDGE px 안이면 그 칸(경계 위 칸)을 조절한다. 좌표로 판정한다.
+ * 예전엔 칸 안 아래쪽 8px 손잡이 요소만 잡혔다 — 눈에 보이는 경계선은 아래 칸의 윗선이라 선을 겨누면 아래 칸을 잡아 묶기(병합)가
+ * 시작되고, 칸 전체 커서가 ↕라 어디를 잡아도 조절될 것처럼 보였다(아모레 2027 2Q, 2026-11-24 사용자). 작은 칸은 자기 높이의 1/3까지만
+ * 내준다 — 접은 칸이 이어져도 칸 안을 눌러 묶기를 시작할 수 있게.
+ */
+const EDGE = 6;
+export function edgeCell(container, selector, clientY) {
+  const cells = [...container.querySelectorAll(selector)]
+    .map((c) => ({ c, r: c.getBoundingClientRect() }))
+    .filter((x) => x.r.height > 0)
+    .sort((a, b) => a.r.top - b.r.top);
+  let best = null, bestD = Infinity;
+  cells.forEach(({ c, r }, i) => {
+    const below = cells[i + 1]?.r;
+    const up = Math.max(2, Math.min(EDGE, r.height / 3));
+    const down = below && Math.abs(below.top - r.bottom) < 2 ? Math.max(2, Math.min(EDGE, below.height / 3)) : EDGE;
+    const d = clientY - r.bottom;
+    if ((d <= 0 ? -d <= up : d <= down) && Math.abs(d) < bestD) { bestD = Math.abs(d); best = c; }
+  });
+  return best;
+}
+
+/** 경계 가까이 올리면 커서를 ↕로, 조절될 칸을 칠하고 손잡이를 보인다 — 무엇이 조절될지 미리 보이게 */
+function markEdge(container, cell) {
+  container.classList.toggle('at-edge', !!cell);
+  for (const c of container.querySelectorAll('.edge-hot')) if (c !== cell) c.classList.remove('edge-hot');
+  cell?.classList.add('edge-hot');
+}
+
 export function attachBandEditing(gutM, { store, getOrigin, getScale, getTimeline, getZoom = () => 1, onChange }) {
   let drag = null;
   let resizing = null;
 
   const cellAt = (target) => target.closest('b');
+  /** 높이를 조절할 칸 — 손잡이를 눌렀으면 그 칸, 아니면 경계선 위아래 근처의 칸 */
+  const resizeCell = (ev) => (ev.target.classList?.contains('band-resize') ? cellAt(ev.target) : null)
+    ?? edgeCell(gutM, ':scope > b', ev.clientY);
   /** 지금 모드 — 바깥 칸이 있을 때만(날짜 있는 보드의 주-일·월-주·분기-월) */
   const modeKey = () => {
     const tl = getTimeline();
@@ -45,8 +78,7 @@ export function attachBandEditing(gutM, { store, getOrigin, getScale, getTimelin
   gutM.addEventListener('pointerdown', (ev) => {
     if (store.readonly || ev.button !== 0) return;
     if (slotMode()) {
-      if (!ev.target.classList.contains('band-resize')) return;
-      const cell = cellAt(ev.target);
+      const cell = resizeCell(ev);
       if (!cell) return;
       ev.preventDefault();
       const p = Number(cell.dataset.slot);
@@ -58,9 +90,9 @@ export function attachBandEditing(gutM, { store, getOrigin, getScale, getTimelin
 
     // 아래 가장자리를 잡으면 높이 조절. 묶은 구간이든 낱개 칸이든 된다 —
     // 낱개 칸은 그 칸만 한 칸짜리 구간으로 만들어 스케일을 건다(병합 없이 축소/확대).
-    if (ev.target.classList.contains('band-resize')) {
-      const cell = cellAt(ev.target);
-      if (!cell) return;
+    const edge = resizeCell(ev);
+    if (edge) {
+      const cell = edge;
       ev.preventDefault();
       const from = Number(cell.dataset.from);
       const to = Number(cell.dataset.to);
@@ -87,6 +119,7 @@ export function attachBandEditing(gutM, { store, getOrigin, getScale, getTimelin
   });
 
   gutM.addEventListener('pointermove', (ev) => {
+    if (!slotResize && !resizing && !drag) markEdge(gutM, store.readonly ? null : resizeCell(ev));
     if (slotResize) {
       const delta = (ev.clientY - slotResize.y) / getZoom();     // 화면 px → 보드 px
       if (!slotResize.began) {
@@ -177,6 +210,8 @@ export function attachBandEditing(gutM, { store, getOrigin, getScale, getTimelin
     onChange();
   });
 
+  gutM.addEventListener('pointerleave', () => { if (!slotResize && !resizing && !drag) markEdge(gutM, null); });
+
   gutM.addEventListener('pointercancel', () => {
     if (slotResize?.began) store.end();
     slotResize = null;
@@ -189,18 +224,19 @@ export function attachBandEditing(gutM, { store, getOrigin, getScale, getTimelin
   // 이름 바꾸기 / 높이 원래대로
   gutM.addEventListener('dblclick', async (ev) => {
     if (slotMode()) {
-      // 손잡이(또는 칸)를 더블클릭하면 그 칸 높이를 원래대로
-      const cell = cellAt(ev.target);
+      // 손잡이(경계)나 칸을 더블클릭하면 그 칸 높이를 원래대로
+      const cell = resizeCell(ev) ?? cellAt(ev.target);
       if (!cell || store.meta.display?.slotRows?.[cell.dataset.slot] == null) return;
       store.commit('칸 높이 원복', (doc) => setSlotRow(doc, Number(cell.dataset.slot), null));
       onChange();
       return;
     }
     if (!modeKey()) return;
-    const cell = cellAt(ev.target);
+    const edge = resizeCell(ev);
+    const cell = edge ?? cellAt(ev.target);
     const id = cell?.dataset.band;
     if (!id) return;
-    if (ev.target.classList.contains('band-resize')) {
+    if (edge) {
       // 낱개 칸(한 칸 자동 구간)은 통째로 없애 원래 칸으로 되돌리고,
       // 여러 칸을 묶은 구간은 높이만 원래대로(scale=1) 한다.
       const band = store.doc.bands.find((b) => b.id === id);
@@ -322,10 +358,12 @@ export function attachRowEditing(gutW, { store, getScale, getTimeline, getZoom =
     doc.meta.display.rowScales = all;
   };
 
+  const rowAt = (ev) => (ev.target.classList?.contains('band-resize') ? ev.target.closest('b.row') : null)
+    ?? edgeCell(gutW, ':scope > b.row', ev.clientY);
   gutW.addEventListener('pointerdown', (ev) => {
-    if (store.readonly || ev.button !== 0 || !ev.target.classList.contains('band-resize')) return;
+    if (store.readonly || ev.button !== 0) return;
     const key = modeKey();
-    const row = ev.target.closest('b.row');
+    const row = rowAt(ev);
     if (!key || !row) return;
     ev.preventDefault();
     const scale = getScale();
@@ -336,12 +374,12 @@ export function attachRowEditing(gutW, { store, getScale, getTimeline, getZoom =
       scale0: Number(store.meta.display?.rowScales?.[key]?.[row.dataset.row]) || 1,
       began: false,
     };
-    ev.target.classList.add('dragging');
+    row.querySelector('.band-resize')?.classList.add('dragging');
     gutW.setPointerCapture(ev.pointerId);
   });
 
   gutW.addEventListener('pointermove', (ev) => {
-    if (!rs) return;
+    if (!rs) { markEdge(gutW, store.readonly || !modeKey() ? null : rowAt(ev)); return; }
     const delta = (ev.clientY - rs.y) / getZoom();               // 화면 px → 보드 px
     if (!rs.began) {
       if (Math.abs(delta) < 4) return;
@@ -358,11 +396,12 @@ export function attachRowEditing(gutW, { store, getScale, getTimeline, getZoom =
     rs = null;
   };
   gutW.addEventListener('pointerup', end);
+  gutW.addEventListener('pointerleave', () => { if (!rs) markEdge(gutW, null); });
   gutW.addEventListener('pointercancel', end);
 
   gutW.addEventListener('dblclick', (ev) => {
     const key = modeKey();
-    const row = ev.target.closest?.('b.row');
+    const row = rowAt(ev);
     if (!key || !row || store.readonly || store.meta.display?.rowScales?.[key]?.[row.dataset.row] == null) return;
     store.commit('행 높이 원복', (doc) => setRow(doc, key, row.dataset.row, null));
     onChange();

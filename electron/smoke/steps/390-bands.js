@@ -33,11 +33,34 @@ export default {
       const tailScaled = (sc.y(d20 + 7) - sc.y(d20)) < 7 * r.view.ppd * 0.75;
       r.store.commit('잘린 구간 원복', (doc) => { doc.bands = doc.bands.filter((b) => b.id !== 'clip1'); });
       r.board.rebuild(); await new Promise((res) => setTimeout(res, 100));
-      return { before: before.length, after: after.length, merged, labels: after, clip: { whole, halfTail, tailScaled } };
+      // 눈에 보이는 경계선(아래 칸의 윗선) 바로 아래를 잡아 끌어도 위 칸 높이 조절 — 아래 칸을 잡아 묶기가 되던 것(2026-11-24 사용자)
+      const gm = document.querySelector('.gut-m');
+      const q1 = gm.querySelector(':scope > b[data-band="q1"]');
+      q1.scrollIntoView({ block: 'center' }); await new Promise((res) => setTimeout(res, 100));
+      const nextCell = [...gm.querySelectorAll(':scope > b')].find((c) => Number(c.dataset.from) === Number(q1.dataset.to));
+      const nb = nextCell.getBoundingClientRect(), x = nb.left + nb.width / 2;
+      const at = (y) => ({ bubbles: true, clientX: x, clientY: y, pointerId: 1, button: 0 });
+      gm.dispatchEvent(new PointerEvent('pointermove', at(nb.top + 2)));
+      const edgeCursor = getComputedStyle(gm).cursor === 'ns-resize' && gm.querySelector('.edge-hot') === q1;
+      nextCell.dispatchEvent(new PointerEvent('pointerdown', at(nb.top + 2)));
+      gm.dispatchEvent(new PointerEvent('pointermove', at(nb.top + 20)));
+      gm.dispatchEvent(new PointerEvent('pointermove', at(nb.top + 40)));
+      const picking = gm.querySelectorAll('b.picking').length;
+      gm.dispatchEvent(new PointerEvent('pointerup', at(nb.top + 40))); await new Promise((res) => setTimeout(res, 100));
+      const grown = (r.store.doc.bands.find((b) => b.id === 'q1')?.scale ?? 1) > 1;
+      r.store.commit('스모크 원복', (doc) => { const b = doc.bands.find((x) => x.id === 'q1'); if (b) delete b.scale; });
+      // 칸 한가운데는 묶기 — 커서도 기본
+      const mid = nb.top + Math.min(nb.height / 2, 30);
+      gm.dispatchEvent(new PointerEvent('pointermove', at(mid)));
+      const midDefault = getComputedStyle(gm).cursor !== 'ns-resize';
+      gm.dispatchEvent(new PointerEvent('pointerleave', at(mid)));
+      const edge = { edgeCursor, noPick: picking === 0, grown, midDefault };
+      return { before: before.length, after: after.length, merged, labels: after, clip: { whole, halfTail, tailScaled }, edge };
     })()`);
     console.log('[smoke] bands ' + JSON.stringify(banded));
     return banded;
   },
   check: (banded) => banded?.merged === 1
-    && banded?.after === banded?.before - 2 && banded?.clip?.whole && banded?.clip?.tailScaled,
+    && banded?.after === banded?.before - 2 && banded?.clip?.whole && banded?.clip?.tailScaled
+    && banded?.edge && Object.values(banded.edge).every((v) => v === true),
 };
